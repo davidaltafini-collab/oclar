@@ -1,9 +1,8 @@
-//
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import Stripe from 'stripe';
-import { pool, checkDbConnection } from './db'; // Asigură-te că importul e corect
+import { pool, checkDbConnection } from './db'; 
 import { sendOrderEmails } from './services/email';
 
 dotenv.config();
@@ -17,8 +16,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
 
 app.use(cors());
 
-// --- MODIFICARE 1: Am mutat webhook-ul la /api/webhook ---
-// Webhook requires raw body
+// --- WEBHOOK: Aici se întâmplă magia (Salvare DB + Email) ---
 app.post('/api/webhook', express.raw({ type: 'application/json' }) as any, async (req, res) => {
   const sig = req.headers['stripe-signature'];
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -40,12 +38,71 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }) as any, async
 
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session;
-    if (session.customer_details?.email) {
-      await sendOrderEmails(
-        session.customer_details.email, 
-        session.id, 
-        (session.amount_total || 0) / 100
+
+    try {
+      // 1. Cerem lista detaliată de produse de la Stripe
+      const lineItems = await stripe.checkout.sessions.listLineItems(session.id);
+      
+      // 2. Pregătim datele pentru Baza de Date
+      const orderData = {
+        stripe_session_id: session.id,
+        customer_name: session.customer_details?.name || 'Client',
+        customer_email: session.customer_details?.email || '',
+        customer_phone: session.customer_details?.phone || '',
+        // Salvăm adresa ca JSON
+        shipping_address: JSON.stringify(session.customer_details?.address || {}),
+        // Salvăm produsele ca JSON (Nume, Cantitate, Preț)
+        items: JSON.stringify(lineItems.data.map(item => ({
+          name: item.description,
+          quantity: item.quantity,
+          price: (item.amount_total || 0) / 100
+        }))),
+        total_amount: (session.amount_total || 0) / 100
+      };
+
+      // 3. SALVĂM ÎN BAZA DE DATE (MySQL / TiDB)
+      const [result]: any = await pool.query(
+        `INSERT INTO orders 
+        (stripe_session_id, customer_name, customer_email, customer_phone, shipping_address, items, total_amount) 
+        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          orderData.stripe_session_id,
+          orderData.customer_name,
+          orderData.customer_email,
+          orderData.customer_phone,
+          orderData.shipping_address,
+          orderData.items,
+          orderData.total_amount
+        ]
       );
+
+      // Obținem ID-ul comenzii generate de baza de date (ex: 1001)
+      const dbOrderId = result.insertId;
+      console.log(`Order saved to DB with ID: ${dbOrderId}`);
+
+      // 4. Trimitem Email-urile (folosind ID-ul frumos din baza de date)
+      if (orderData.customer_email) {
+        // Reconstruim obiectul pentru funcția de email
+        const emailDetails = {
+          orderId: dbOrderId.toString(), // Trimitem ID-ul simplu (1, 2, 3)
+          customerName: orderData.customer_name,
+          customerEmail: orderData.customer_email,
+          customerPhone: orderData.customer_phone,
+          address: session.customer_details?.address as any, // Trimitem obiectul, nu string-ul JSON
+          totalAmount: orderData.total_amount,
+          items: lineItems.data.map(item => ({
+             name: item.description || 'Produs',
+             quantity: item.quantity || 1,
+             price: (item.amount_total || 0) / 100
+          }))
+        };
+        
+        await sendOrderEmails(emailDetails);
+      }
+
+    } catch (error) {
+      console.error('Error saving order or sending email:', error);
+      // Nu dăm eroare la Stripe ca să nu reîncerce plata la infinit, dar vedem eroarea în logs
     }
   }
 
@@ -54,10 +111,8 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }) as any, async
 
 app.use(express.json() as any);
 
-// Rutele tale existente
+// --- Rute Produse (Neschimbate) ---
 app.get('/api/products', async (req, res) => {
-  // ... codul tău existent pentru produse ...
-  // (Păstrează logica de mapare a produselor din discuția anterioară dacă folosești MySQL real)
   try {
     const [rows]: any = await pool.query('SELECT * FROM products');
      const products = rows.map((product: any) => ({
@@ -73,7 +128,6 @@ app.get('/api/products', async (req, res) => {
 });
 
 app.get('/api/products/:id', async (req, res) => {
-   // ... codul tău existent ...
    try {
     const [rows]: any = await pool.query('SELECT * FROM products WHERE id = ?', [req.params.id]);
     if (rows.length === 0) return res.status(404).json({ error: 'Product not found' });
@@ -86,13 +140,13 @@ app.get('/api/products/:id', async (req, res) => {
   }
 });
 
+// --- Rute Checkout ---
 app.post('/api/create-checkout-session', async (req, res) => {
-  // ... codul tău existent ...
    try {
     const { items } = req.body; 
     const lineItems = items.map((item: any) => ({
       price_data: {
-        currency: 'ron', // ATENȚIE: Stripe vrea codul valutei (ron/usd), asigură-te că e corect
+        currency: 'ron', 
         product_data: {
           name: item.name,
           images: [item.imageUrl],
@@ -102,10 +156,23 @@ app.post('/api/create-checkout-session', async (req, res) => {
       quantity: item.quantity,
     }));
 
+    // Aici configurăm formularul pe care îl vede clientul pe Stripe
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: lineItems,
       mode: 'payment',
+      
+      // 1. Cerem ADRESA (Obligatoriu pentru curier)
+      billing_address_collection: 'required',
+      shipping_address_collection: {
+        allowed_countries: ['RO'], // Livrăm doar în România
+      },
+      
+      // 2. Cerem TELEFONUL (Obligatoriu pentru curier)
+      phone_number_collection: {
+        enabled: true,
+      },
+
       success_url: `${req.headers.origin}/#/success`,
       cancel_url: `${req.headers.origin}/#/`,
     });
@@ -116,7 +183,7 @@ app.post('/api/create-checkout-session', async (req, res) => {
   }
 });
 
-// --- MODIFICARE 2: Export pentru Vercel ---
+// Export pentru Vercel
 if (process.env.NODE_ENV !== 'production') {
   app.listen(port, () => {
     console.log(`Server running on port ${port}`);
