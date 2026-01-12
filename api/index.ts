@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import Stripe from 'stripe';
-import { pool, checkDbConnection } from './db'; 
+import { pool, checkDbConnection } from './db.js'; 
 import { sendOrderEmails } from './services/email';
 
 dotenv.config();
