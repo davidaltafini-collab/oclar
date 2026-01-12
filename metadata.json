@@ -1,0 +1,5 @@
+{
+  "name": "Lumina Supply",
+  "description": "A minimalist, monochromatic e-commerce experience with a Oclaron filtering and control. Features a custom yellow-accented design, global cart state, and stripe integration architecture.",
+  "requestFramePermissions": []
+}
