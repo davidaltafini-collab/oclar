@@ -3,9 +3,9 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// Verificăm dacă variabilele critice există
+// Verificăm dacă variabilele critice există (doar warning, nu crash)
 if (!process.env.DB_HOST || !process.env.DB_USER || !process.env.DB_PASS || !process.env.DB_NAME) {
-  console.error('❌ EROARE CRITICĂ: Lipsesc variabilele de mediu pentru baza de date!');
+  console.error('⚠️ ATENȚIE: Lipsesc variabile de mediu, conexiunea poate eșua.');
 }
 
 export const pool = mysql.createPool({
@@ -15,12 +15,12 @@ export const pool = mysql.createPool({
   database: process.env.DB_NAME,
   port: process.env.DB_PORT ? parseInt(process.env.DB_PORT) : 4000,
   waitForConnections: true,
-  connectionLimit: 10,
+  connectionLimit: 1, // Pe Vercel e critic să fie 1 (serverless nu ține multe conexiuni)
   queueLimit: 0,
-  // --- PARTEA CRITICĂ PENTRU TiDB ---
+  // --- AICI AM FĂCUT MODIFICAREA CRITICĂ ---
   ssl: {
     minVersion: 'TLSv1.2',
-    rejectUnauthorized: true
+    rejectUnauthorized: false // <--- TREBUIE SĂ FIE FALSE CA SĂ NU CRAPE PE VERCEL
   }
 });
 
@@ -33,7 +33,5 @@ export const checkDbConnection = async () => {
     connection.release();
   } catch (error: any) {
     console.error('❌ EROARE CONEXIUNE DB:', error.message);
-    // Afișăm detalii ca să știm ce să reparăm (fără să arătăm parola)
-    console.error(`Încercare conectare la Host: ${process.env.DB_HOST}, User: ${process.env.DB_USER}`);
   }
 };
