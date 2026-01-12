@@ -13,6 +13,6 @@
     "mysql2": "^3.5.2",
     "nodemailer": "^6.9.5",
     "stripe": "^16.21.0",
-    "serverless-http": "^3.3.0"
+    "serverless-http": "^2.7.0"
   }
 }

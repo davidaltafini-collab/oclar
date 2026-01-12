@@ -19,28 +19,28 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-interface OrderItem {
-  name: string;
-  quantity: number;
-  price: number;
-}
-
-interface EmailDetails {
-  orderId: string;
-  customerName: string;
-  customerEmail?: string;
-  customerPhone?: string;
-  address: any;
-  totalAmount: number;
-  items: OrderItem[];
-}
-
 /**
  * Send order confirmation emails both to the customer and to the store admin.
  * The admin email address should be set via SMTP_ADMIN_EMAIL in the env.
+ * @param {Object} details
+ * @param {string} details.orderId
+ * @param {string} details.customerName
+ * @param {string} [details.customerEmail]
+ * @param {string} [details.customerPhone]
+ * @param {any} details.address
+ * @param {number} details.totalAmount
+ * @param {Array<{name: string, quantity: number, price: number}>} details.items
  */
-export async function sendOrderEmails(details: EmailDetails) {
-  const { orderId, customerName, customerEmail, customerPhone, address, totalAmount, items } = details;
+export async function sendOrderEmails(details) {
+  const {
+    orderId,
+    customerName,
+    customerEmail,
+    customerPhone,
+    address,
+    totalAmount,
+    items,
+  } = details;
   const adminEmail = process.env.SMTP_ADMIN_EMAIL;
   const fromAddress = process.env.SMTP_FROM || adminEmail || '';
 
@@ -50,7 +50,7 @@ export async function sendOrderEmails(details: EmailDetails) {
     .map((item) => `<li>${item.name} – ${item.quantity} x ${item.price.toFixed(2)} RON</li>`) // romanian currency
     .join('');
 
-  const addressLines: string[] = [];
+  const addressLines = [];
   if (address) {
     if (address.line1 || address.line) addressLines.push(address.line1 || address.line);
     if (address.city) addressLines.push(address.city);

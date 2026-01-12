@@ -1,18 +1,15 @@
-import express, { Request, Response } from 'express';
+import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import Stripe from 'stripe';
 import serverless from 'serverless-http';
 
 // Import our own modules with explicit .js extensions.  When compiling this
-// TypeScript file to JavaScript, these imports will continue to point to
-// the generated .js files. This is required because Vercel treats all
-// files in the api/ directory as ESM modules and will fail to resolve
-// extensionless imports at runtime.
+// file, these imports will continue to point to the generated .js files.
 import { pool } from './db.js';
 import { sendOrderEmails } from './services/email.js';
 
-// Load environment variables from .env.  In a Vercel deployment, these
+// Load environment variables.  In a Vercel deployment, these
 // variables should be configured in the project settings.
 dotenv.config();
 
@@ -21,7 +18,7 @@ dotenv.config();
 // reduces cold‑start overhead.
 const app = express();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2024-12-18.acacia' as any,
+  apiVersion: '2024-12-18.acacia',
 });
 
 app.use(cors());
@@ -35,8 +32,8 @@ app.use(cors());
 // -----------------------------------------------------------------------------
 app.post(
   '/api/webhook',
-  express.raw({ type: 'application/json' }) as any,
-  async (req: Request, res: Response) => {
+  express.raw({ type: 'application/json' }),
+  async (req, res) => {
     const sig = req.headers['stripe-signature'];
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
@@ -44,25 +41,25 @@ app.post(
       return res.status(400).send('Webhook Error: Missing signature or secret');
     }
 
-    let event: Stripe.Event;
+    let event;
     try {
       event = stripe.webhooks.constructEvent(req.body, sig.toString(), webhookSecret);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Webhook signature verification failed:', err.message);
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
     if (event.type === 'checkout.session.completed') {
-      const session = event.data.object as Stripe.Checkout.Session;
+      const session = event.data.object;
       try {
         // Retrieve line items to store in our database
         const lineItems = await stripe.checkout.sessions.listLineItems(session.id);
         const orderData = {
           stripe_session_id: session.id,
-          customer_name: session.customer_details?.name || 'Client',
-          customer_email: session.customer_details?.email || '',
-          customer_phone: session.customer_details?.phone || '',
-          shipping_address: JSON.stringify(session.customer_details?.address || {}),
+          customer_name: (session.customer_details && session.customer_details.name) || 'Client',
+          customer_email: (session.customer_details && session.customer_details.email) || '',
+          customer_phone: (session.customer_details && session.customer_details.phone) || '',
+          shipping_address: JSON.stringify((session.customer_details && session.customer_details.address) || {}),
           items: JSON.stringify(
             lineItems.data.map((item) => ({
               name: item.description,
@@ -75,7 +72,7 @@ app.post(
 
         // Insert order into database.  We set payment_method to 'card' and
         // status to 'paid'.  If your schema differs, adjust the query below.
-        const [result]: any = await pool.query(
+        const [result] = await pool.query(
           `INSERT INTO orders
            (stripe_session_id, customer_name, customer_email, customer_phone,
             shipping_address, items, total_amount, payment_method, status)
@@ -100,7 +97,7 @@ app.post(
             customerName: orderData.customer_name,
             customerEmail: orderData.customer_email,
             customerPhone: orderData.customer_phone,
-            address: session.customer_details?.address,
+            address: session.customer_details && session.customer_details.address,
             totalAmount: orderData.total_amount,
             items: lineItems.data.map((item) => ({
               name: item.description || 'Produs',
@@ -124,7 +121,7 @@ app.post(
 // All routes after the webhook should parse JSON normally.  This must come
 // after the webhook route to avoid interfering with Stripe's raw body parser.
 // -----------------------------------------------------------------------------
-app.use(express.json() as any);
+app.use(express.json());
 
 // -----------------------------------------------------------------------------
 // 3. RAMBURS (CASH ON DELIVERY) ORDER
@@ -134,7 +131,7 @@ app.use(express.json() as any);
 // in MySQL and send emails to the customer and admin.  Payment method is
 // recorded as 'ramburs' and status as 'pending'.
 // -----------------------------------------------------------------------------
-app.post('/api/create-order-ramburs', async (req: Request, res: Response) => {
+app.post('/api/create-order-ramburs', async (req, res) => {
   try {
     const { customerName, customerEmail, customerPhone, address, items, totalAmount } = req.body;
 
@@ -146,7 +143,7 @@ app.post('/api/create-order-ramburs', async (req: Request, res: Response) => {
     // JSON encode items for storage in one column
     const itemsJson = JSON.stringify(items);
 
-    const [result]: any = await pool.query(
+    const [result] = await pool.query(
       `INSERT INTO orders
        (customer_name, customer_email, customer_phone, county, city, address_line,
         items, total_amount, payment_method, status)
@@ -187,7 +184,7 @@ app.post('/api/create-order-ramburs', async (req: Request, res: Response) => {
     }
 
     return res.json({ success: true, orderId });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error creating ramburs order:', error);
     return res.status(500).json({ error: 'Nu am putut salva comanda.' });
   }
@@ -201,10 +198,10 @@ app.post('/api/create-order-ramburs', async (req: Request, res: Response) => {
 // to be JSON strings in the database and will be parsed here before
 // returning to the client.
 // -----------------------------------------------------------------------------
-app.get('/api/products', async (_req: Request, res: Response) => {
+app.get('/api/products', async (_req, res) => {
   try {
-    const [rows]: any = await pool.query('SELECT * FROM products');
-    const products = rows.map((product: any) => ({
+    const [rows] = await pool.query('SELECT * FROM products');
+    const products = rows.map((product) => ({
       ...product,
       details: typeof product.details === 'string' ? JSON.parse(product.details) : product.details,
       colors: typeof product.colors === 'string' ? JSON.parse(product.colors) : product.colors,
@@ -217,9 +214,9 @@ app.get('/api/products', async (_req: Request, res: Response) => {
   }
 });
 
-app.get('/api/products/:id', async (req: Request, res: Response) => {
+app.get('/api/products/:id', async (req, res) => {
   try {
-    const [rows]: any = await pool.query('SELECT * FROM products WHERE id = ?', [req.params.id]);
+    const [rows] = await pool.query('SELECT * FROM products WHERE id = ?', [req.params.id]);
     if (rows.length === 0) return res.status(404).json({ error: 'Product not found' });
     const product = rows[0];
     if (typeof product.details === 'string') product.details = JSON.parse(product.details);
@@ -239,14 +236,14 @@ app.get('/api/products/:id', async (req: Request, res: Response) => {
 // The success and cancel URLs are derived from the request origin to allow
 // cross-environment deployment (e.g. local dev, preview, production).
 // -----------------------------------------------------------------------------
-app.post('/api/create-checkout-session', async (req: Request, res: Response) => {
+app.post('/api/create-checkout-session', async (req, res) => {
   try {
     const { items } = req.body;
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Missing or invalid items array' });
     }
 
-    const lineItems = items.map((item: any) => ({
+    const lineItems = items.map((item) => ({
       price_data: {
         currency: 'ron',
         product_data: {
@@ -273,7 +270,7 @@ app.post('/api/create-checkout-session', async (req: Request, res: Response) => 
       cancel_url: `${req.headers.origin}/#/`,
     });
     res.json({ url: session.url });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error creating checkout session:', error);
     res.status(500).json({ error: error.message || 'Stripe error' });
   }
@@ -286,8 +283,8 @@ app.post('/api/create-checkout-session', async (req: Request, res: Response) => 
 // and table existence.  Useful for debugging deployments.  In production
 // you might want to restrict access to this endpoint.
 // -----------------------------------------------------------------------------
-app.get('/api/status', async (_req: Request, res: Response) => {
-  const status: any = {
+app.get('/api/status', async (_req, res) => {
+  const status = {
     system: 'Online',
     timestamp: new Date().toISOString(),
     environment: {
@@ -307,7 +304,7 @@ app.get('/api/status', async (_req: Request, res: Response) => {
     status.database_connection = 'SUCCESS: Connected to database';
 
     // check for orders table
-    const [tables]: any = await pool.query(
+    const [tables] = await pool.query(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = ? AND table_name = 'orders'`,
       [process.env.DB_NAME]
     );
@@ -318,11 +315,11 @@ app.get('/api/status', async (_req: Request, res: Response) => {
     }
 
     // show last 3 orders for debugging
-    const [recentOrders]: any = await pool.query('SELECT id, created_at FROM orders ORDER BY id DESC LIMIT 3');
+    const [recentOrders] = await pool.query('SELECT id, created_at FROM orders ORDER BY id DESC LIMIT 3');
     status.recent_orders_check = recentOrders;
 
     res.json(status);
-  } catch (error: any) {
+  } catch (error) {
     status.database_connection = 'FAILED';
     status.error_message = error.message;
     status.error_code = error.code;

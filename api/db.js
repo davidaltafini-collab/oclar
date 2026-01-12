@@ -15,8 +15,6 @@ export const pool = mysql.createPool({
   password: process.env.DB_PASS,
   database: process.env.DB_NAME,
   port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 3306,
-  // waitForConnections: true will cause acquire() to wait rather than throw
-  // when no connection is available
   waitForConnections: true,
   connectionLimit: 10,
   idleTimeout: 60000,
