@@ -1,6 +1,9 @@
 import { Product } from './types';
 
-export const API_URL = import.meta.env.PROD ? '/api' : 'http://localhost:3000/api';
+// API URL configuration - works in both dev and production
+export const API_URL = import.meta.env.DEV 
+  ? 'http://localhost:3000/api' 
+  : '/api';
 
 // Mock data used if backend is not reachable (for UI preview purposes)
 export const MOCK_PRODUCTS: Product[] = [

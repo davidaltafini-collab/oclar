@@ -9,6 +9,7 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const saved = localStorage.getItem('lumina_cart');
       return saved ? JSON.parse(saved) : [];
     } catch (e) {
+      console.error('Error loading cart:', e);
       return [];
     }
   });
@@ -16,13 +17,19 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isCartOpen, setIsCartOpen] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem('lumina_cart', JSON.stringify(cart));
+    try {
+      localStorage.setItem('lumina_cart', JSON.stringify(cart));
+    } catch (e) {
+      console.error('Error saving cart:', e);
+    }
   }, [cart]);
 
   const addToCart = (product: Product, color?: string) => {
     setCart((prev) => {
-      // Create a unique key based on ID AND Color
-      const existing = prev.find((item) => item.id === product.id && item.selectedColor === color);
+      // Create a unique identifier based on ID AND Color
+      const existing = prev.find((item) => 
+        item.id === product.id && item.selectedColor === color
+      );
       
       if (existing) {
         return prev.map((item) =>
@@ -31,28 +38,49 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             : item
         );
       }
+      
       return [...prev, { ...product, quantity: 1, selectedColor: color }];
     });
     setIsCartOpen(true);
   };
 
-  const removeFromCart = (productId: number) => {
-    // Note: This removes all variants of the product ID for simplicity in this demo. 
-    // In a full app, you'd remove by a unique instance ID.
-    setCart((prev) => prev.filter((item) => item.id !== productId));
+  const removeFromCart = (productId: number, selectedColor?: string) => {
+    setCart((prev) => {
+      // If color is specified, remove only that variant
+      if (selectedColor !== undefined) {
+        return prev.filter((item) => 
+          !(item.id === productId && item.selectedColor === selectedColor)
+        );
+      }
+      // Otherwise remove all variants of this product
+      return prev.filter((item) => item.id !== productId);
+    });
   };
 
-  const updateQuantity = (productId: number, quantity: number) => {
+  const updateQuantity = (productId: number, quantity: number, selectedColor?: string) => {
     if (quantity < 1) {
-      removeFromCart(productId);
+      removeFromCart(productId, selectedColor);
       return;
     }
+    
     setCart((prev) =>
-      prev.map((item) => (item.id === productId ? { ...item, quantity } : item))
+      prev.map((item) => {
+        // If color is specified, update only that variant
+        if (selectedColor !== undefined) {
+          return (item.id === productId && item.selectedColor === selectedColor)
+            ? { ...item, quantity }
+            : item;
+        }
+        // Otherwise update the first matching product
+        return item.id === productId ? { ...item, quantity } : item;
+      })
     );
   };
 
-  const clearCart = () => setCart([]);
+  const clearCart = () => {
+    setCart([]);
+    localStorage.removeItem('lumina_cart');
+  };
 
   const toggleCart = () => setIsCartOpen((prev) => !prev);
 

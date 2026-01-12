@@ -3,33 +3,23 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import Stripe from 'stripe';
 import serverless from 'serverless-http';
-
-// Import our own modules with explicit .js extensions.  When compiling this
-// file, these imports will continue to point to the generated .js files.
 import { pool } from './db.js';
 import { sendOrderEmails } from './services/email.js';
 
-// Load environment variables.  In a Vercel deployment, these
-// variables should be configured in the project settings.
 dotenv.config();
 
-// Initialise Express and middleware once outside of the handler.  This
-// allows Vercel to reuse the same instance across invocations, which
-// reduces cold‑start overhead.
 const app = express();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2024-12-18.acacia',
 });
 
-app.use(cors());
+// CORS configuration
+app.use(cors({
+  origin: process.env.FRONTEND_URL || '*',
+  credentials: true
+}));
 
-// -----------------------------------------------------------------------------
-// 1. STRIPE WEBHOOK
-//
-// Vercel strips the body by default for `express.json()`, so the first
-// middleware on this route must read the raw body.  Only this specific
-// endpoint uses express.raw(); all other routes use express.json() below.
-// -----------------------------------------------------------------------------
+// Webhook route - MUST use raw body
 app.post(
   '/api/webhook',
   express.raw({ type: 'application/json' }),
@@ -38,6 +28,7 @@ app.post(
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
     if (!sig || !webhookSecret) {
+      console.error('Missing signature or webhook secret');
       return res.status(400).send('Webhook Error: Missing signature or secret');
     }
 
@@ -51,8 +42,11 @@ app.post(
 
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
+      
+      let connection;
       try {
-        // Retrieve line items to store in our database
+        connection = await pool.getConnection();
+        
         const lineItems = await stripe.checkout.sessions.listLineItems(session.id);
         const orderData = {
           stripe_session_id: session.id,
@@ -70,9 +64,7 @@ app.post(
           total_amount: (session.amount_total || 0) / 100,
         };
 
-        // Insert order into database.  We set payment_method to 'card' and
-        // status to 'paid'.  If your schema differs, adjust the query below.
-        const [result] = await pool.query(
+        const [result] = await connection.query(
           `INSERT INTO orders
            (stripe_session_id, customer_name, customer_email, customer_phone,
             shipping_address, items, total_amount, payment_method, status)
@@ -90,7 +82,6 @@ app.post(
 
         const dbOrderId = result.insertId;
 
-        // Send confirmation emails if we have a customer email
         if (orderData.customer_email) {
           const emailDetails = {
             orderId: dbOrderId.toString(),
@@ -105,45 +96,43 @@ app.post(
               price: (item.amount_total || 0) / 100,
             })),
           };
-          await sendOrderEmails(emailDetails);
+          
+          // Send emails asynchronously
+          sendOrderEmails(emailDetails).catch(err => {
+            console.error('Error sending emails:', err);
+          });
         }
+        
+        connection.release();
       } catch (error) {
-        console.error('Error saving order or sending email:', error);
+        if (connection) connection.release();
+        console.error('Error processing webhook:', error);
+        return res.status(500).json({ error: 'Internal server error' });
       }
     }
+    
     res.json({ received: true });
   }
 );
 
-// -----------------------------------------------------------------------------
-// 2. COMMON JSON BODY PARSER
-//
-// All routes after the webhook should parse JSON normally.  This must come
-// after the webhook route to avoid interfering with Stripe's raw body parser.
-// -----------------------------------------------------------------------------
+// JSON body parser for all other routes
 app.use(express.json());
 
-// -----------------------------------------------------------------------------
-// 3. RAMBURS (CASH ON DELIVERY) ORDER
-//
-// Clients send customerName, customerEmail, customerPhone, address (with
-// county, city, line), items array, and totalAmount.  We store the order
-// in MySQL and send emails to the customer and admin.  Payment method is
-// recorded as 'ramburs' and status as 'pending'.
-// -----------------------------------------------------------------------------
+// Create ramburs (cash on delivery) order
 app.post('/api/create-order-ramburs', async (req, res) => {
+  let connection;
   try {
     const { customerName, customerEmail, customerPhone, address, items, totalAmount } = req.body;
 
-    // Validate required fields
     if (!customerName || !customerPhone || !address || !items || !totalAmount) {
       return res.status(400).json({ error: 'Missing required order fields' });
     }
 
-    // JSON encode items for storage in one column
+    connection = await pool.getConnection();
+    
     const itemsJson = JSON.stringify(items);
 
-    const [result] = await pool.query(
+    const [result] = await connection.query(
       `INSERT INTO orders
        (customer_name, customer_email, customer_phone, county, city, address_line,
         items, total_amount, payment_method, status)
@@ -162,83 +151,88 @@ app.post('/api/create-order-ramburs', async (req, res) => {
 
     const orderId = result.insertId;
 
-    // Prepare email details
-    const emailDetails = {
-      orderId: orderId.toString(),
-      customerName,
-      customerEmail,
-      customerPhone,
-      address: {
-        line1: address.line,
-        city: address.city,
-        county: address.county,
-      },
-      totalAmount,
-      items,
-    };
-
-    // Send emails (can be awaited or not depending on preference).  We await
-    // here to ensure any errors are logged.
     if (customerEmail) {
-      await sendOrderEmails(emailDetails);
+      const emailDetails = {
+        orderId: orderId.toString(),
+        customerName,
+        customerEmail,
+        customerPhone,
+        address: {
+          line1: address.line,
+          city: address.city,
+          county: address.county,
+        },
+        totalAmount,
+        items,
+      };
+      
+      // Send emails asynchronously
+      sendOrderEmails(emailDetails).catch(err => {
+        console.error('Error sending emails:', err);
+      });
     }
 
+    connection.release();
     return res.json({ success: true, orderId });
   } catch (error) {
+    if (connection) connection.release();
     console.error('Error creating ramburs order:', error);
     return res.status(500).json({ error: 'Nu am putut salva comanda.' });
   }
 });
 
-// -----------------------------------------------------------------------------
-// 4. PRODUCTS ROUTES
-//
-// These endpoints expose your product catalogue.  Ensure that the schema
-// matches your database.  The `details` and `colors` columns are expected
-// to be JSON strings in the database and will be parsed here before
-// returning to the client.
-// -----------------------------------------------------------------------------
-app.get('/api/products', async (_req, res) => {
+// Get all products
+app.get('/api/products', async (req, res) => {
+  let connection;
   try {
-    const [rows] = await pool.query('SELECT * FROM products');
+    connection = await pool.getConnection();
+    const [rows] = await connection.query('SELECT * FROM products');
+    connection.release();
+    
     const products = rows.map((product) => ({
       ...product,
       details: typeof product.details === 'string' ? JSON.parse(product.details) : product.details,
       colors: typeof product.colors === 'string' ? JSON.parse(product.colors) : product.colors,
       price: parseFloat(product.price),
     }));
+    
     res.json(products);
   } catch (error) {
+    if (connection) connection.release();
     console.error('Error fetching products:', error);
     res.status(500).json({ error: 'Database error' });
   }
 });
 
+// Get single product
 app.get('/api/products/:id', async (req, res) => {
+  let connection;
   try {
-    const [rows] = await pool.query('SELECT * FROM products WHERE id = ?', [req.params.id]);
-    if (rows.length === 0) return res.status(404).json({ error: 'Product not found' });
+    connection = await pool.getConnection();
+    const [rows] = await connection.query('SELECT * FROM products WHERE id = ?', [req.params.id]);
+    connection.release();
+    
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+    
     const product = rows[0];
     if (typeof product.details === 'string') product.details = JSON.parse(product.details);
     if (typeof product.colors === 'string') product.colors = JSON.parse(product.colors);
+    
     res.json(product);
   } catch (error) {
+    if (connection) connection.release();
     console.error('Error fetching product by id:', error);
     res.status(500).json({ error: 'Database error' });
   }
 });
 
-// -----------------------------------------------------------------------------
-// 5. CHECKOUT SESSION CREATION
-//
-// Creates a Stripe Checkout Session for card payments.  The caller must
-// provide an array of items with name, imageUrl, price (RON) and quantity.
-// The success and cancel URLs are derived from the request origin to allow
-// cross-environment deployment (e.g. local dev, preview, production).
-// -----------------------------------------------------------------------------
+// Create Stripe checkout session
 app.post('/api/create-checkout-session', async (req, res) => {
   try {
     const { items } = req.body;
+    
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Missing or invalid items array' });
     }
@@ -255,6 +249,9 @@ app.post('/api/create-checkout-session', async (req, res) => {
       quantity: item.quantity,
     }));
 
+    const origin = req.headers.origin || req.headers.referer || process.env.FRONTEND_URL || 'http://localhost:3000';
+    const baseUrl = origin.replace(/\/$/, '');
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: lineItems,
@@ -266,9 +263,10 @@ app.post('/api/create-checkout-session', async (req, res) => {
       phone_number_collection: {
         enabled: true,
       },
-      success_url: `${req.headers.origin}/#/success`,
-      cancel_url: `${req.headers.origin}/#/`,
+      success_url: `${baseUrl}/#/success`,
+      cancel_url: `${baseUrl}/#/`,
     });
+    
     res.json({ url: session.url });
   } catch (error) {
     console.error('Error creating checkout session:', error);
@@ -276,14 +274,8 @@ app.post('/api/create-checkout-session', async (req, res) => {
   }
 });
 
-// -----------------------------------------------------------------------------
-// 6. STATUS ROUTE
-//
-// Diagnostic route to verify environment configuration, database connection
-// and table existence.  Useful for debugging deployments.  In production
-// you might want to restrict access to this endpoint.
-// -----------------------------------------------------------------------------
-app.get('/api/status', async (_req, res) => {
+// Health check / status route
+app.get('/api/status', async (req, res) => {
   const status = {
     system: 'Online',
     timestamp: new Date().toISOString(),
@@ -298,28 +290,27 @@ app.get('/api/status', async (_req, res) => {
     database_connection: 'Pending...',
     table_orders_exists: 'Pending...',
   };
+  
+  let connection;
   try {
-    // simple test query
-    await pool.query('SELECT 1 + 1');
+    connection = await pool.getConnection();
+    await connection.query('SELECT 1 + 1');
     status.database_connection = 'SUCCESS: Connected to database';
 
-    // check for orders table
-    const [tables] = await pool.query(
+    const [tables] = await connection.query(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = ? AND table_name = 'orders'`,
       [process.env.DB_NAME]
     );
-    if (tables.length > 0) {
-      status.table_orders_exists = 'YES';
-    } else {
-      status.table_orders_exists = 'NO - Tabelul lipsește!';
-    }
+    
+    status.table_orders_exists = tables.length > 0 ? 'YES' : 'NO - Tabelul lipsește!';
 
-    // show last 3 orders for debugging
-    const [recentOrders] = await pool.query('SELECT id, created_at FROM orders ORDER BY id DESC LIMIT 3');
+    const [recentOrders] = await connection.query('SELECT id, created_at FROM orders ORDER BY id DESC LIMIT 3');
     status.recent_orders_check = recentOrders;
-
+    
+    connection.release();
     res.json(status);
   } catch (error) {
+    if (connection) connection.release();
     status.database_connection = 'FAILED';
     status.error_message = error.message;
     status.error_code = error.code;
@@ -327,6 +318,16 @@ app.get('/api/status', async (_req, res) => {
   }
 });
 
-// Export a serverless handler.  Vercel will automatically detect this
-// default export and wrap it as an edge function.  Do not call app.listen().
+// Catch-all for undefined routes
+app.use((req, res) => {
+  res.status(404).json({ error: 'Route not found' });
+});
+
+// Error handler
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
+// Export serverless handler
 export default serverless(app);

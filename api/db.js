@@ -1,14 +1,9 @@
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 
-// Load environment variables.  In a production deployment this is
-// configured in Vercel Project Settings.  When running locally you can
-// create a .env file at the project root with DB_HOST, DB_USER, DB_PASS,
-// DB_NAME and optional DB_PORT.
 dotenv.config();
 
-// Create a MySQL connection pool.  Using a pool is important in serverless
-// environments to allow connections to be reused across invocations.
+// Create MySQL connection pool optimized for serverless
 export const pool = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
@@ -16,21 +11,35 @@ export const pool = mysql.createPool({
   database: process.env.DB_NAME,
   port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 3306,
   waitForConnections: true,
-  connectionLimit: 10,
-  idleTimeout: 60000,
+  connectionLimit: 5, // Reduced for serverless
+  maxIdle: 2, // Maximum idle connections
+  idleTimeout: 10000, // 10 seconds
+  queueLimit: 0,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 0,
+  connectTimeout: 10000, // 10 seconds
 });
 
-/**
- * Optionally check the database connectivity.  You can call this in a dev
- * environment to see whether the pool can connect.  Do not call this
- * synchronously on cold start in a serverless environment, as it will
- * increase latency unnecessarily.
- */
+// Graceful connection handling
+pool.on('connection', (connection) => {
+  console.log('New database connection established');
+});
+
+pool.on('error', (err) => {
+  console.error('Database pool error:', err);
+});
+
 export async function checkDbConnection() {
+  let connection;
   try {
-    await pool.query('SELECT 1');
+    connection = await pool.getConnection();
+    await connection.query('SELECT 1');
     console.log('Database connection OK');
+    connection.release();
+    return true;
   } catch (error) {
+    if (connection) connection.release();
     console.error('Database connection failed:', error);
+    return false;
   }
 }
