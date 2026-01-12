@@ -4,10 +4,10 @@ import { Button } from '../components/Button';
 
 export const Diagnostics: React.FC = () => {
   const [logs, setLogs] = useState<string[]>([]);
-  const [loading,pKsetLoading] = useState(false);
+  const [loading, setLoading] = useState(false); // Aici era greseala (setLoading)
   const [apiStatus, setApiStatus] = useState<any>(null);
 
-  const addLog = (msg: string) => setLogs(prev => [...prev, `[${newJAte().toLocaleTimeString()}] ${msg}`]);
+  const addLog = (msg: string) => setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
 
   const runDiagnostics = async () => {
     setLoading(true);
@@ -15,7 +15,7 @@ export const Diagnostics: React.FC = () => {
     setApiStatus(null);
     
     addLog("1. Inițializare diagnostic...");
-    addLog(`Checking Environment: ${import.meta.env.MODE}`);
+    addLog(`Environment Mode: ${import.meta.env.MODE}`);
     addLog(`Target API URL: ${API_URL}`);
 
     const startTime = performance.now();
@@ -53,6 +53,7 @@ export const Diagnostics: React.FC = () => {
       addLog(`❌ EROARE CRITICĂ: ${error.message}`);
       if (error.message.includes('Failed to fetch')) {
         addLog("Sugestie: Backend-ul nu răspunde. Verifică dacă API-ul rulează sau dacă URL-ul este corect.");
+        addLog("Dacă ești pe Localhost: Asigură-te că serverul de backend (port 3000 sau similar) este pornit.");
       }
     } finally {
       setLoading(false);
@@ -65,18 +66,22 @@ export const Diagnostics: React.FC = () => {
   }, []);
 
   return (
-    <div className="pt-24 px-6 md:px-12 max-w-4xl mx-auto min-h-screen font-mono text-sm">
+    <div className="pt-24 px-6 md:px-12 max-w-4xl mx-auto min-h-screen font-mono text-sm animate-fade-in">
       <h1 className="text-3xl font-bold mb-6 uppercase">System Diagnostics</h1>
       
       <div className="bg-neutral-100 p-6 rounded-xl mb-8 border border-neutral-200">
         <h2 className="font-bold mb-4 uppercase text-neutral-500">Raport Live</h2>
         <div className="space-y-2 mb-6 h-64 overflow-y-auto bg-white p-4 rounded border border-neutral-300 shadow-inner">
-          {logs.map((log, i) => (
-            <div key={i} className={`pb-1 border-b border-neutral-50 last:border-0 ${log.includes('❌') ? 'text-red-600 font-bold' : log.includes('✅') ? 'text-green-600 font-bold' : 'text-neutral-700'}`}>
-              {log}
-            </div>
-          ))}
-          {loading && <div className="animate-pulse text-brand-yellow">Se procesează...</div>}
+          {logs.length === 0 ? (
+            <div className="text-neutral-400 italic">Se așteaptă pornirea...</div>
+          ) : (
+            logs.map((log, i) => (
+              <div key={i} className={`pb-1 border-b border-neutral-50 last:border-0 ${log.includes('❌') ? 'text-red-600 font-bold' : log.includes('✅') ? 'text-green-600 font-bold' : 'text-neutral-700'}`}>
+                {log}
+              </div>
+            ))
+          )}
+          {loading && <div className="animate-pulse text-brand-yellow font-bold mt-2">Se procesează...</div>}
         </div>
         
         <Button onClick={runDiagnostics} disabled={loading} fullWidth>
