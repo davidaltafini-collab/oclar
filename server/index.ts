@@ -236,5 +236,54 @@ if (process.env.NODE_ENV !== 'production') {
     checkDbConnection();
   });
 }
+// --- RUTA DE DIAGNOSTICARE (TEST DASHBOARD) ---
+app.get('/api/status', async (req, res) => {
+  const status: any = {
+    system: 'Online',
+    timestamp: new Date().toISOString(),
+    environment: {
+      NODE_ENV: process.env.NODE_ENV,
+      // Verificăm doar dacă există, nu afișăm parolele pentru siguranță
+      has_DB_HOST: !!process.env.DB_HOST,
+      has_DB_USER: !!process.env.DB_USER,
+      has_DB_PASS: !!process.env.DB_PASS,
+      has_DB_NAME: !!process.env.DB_NAME,
+      db_name_value: process.env.DB_NAME // Asta ne interesează cel mai mult (să fie 'test')
+    },
+    database_connection: 'Pending...',
+    table_orders_exists: 'Pending...'
+  };
 
+  try {
+    // 1. Testăm conexiunea simplă
+    // Executăm un calcul simplu (1+1) ca să vedem dacă răspunde serverul
+    await pool.query('SELECT 1 + 1');
+    status.database_connection = 'SUCCESS: Connected to TiDB';
+
+    // 2. Verificăm dacă există tabelul 'orders'
+    const [tables]: any = await pool.query(
+      `SELECT table_name FROM information_schema.tables 
+       WHERE table_schema = ? AND table_name = 'orders'`, 
+      [process.env.DB_NAME]
+    );
+
+    if (tables.length > 0) {
+      status.table_orders_exists = 'YES';
+    } else {
+      status.table_orders_exists = 'NO - Tabelul lipsește!';
+    }
+
+    // 3. Încercăm să citim ultimele 3 comenzi (ca test final)
+    const [recentOrders]: any = await pool.query('SELECT id, created_at FROM orders ORDER BY id DESC LIMIT 3');
+    status.recent_orders_check = recentOrders;
+
+    res.json(status);
+
+  } catch (error: any) {
+    status.database_connection = 'FAILED';
+    status.error_message = error.message; // Aici vom vedea exact de ce nu merge (parolă, user, etc.)
+    status.error_code = error.code;
+    res.status(500).json(status);
+  }
+});
 export default app;
