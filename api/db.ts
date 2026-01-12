@@ -1,37 +1,38 @@
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 
+// Load environment variables.  In a production deployment this is
+// configured in Vercel Project Settings.  When running locally you can
+// create a .env file at the project root with DB_HOST, DB_USER, DB_PASS,
+// DB_NAME and optional DB_PORT.
 dotenv.config();
 
-// Verificăm dacă variabilele critice există (doar warning, nu crash)
-if (!process.env.DB_HOST || !process.env.DB_USER || !process.env.DB_PASS || !process.env.DB_NAME) {
-  console.error('⚠️ ATENȚIE: Lipsesc variabile de mediu, conexiunea poate eșua.');
-}
-
+// Create a MySQL connection pool.  Using a pool is important in serverless
+// environments to allow connections to be reused across invocations.
 export const pool = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASS,
   database: process.env.DB_NAME,
-  port: process.env.DB_PORT ? parseInt(process.env.DB_PORT) : 4000,
+  port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 3306,
+  // waitForConnections: true will cause acquire() to wait rather than throw
+  // when no connection is available
   waitForConnections: true,
-  connectionLimit: 1, // Pe Vercel e critic să fie 1 (serverless nu ține multe conexiuni)
-  queueLimit: 0,
-  // --- AICI AM FĂCUT MODIFICAREA CRITICĂ ---
-  ssl: {
-    minVersion: 'TLSv1.2',
-    rejectUnauthorized: false // <--- TREBUIE SĂ FIE FALSE CA SĂ NU CRAPE PE VERCEL
-  }
+  connectionLimit: 10,
+  idleTimeout: 60000,
 });
 
-// Funcție de testare a conexiunii (o apelăm la pornire)
-export const checkDbConnection = async () => {
+/**
+ * Optionally check the database connectivity.  You can call this in a dev
+ * environment to see whether the pool can connect.  Do not call this
+ * synchronously on cold start in a serverless environment, as it will
+ * increase latency unnecessarily.
+ */
+export async function checkDbConnection() {
   try {
-    const connection = await pool.getConnection();
-    console.log('✅ CONECTAT LA TiDB CU SUCCES!');
-    console.log(`Baza de date: ${process.env.DB_NAME}`);
-    connection.release();
-  } catch (error: any) {
-    console.error('❌ EROARE CONEXIUNE DB:', error.message);
+    await pool.query('SELECT 1');
+    console.log('Database connection OK');
+  } catch (error) {
+    console.error('Database connection failed:', error);
   }
-};
+}
