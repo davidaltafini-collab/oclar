@@ -84,6 +84,7 @@ export default async function handler(req, res) {
 
       const dbOrderId = result.insertId;
 
+      // FIX AICI: Adăugat await și try/catch
       if (orderData.customer_email) {
         const emailDetails = {
           orderId: dbOrderId.toString(),
@@ -99,9 +100,12 @@ export default async function handler(req, res) {
           })),
         };
         
-        sendOrderEmails(emailDetails).catch(err => {
-          console.error('Error sending emails:', err);
-        });
+        try {
+            await sendOrderEmails(emailDetails);
+            console.log('✅ Webhook emails sent successfully');
+        } catch (err) {
+            console.error('❌ Error sending webhook emails:', err);
+        }
       }
       
       connection.release();
