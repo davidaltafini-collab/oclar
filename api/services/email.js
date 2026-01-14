@@ -1,10 +1,10 @@
 import nodemailer from 'nodemailer';
 
-// Create a reusable transporter object using SMTP transport
-const transporter = nodemailer.createTransporter({
-  host: process.env.SMTP_HOST,
-  port: process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : 587,
-  secure: process.env.SMTP_SECURE === 'true',
+// Configurare SMTP Transporter
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  port: parseInt(process.env.SMTP_PORT || '587'),
+  secure: process.env.SMTP_SECURE === 'true', // true for 465, false for 587
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
@@ -12,17 +12,9 @@ const transporter = nodemailer.createTransporter({
 });
 
 /**
- * Send order confirmation emails both to the customer and to the store admin.
- * @param {Object} details
- * @param {string} details.orderId
- * @param {string} details.customerName
- * @param {string} [details.customerEmail]
- * @param {string} [details.customerPhone]
- * @param {any} details.address
- * @param {number} details.totalAmount
- * @param {Array<{name: string, quantity: number, price: number}>} details.items
+ * Trimite email-uri către client și admin după plasarea comenzii
  */
-export async function sendOrderEmails(details) {
+export async function sendOrderEmails(orderDetails) {
   const {
     orderId,
     customerName,
@@ -31,52 +23,219 @@ export async function sendOrderEmails(details) {
     address,
     totalAmount,
     items,
-  } = details;
-  
-  const adminEmail = process.env.SMTP_ADMIN_EMAIL;
-  const fromAddress = process.env.SMTP_FROM || adminEmail || '';
+  } = orderDetails;
 
-  // Construct a simple HTML representation of the order
-  const itemsHtml = items
-    .map((item) => `<li>${item.name} – ${item.quantity} x ${item.price.toFixed(2)} RON</li>`)
-    .join('');
-
-  const addressLines = [];
-  if (address) {
-    if (address.line1 || address.line) addressLines.push(address.line1 || address.line);
-    if (address.city) addressLines.push(address.city);
-    if (address.county) addressLines.push(address.county);
+  // Verificare env variables
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    console.warn('⚠️ SMTP credentials not configured. Skipping email sending.');
+    return { success: false, message: 'SMTP not configured' };
   }
-  const addressStr = addressLines.join(', ');
 
-  const html = `
-    <h1>Comanda #${orderId}</h1>
-    <p><strong>Nume client:</strong> ${customerName}</p>
-    ${customerEmail ? `<p><strong>Email:</strong> ${customerEmail}</p>` : ''}
-    ${customerPhone ? `<p><strong>Telefon:</strong> ${customerPhone}</p>` : ''}
-    ${addressStr ? `<p><strong>Adresă:</strong> ${addressStr}</p>` : ''}
-    <p><strong>Produse comandate:</strong></p>
-    <ul>${itemsHtml}</ul>
-    <p><strong>Total:</strong> ${totalAmount.toFixed(2)} RON</p>
-  `;
+  // Formatare produse pentru email
+  const itemsList = items
+    .map(
+      (item) =>
+        `- ${item.name} x${item.quantity} = ${(item.price * item.quantity).toFixed(2)} RON`
+    )
+    .join('\n');
 
-  // Build list of recipients
-  const toAddresses = [customerEmail, adminEmail].filter(Boolean).join(',');
-  if (!toAddresses) {
-    console.warn('No recipients specified for order email');
-    return;
-  }
+  // Formatare adresă
+  const addressText = address
+    ? typeof address === 'string'
+      ? address
+      : `${address.line1 || address.line || ''}, ${address.city || ''}, ${address.county || ''}`
+    : 'Adresă nespecificată';
 
   try {
-    await transporter.sendMail({
-      from: fromAddress,
-      to: toAddresses,
-      subject: `Confirmare comanda #${orderId}`,
-      html,
-    });
-    console.log(`Order emails sent successfully for order #${orderId}`);
+    // EMAIL CĂTRE CLIENT
+    if (customerEmail) {
+      await transporter.sendMail({
+        from: process.env.SMTP_FROM || process.env.SMTP_USER,
+        to: customerEmail,
+        subject: `Confirmare Comandă #${orderId} - OCLAR`,
+        text: `
+Bună ${customerName},
+
+Comanda ta a fost înregistrată cu succes! 🎉
+
+DETALII COMANDĂ:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ID Comandă: #${orderId}
+Data: ${new Date().toLocaleString('ro-RO')}
+
+PRODUSE:
+${itemsList}
+
+TOTAL: ${totalAmount.toFixed(2)} RON
+
+LIVRARE:
+${addressText}
+
+CONTACT:
+Telefon: ${customerPhone}
+Email: ${customerEmail}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Vei fi contactat în cel mai scurt timp pentru confirmarea comenzii.
+
+Mulțumim pentru încredere! 👓
+Echipa OCLAR
+        `,
+        html: `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: #000; color: #fff; padding: 20px; text-align: center; }
+    .content { background: #f9f9f9; padding: 30px; border: 1px solid #ddd; }
+    .order-info { background: #fff; padding: 15px; margin: 20px 0; border-left: 4px solid #000; }
+    .products { margin: 20px 0; }
+    .product-item { padding: 10px; border-bottom: 1px solid #eee; }
+    .total { font-size: 1.5em; font-weight: bold; color: #000; margin: 20px 0; }
+    .footer { text-align: center; margin-top: 30px; color: #999; font-size: 0.9em; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>OCLAR</h1>
+      <p>Confirmare Comandă #${orderId}</p>
+    </div>
+    
+    <div class="content">
+      <p>Bună <strong>${customerName}</strong>,</p>
+      <p>Comanda ta a fost înregistrată cu succes! 🎉</p>
+      
+      <div class="order-info">
+        <p><strong>ID Comandă:</strong> #${orderId}</p>
+        <p><strong>Data:</strong> ${new Date().toLocaleString('ro-RO')}</p>
+      </div>
+      
+      <div class="products">
+        <h3>Produse Comandate:</h3>
+        ${items
+          .map(
+            (item) => `
+          <div class="product-item">
+            <strong>${item.name}</strong><br>
+            Cantitate: ${item.quantity} x ${item.price.toFixed(2)} RON = ${(item.price * item.quantity).toFixed(2)} RON
+          </div>
+        `
+          )
+          .join('')}
+      </div>
+      
+      <div class="total">
+        TOTAL: ${totalAmount.toFixed(2)} RON
+      </div>
+      
+      <div class="order-info">
+        <h3>Adresă Livrare:</h3>
+        <p>${addressText}</p>
+        
+        <h3>Contact:</h3>
+        <p>Telefon: ${customerPhone}</p>
+        <p>Email: ${customerEmail}</p>
+      </div>
+      
+      <p>Vei fi contactat în cel mai scurt timp pentru confirmarea comenzii.</p>
+      <p><strong>Mulțumim pentru încredere! 👓</strong></p>
+    </div>
+    
+    <div class="footer">
+      <p>Echipa OCLAR<br>
+      <a href="https://oclar.ro">oclar.ro</a></p>
+    </div>
+  </div>
+</body>
+</html>
+        `,
+      });
+    }
+
+    // EMAIL CĂTRE ADMIN
+    const adminEmail = process.env.SMTP_ADMIN_EMAIL;
+    if (adminEmail) {
+      await transporter.sendMail({
+        from: process.env.SMTP_FROM || process.env.SMTP_USER,
+        to: adminEmail,
+        subject: `🔔 Comandă Nouă #${orderId} - OCLAR`,
+        text: `
+COMANDĂ NOUĂ!
+
+ID: #${orderId}
+Data: ${new Date().toLocaleString('ro-RO')}
+
+CLIENT:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Nume: ${customerName}
+Telefon: ${customerPhone}
+Email: ${customerEmail || 'N/A'}
+
+ADRESĂ:
+${addressText}
+
+PRODUSE:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${itemsList}
+
+TOTAL: ${totalAmount.toFixed(2)} RON
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Procesează comanda pe https://oclar.ro
+        `,
+        html: `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .alert { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; }
+    .info-box { background: #f8f9fa; padding: 15px; margin: 10px 0; border: 1px solid #dee2e6; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="alert">
+      <h2>🔔 Comandă Nouă #${orderId}</h2>
+      <p>${new Date().toLocaleString('ro-RO')}</p>
+    </div>
+    
+    <div class="info-box">
+      <h3>CLIENT</h3>
+      <p><strong>Nume:</strong> ${customerName}<br>
+      <strong>Telefon:</strong> ${customerPhone}<br>
+      <strong>Email:</strong> ${customerEmail || 'N/A'}</p>
+    </div>
+    
+    <div class="info-box">
+      <h3>ADRESĂ LIVRARE</h3>
+      <p>${addressText}</p>
+    </div>
+    
+    <div class="info-box">
+      <h3>PRODUSE</h3>
+      ${items.map((item) => `<p>${item.name} x${item.quantity} = ${(item.price * item.quantity).toFixed(2)} RON</p>`).join('')}
+      <p><strong>TOTAL: ${totalAmount.toFixed(2)} RON</strong></p>
+    </div>
+    
+    <p><a href="https://oclar.ro" style="background: #000; color: #fff; padding: 10px 20px; text-decoration: none; display: inline-block;">Vezi Comandă</a></p>
+  </div>
+</body>
+</html>
+        `,
+      });
+    }
+
+    console.log(`✅ Email-uri trimise cu succes pentru comanda #${orderId}`);
+    return { success: true };
   } catch (error) {
-    console.error('Error sending order emails:', error);
-    throw error;
+    console.error('❌ Eroare la trimiterea email-urilor:', error);
+    return { success: false, error: error.message };
   }
 }
