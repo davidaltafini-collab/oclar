@@ -61,7 +61,7 @@ export default async function handler(req, res) {
     const orderId = result.insertId;
     console.log('Order inserted successfully with ID:', orderId);
 
-    // Send emails asynchronously (don't wait)
+    // FIX AICI: Adăugat await pentru a aștepta trimiterea email-ului
     if (customerEmail) {
       const emailDetails = {
         orderId: orderId.toString(),
@@ -77,9 +77,13 @@ export default async function handler(req, res) {
         items,
       };
       
-      sendOrderEmails(emailDetails).catch(err => {
-        console.error('Error sending emails:', err);
-      });
+      try {
+        console.log('⏳ Sending emails...');
+        await sendOrderEmails(emailDetails); // Așteptăm să plece mailul
+        console.log('✅ Emails processing finished');
+      } catch (emailError) {
+        console.error('⚠️ Warning: Order created but email failed:', emailError);
+      }
     }
 
     connection.release();
