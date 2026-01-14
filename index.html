@@ -1,40 +1,73 @@
-<style>
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Oclar | Vezi până la capăt</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                yellow: '#FACC15', // Yellow-400 - Accent
+                dark: '#0A0A0A', // Almost Black
+                light: '#FAFAFA',
+                grey: '#262626'
+              }
+            },
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
+            animation: {
+              'fade-in': 'fadeIn 0.8s ease-out forwards',
+              'pulse-glow': 'pulseGlow 3s infinite',
+              'slide-up': 'slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+              'slide-up-delay': 'slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards',
+            },
+            keyframes: {
+              fadeIn: {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              },
+              pulseGlow: {
+                '0%, 100%': { boxShadow: '0 0 15px rgba(250, 204, 21, 0.2)' },
+                '50%': { boxShadow: '0 0 25px rgba(250, 204, 21, 0.5)' },
+              },
+              slideUp: {
+                '0%': { transform: 'translateY(100%)', opacity: '0' },
+                '100%': { transform: 'translateY(0)', opacity: '1' },
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <style>
       body {
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
         background-color: #ffffff;
-        /* Previne scroll bouncing care dă senzație de lag pe mac/ios */
-        overscroll-behavior-y: none;
-      }
-      /* Hide scrollbar for Chrome, Safari and Opera */
-      .no-scrollbar::-webkit-scrollbar {
-          display: none;
-      }
-      /* Hide scrollbar for IE, Edge and Firefox */
-      .no-scrollbar {
-          -ms-overflow-style: none;  /* IE and Edge */
-          scrollbar-width: none;  /* Firefox */
+        overscroll-behavior-y: none; /* Previne efectul de bounce */
       }
       
-      /* Smooth scrolling - păstrăm, dar e ajutat de optimizările de mai jos */
-      html {
-        scroll-behavior: smooth;
-      }
+      /* Ascunde scrollbar */
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      
+      html { scroll-behavior: smooth; }
 
-      /* Custom selection color */
       ::selection {
         background-color: #FACC15;
         color: #000;
       }
 
-      /* OPTIMIZARE: Folosim transform/opacity specifice, NU 'all' */
-      /* 'all' omoară performanța la scroll */
+      /* OPTIMIZARE GPU: Folosim doar transform si opacity */
       .reveal-on-scroll {
         opacity: 0;
         transform: translateY(30px);
-        /* Tranziție doar pe proprietățile necesare */
-        transition: opacity 1s cubic-bezier(0.5, 0, 0, 1), transform 1s cubic-bezier(0.5, 0, 0, 1);
-        /* Hint pentru browser să folosească placa video (GPU) */
+        transition: opacity 0.8s ease-out, transform 0.8s ease-out;
         will-change: opacity, transform;
       }
 
@@ -43,11 +76,10 @@
         transform: translateY(0);
       }
 
-      /* Backlight Effects */
       .backlight-btn {
         position: relative;
         z-index: 1;
-        overflow: hidden; /* Important pentru performance la butoane */
+        overflow: hidden;
       }
       
       .backlight-btn::before {
@@ -63,10 +95,33 @@
         opacity: 0;
         transition: opacity 0.5s ease;
         border-radius: 9999px;
-        pointer-events: none; /* Nu blochează click-ul */
+        pointer-events: none;
       }
 
       .backlight-btn:hover::before {
         opacity: 1;
       }
     </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react-router-dom": "https://esm.sh/react-router-dom@^7.10.1",
+    "nodemailer": "https://esm.sh/nodemailer@^7.0.11",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "cors": "https://esm.sh/cors@^2.8.5",
+    "mysql2/": "https://esm.sh/mysql2@^3.16.0/",
+    "express": "https://esm.sh/express@^5.2.1",
+    "dotenv": "https://esm.sh/dotenv@^17.2.3",
+    "stripe": "https://esm.sh/stripe@^20.1.0"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-white text-neutral-900 font-sans">
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
