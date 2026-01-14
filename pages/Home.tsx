@@ -188,7 +188,7 @@ export const Home: React.FC = () => {
                   </div>
                   
                   <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
-                    <span className="bg-white text-black px-6 py-3 font-bold uppercase tracking-wider text-sm border border-black rounded-full transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300 shadow-xl">
+                    <span className="bg-none text-black px-6 py-3 font-bold uppercase tracking-wider text-sm border border-black rounded-full transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300 shadow-xl">
                       Vezi Detalii
                     </span>
                   </div>
