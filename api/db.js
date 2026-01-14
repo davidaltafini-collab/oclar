@@ -3,38 +3,32 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// Create MySQL connection pool optimized for Vercel -> Shared Hosting
+// Configurația care a funcționat la test (Debug Success)
 export const pool = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASS,
   database: process.env.DB_NAME,
-  port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 3306,
+  port: 3306, // Forțăm portul standard MySQL
   waitForConnections: true,
-  connectionLimit: 1, 
-  maxIdle: 1, 
-  idleTimeout: 3000, 
+  connectionLimit: 1, // Păstrăm 1 conexiune pentru stabilitate pe shared hosting
   queueLimit: 0,
-  enableKeepAlive: true,
-  keepAliveInitialDelay: 0,
-  
-  // MODIFICARE CRITICĂ 1: Timeout mic (3s) ca să prindem eroarea înainte de Vercel Limit
-  connectTimeout: 3000, 
-  
-  // MODIFICARE CRITICĂ 2: Permite conexiunea chiar dacă certificatul serverului e vechi
+  connectTimeout: 10000, // Putem lăsa 10s acum că știm că rețeaua merge
+  // CRITIC: Aceasta este setarea care a făcut conexiunea să reușească
   ssl: {
     rejectUnauthorized: false
   }
 });
 
 pool.on('connection', (connection) => {
-  console.log('✅ Conectat la MySQL');
+  console.log('✅ Conexiune MySQL Activă (Pool)');
 });
 
 pool.on('error', (err) => {
-  console.error('❌ Eroare MySQL:', err);
+  console.error('❌ Eroare MySQL Pool:', err);
 });
 
+// Funcție pentru verificarea sănătății conexiunii
 export async function checkDbConnection() {
   let connection;
   try {
@@ -44,7 +38,7 @@ export async function checkDbConnection() {
     return true;
   } catch (error) {
     if (connection) connection.release();
-    console.error('Test conexiune eșuat:', error);
+    console.error('Verificare conexiune eșuată:', error);
     return false;
   }
 }
