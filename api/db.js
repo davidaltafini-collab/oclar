@@ -11,29 +11,30 @@ export const pool = mysql.createPool({
   database: process.env.DB_NAME,
   port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 3306,
   waitForConnections: true,
-  // IMPORTANT: Pe shared hosting, ține numărul mic (1 sau 2)
   connectionLimit: 1, 
   maxIdle: 1, 
-  idleTimeout: 5000, 
+  idleTimeout: 3000, 
   queueLimit: 0,
   enableKeepAlive: true,
   keepAliveInitialDelay: 0,
-  connectTimeout: 10000,
-  // CRITIC pentru cPanel/FreakHosting: Acceptă certificate SSL self-signed
+  
+  // MODIFICARE CRITICĂ 1: Timeout mic (3s) ca să prindem eroarea înainte de Vercel Limit
+  connectTimeout: 3000, 
+  
+  // MODIFICARE CRITICĂ 2: Permite conexiunea chiar dacă certificatul serverului e vechi
   ssl: {
     rejectUnauthorized: false
   }
 });
 
 pool.on('connection', (connection) => {
-  console.log('✅ Conectat la baza de date MySQL');
+  console.log('✅ Conectat la MySQL');
 });
 
 pool.on('error', (err) => {
   console.error('❌ Eroare MySQL:', err);
 });
 
-// Funcție ajutătoare pentru diagnosticare
 export async function checkDbConnection() {
   let connection;
   try {
