@@ -19,14 +19,28 @@ export default async function handler(req, res) {
   try {
     const { customerName, customerEmail, customerPhone, address, items, totalAmount } = req.body;
 
+    // Validare input
     if (!customerName || !customerPhone || !address || !items || !totalAmount) {
-      return res.status(400).json({ error: 'Missing required order fields' });
+      console.error('Missing fields:', { customerName, customerPhone, address, items, totalAmount });
+      return res.status(400).json({ 
+        error: 'Missing required order fields',
+        details: {
+          hasName: !!customerName,
+          hasPhone: !!customerPhone,
+          hasAddress: !!address,
+          hasItems: !!items,
+          hasTotal: !!totalAmount
+        }
+      });
     }
 
+    console.log('Attempting database connection...');
     connection = await pool.getConnection();
+    console.log('Database connected successfully');
     
     const itemsJson = JSON.stringify(items);
 
+    console.log('Inserting order into database...');
     const [result] = await connection.query(
       `INSERT INTO orders
        (customer_name, customer_email, customer_phone, county, city, address_line,
@@ -45,6 +59,7 @@ export default async function handler(req, res) {
     );
 
     const orderId = result.insertId;
+    console.log('Order inserted successfully with ID:', orderId);
 
     // Send emails asynchronously (don't wait)
     if (customerEmail) {
@@ -71,7 +86,17 @@ export default async function handler(req, res) {
     return res.status(200).json({ success: true, orderId });
   } catch (error) {
     if (connection) connection.release();
-    console.error('Error creating ramburs order:', error);
-    return res.status(500).json({ error: 'Nu am putut salva comanda.' });
+    console.error('DETAILED ERROR in create-order-ramburs:', {
+      message: error.message,
+      code: error.code,
+      sqlMessage: error.sqlMessage,
+      stack: error.stack
+    });
+    
+    return res.status(500).json({ 
+      error: 'Nu am putut salva comanda',
+      details: error.message,
+      code: error.code
+    });
   }
 }
