@@ -88,7 +88,7 @@ export const Home: React.FC = () => {
           
           <div className="flex gap-6 animate-fade-in opacity-0" style={{animationDelay: '0.8s', animationFillMode: 'forwards'}}>
              <Button onClick={() => document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth' })}>
-               Vezi Colecția
+               Vezi Toată Colecția
              </Button>
              <Link to="/about">
                <Button variant="outline">Misiunea Noastră</Button>
