@@ -168,7 +168,7 @@ export const ProductDetails: React.FC = () => {
             </ul>
           </div>
 
-          <div className="flex flex-col gap-4 mt-4 sticky bottom-4 md:static z-30 reveal-on-scroll" style={{transitionDelay: '300ms'}}>
+          <div className="flex flex-col gap-4 mt-4 sticky bottom-24 md:static z-30 reveal-on-scroll" style={{transitionDelay: '300ms'}}>
             <Button fullWidth onClick={() => addToCart(product, selectedColor || undefined)} className="py-5 text-base">
               Adaugă în Coș — {product.price.toFixed(0)} RON
             </Button>
