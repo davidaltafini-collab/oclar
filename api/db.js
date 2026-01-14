@@ -3,63 +3,59 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// Configurația bazei de date (exact ca în debug.js care a mers)
+// Configurația care a mers la DEBUG
 const dbConfig = {
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASS,
   database: process.env.DB_NAME,
   port: 3306,
-  connectTimeout: 10000, // Putem lăsa 10s
-  ssl: {
-    rejectUnauthorized: false
-  }
+  connectTimeout: 10000,
+  ssl: { rejectUnauthorized: false }
 };
 
-// SIMULĂM un Pool, dar facem conexiuni directe (Direct Connection Pattern)
-// Asta previne blocarea conexiunilor pe Shared Hosting
+// Variabilă globală pentru a păstra conexiunea "caldă" între request-uri (cât permite Vercel)
+let cachedPool = null;
+
 export const pool = {
   getConnection: async () => {
-    try {
-      // 1. Creăm o conexiune nouă fix acum
-      const connection = await mysql.createConnection(dbConfig);
-      
-      // 2. O "trucăm" să aibă metoda .release() pe care o așteaptă api/index.js
-      // Când index.js cheamă .release(), noi de fapt închidem conexiunea (.end)
-      connection.release = () => {
-        connection.end().catch(err => console.error('Eroare la închiderea conexiunii:', err));
-      };
-      
-      return connection;
-    } catch (error) {
-      console.error("Eroare fatală la conectare (Direct):", error);
-      throw error;
+    // Dacă avem deja un pool creat, îl folosim pe ăla
+    if (!cachedPool) {
+      console.log("Creating new MySQL Pool...");
+      cachedPool = mysql.createPool({
+        ...dbConfig,
+        waitForConnections: true,
+        connectionLimit: 1, // Ținem doar 1 conexiune deschisă ca să nu supărăm FreakHosting
+        queueLimit: 0,
+        enableKeepAlive: true,
+        keepAliveInitialDelay: 0,
+      });
     }
+    return cachedPool.getConnection();
   },
   
-  // Metoda query direct pe pool (dacă e folosită undeva)
+  // Metoda standard de query
   query: async (sql, params) => {
-    const connection = await mysql.createConnection(dbConfig);
-    try {
-      const [results] = await connection.query(sql, params);
-      await connection.end();
-      return [results];
-    } catch (error) {
-      await connection.end();
-      throw error;
+    if (!cachedPool) {
+      cachedPool = mysql.createPool({
+        ...dbConfig,
+        waitForConnections: true,
+        connectionLimit: 1,
+        queueLimit: 0
+      });
     }
+    return cachedPool.query(sql, params);
   }
 };
 
-// Funcție de verificare (adaptată pentru noul sistem)
 export async function checkDbConnection() {
   try {
     const connection = await pool.getConnection();
     await connection.query('SELECT 1');
-    connection.release(); // Asta va face connection.end()
+    connection.release();
     return true;
   } catch (error) {
-    console.error('Test conexiune eșuat:', error);
+    console.error('Check failed:', error);
     return false;
   }
 }
