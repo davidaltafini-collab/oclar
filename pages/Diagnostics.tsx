@@ -4,99 +4,58 @@ import { Button } from '../components/Button';
 
 export const Diagnostics: React.FC = () => {
   const [logs, setLogs] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false); // Aici era greseala (setLoading)
-  const [apiStatus, setApiStatus] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
 
   const addLog = (msg: string) => setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
 
   const runDiagnostics = async () => {
     setLoading(true);
     setLogs([]);
-    setApiStatus(null);
     
-    addLog("1. Inițializare diagnostic...");
-    addLog(`Environment Mode: ${import.meta.env.MODE}`);
-    addLog(`Target API URL: ${API_URL}`);
+    addLog("🚀 Începere Diagnostic...");
 
-    const startTime = performance.now();
-
+    // TEST 1: Ping Backend (Fără DB)
     try {
-      addLog("2. Se încearcă conectarea la Backend (/api/status)...");
+      addLog("1. Testare conexiune Frontend -> Backend (/api/ping)...");
+      const t1 = performance.now();
+      // Notă: Dacă nu ai creat fișierul api/ping.js, acest test va da 404, e ok.
+      // Putem testa și cu un simplu fetch la un endpoint care nu există, backend-ul ar trebui să răspundă 404 instant.
+      // Dar hai să încercăm status-ul simplificat.
       
-      // Încercăm să apelăm endpoint-ul de status
-      const res = await fetch(`${API_URL}/status`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' }
-      });
-
-      const endTime = performance.now();
-      const latency = (endTime - startTime).toFixed(0);
-      addLog(`Răspuns primit în ${latency}ms.`);
-
-      if (!res.ok) {
-        throw new Error(`HTTP Error: ${res.status} ${res.statusText}`);
-      }
-
-      const data = await res.json();
-      setApiStatus(data);
-      addLog("3. Backend contactat cu succes.");
-
-      // Verificăm statusul bazei de date returnat de backend
-      if (data.database_connection && data.database_connection.includes('SUCCESS')) {
-        addLog("✅ CONEXIUNE DB: REUȘITĂ");
+      // Testăm statusul. Dacă dă timeout, e clar de la DB.
+      addLog("2. Interogare Backend complet (/api/status)...");
+      const res = await fetch(`${API_URL}/status`);
+      const t2 = performance.now();
+      
+      if (res.ok) {
+        const data = await res.json();
+        addLog(`✅ Backend a răspuns în ${(t2 - t1).toFixed(0)}ms`);
+        addLog(`📊 Status DB raportat: ${data.database_connection}`);
+        if(data.table_orders_exists) addLog(`📦 Tabel comenzi: ${data.table_orders_exists}`);
       } else {
-        addLog("❌ CONEXIUNE DB: EȘUATĂ");
-        addLog(`Eroare DB: ${data.error_message || 'Necunoscută'}`);
+        addLog(`⚠️ Backend a răspuns cu eroare: ${res.status} ${res.statusText}`);
+        if (res.status === 504) {
+          addLog("Lr: 504 TIMEOUT = Backend-ul merge, dar Baza de Date răspunde prea greu.");
+          addLog("Soluție: FreakHosting se mișcă lent la handshake.");
+        }
       }
 
     } catch (error: any) {
-      addLog(`❌ EROARE CRITICĂ: ${error.message}`);
-      if (error.message.includes('Failed to fetch')) {
-        addLog("Sugestie: Backend-ul nu răspunde. Verifică dacă API-ul rulează sau dacă URL-ul este corect.");
-        addLog("Dacă ești pe Localhost: Asigură-te că serverul de backend (port 3000 sau similar) este pornit.");
-      }
+      addLog(`❌ Eroare de rețea: ${error.message}`);
     } finally {
       setLoading(false);
-      addLog("Diagnostic finalizat.");
     }
   };
 
-  useEffect(() => {
-    runDiagnostics();
-  }, []);
-
   return (
-    <div className="pt-24 px-6 md:px-12 max-w-4xl mx-auto min-h-screen font-mono text-sm animate-fade-in">
-      <h1 className="text-3xl font-bold mb-6 uppercase">System Diagnostics</h1>
-      
-      <div className="bg-neutral-100 p-6 rounded-xl mb-8 border border-neutral-200">
-        <h2 className="font-bold mb-4 uppercase text-neutral-500">Raport Live</h2>
-        <div className="space-y-2 mb-6 h-64 overflow-y-auto bg-white p-4 rounded border border-neutral-300 shadow-inner">
-          {logs.length === 0 ? (
-            <div className="text-neutral-400 italic">Se așteaptă pornirea...</div>
-          ) : (
-            logs.map((log, i) => (
-              <div key={i} className={`pb-1 border-b border-neutral-50 last:border-0 ${log.includes('❌') ? 'text-red-600 font-bold' : log.includes('✅') ? 'text-green-600 font-bold' : 'text-neutral-700'}`}>
-                {log}
-              </div>
-            ))
-          )}
-          {loading && <div className="animate-pulse text-brand-yellow font-bold mt-2">Se procesează...</div>}
-        </div>
-        
-        <Button onClick={runDiagnostics} disabled={loading} fullWidth>
-          {loading ? 'Se rulează...' : 'Rulează din nou'}
-        </Button>
+    <div className="pt-24 px-6 max-w-4xl mx-auto min-h-screen font-mono text-sm">
+      <h1 className="text-2xl font-bold mb-4">Diagnostic Sistem</h1>
+      <div className="bg-neutral-100 p-4 rounded mb-4 h-96 overflow-auto border border-neutral-300">
+        {logs.map((log, i) => <div key={i} className="mb-1 border-b border-neutral-200 pb-1">{log}</div>)}
       </div>
-
-      {apiStatus && (
-        <div className="bg-white p-6 rounded-xl border border-neutral-200 shadow-lg">
-          <h2 className="font-bold mb-4 uppercase text-neutral-500">Detalii Tehnice Backend</h2>
-          <pre className="bg-neutral-900 text-green-400 p-4 rounded-lg overflow-x-auto text-xs">
-            {JSON.stringify(apiStatus, null, 2)}
-          </pre>
-        </div>
-      )}
+      <Button onClick={runDiagnostics} disabled={loading} fullWidth>
+        {loading ? 'Se testează...' : 'Rulează Test'}
+      </Button>
     </div>
   );
 };
