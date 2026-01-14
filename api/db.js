@@ -3,56 +3,64 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// Configurația care a mers la DEBUG
+// Configurația care ȘTIM că merge (din debug.js)
 const dbConfig = {
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASS,
   database: process.env.DB_NAME,
   port: 3306,
-  connectTimeout: 10000,
+  connectTimeout: 10000, // Putem lăsa 10s acum
   ssl: { rejectUnauthorized: false }
 };
 
-// Variabilă globală pentru a păstra conexiunea "caldă" între request-uri (cât permite Vercel)
-let cachedPool = null;
+// TRUCUL: Creăm un obiect care SE COMPORTĂ ca un pool, 
+// dar în spate face conexiuni noi (Fresh Connections) de fiecare dată.
+// Asta elimină orice eroare de tip "Zombie Connection" sau Timeout.
 
 export const pool = {
-  getConnection: async () => {
-    // Dacă avem deja un pool creat, îl folosim pe ăla
-    if (!cachedPool) {
-      console.log("Creating new MySQL Pool...");
-      cachedPool = mysql.createPool({
-        ...dbConfig,
-        waitForConnections: true,
-        connectionLimit: 1, // Ținem doar 1 conexiune deschisă ca să nu supărăm FreakHosting
-        queueLimit: 0,
-        enableKeepAlive: true,
-        keepAliveInitialDelay: 0,
-      });
-    }
-    return cachedPool.getConnection();
-  },
-  
-  // Metoda standard de query
+  // Metoda 1: Când codul face pool.query()
   query: async (sql, params) => {
-    if (!cachedPool) {
-      cachedPool = mysql.createPool({
-        ...dbConfig,
-        waitForConnections: true,
-        connectionLimit: 1,
-        queueLimit: 0
-      });
+    let connection;
+    try {
+      // 1. Deschide conexiune nouă
+      connection = await mysql.createConnection(dbConfig);
+      // 2. Execută
+      const [results] = await connection.execute(sql, params);
+      // 3. Închide IMEDIAT
+      await connection.end();
+      return [results];
+    } catch (error) {
+      if (connection) await connection.end();
+      console.error("Eroare Query Direct:", error);
+      throw error;
     }
-    return cachedPool.query(sql, params);
+  },
+
+  // Metoda 2: Când codul face pool.getConnection()
+  getConnection: async () => {
+    try {
+      const connection = await mysql.createConnection(dbConfig);
+      
+      // Suprascriem metoda release() ca să închidă conexiunea de tot
+      connection.release = () => {
+        connection.end().catch(e => console.error("Err closing:", e));
+      };
+      
+      return connection;
+    } catch (error) {
+      console.error("Eroare GetConnection:", error);
+      throw error;
+    }
   }
 };
 
+// Verificarea de sănătate
 export async function checkDbConnection() {
   try {
-    const connection = await pool.getConnection();
-    await connection.query('SELECT 1');
-    connection.release();
+    const conn = await mysql.createConnection(dbConfig);
+    await conn.execute('SELECT 1');
+    await conn.end();
     return true;
   } catch (error) {
     console.error('Check failed:', error);
