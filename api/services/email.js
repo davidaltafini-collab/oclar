@@ -1,15 +1,7 @@
 import nodemailer from 'nodemailer';
-import dotenv from 'dotenv';
 
-// Ensure environment variables are loaded for transporter configuration.
-dotenv.config();
-
-// Create a reusable transporter object using SMTP transport.  The
-// configuration is driven entirely by environment variables to avoid
-// hardcoding any credentials.  You must set SMTP_HOST, SMTP_PORT,
-// SMTP_USER, SMTP_PASS and optionally SMTP_SECURE and SMTP_FROM in your
-// deployment configuration.
-const transporter = nodemailer.createTransport({
+// Create a reusable transporter object using SMTP transport
+const transporter = nodemailer.createTransporter({
   host: process.env.SMTP_HOST,
   port: process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : 587,
   secure: process.env.SMTP_SECURE === 'true',
@@ -21,7 +13,6 @@ const transporter = nodemailer.createTransport({
 
 /**
  * Send order confirmation emails both to the customer and to the store admin.
- * The admin email address should be set via SMTP_ADMIN_EMAIL in the env.
  * @param {Object} details
  * @param {string} details.orderId
  * @param {string} details.customerName
@@ -41,13 +32,13 @@ export async function sendOrderEmails(details) {
     totalAmount,
     items,
   } = details;
+  
   const adminEmail = process.env.SMTP_ADMIN_EMAIL;
   const fromAddress = process.env.SMTP_FROM || adminEmail || '';
 
-  // Construct a simple HTML representation of the order.  In a real
-  // application you might want to use a template engine or separate file.
+  // Construct a simple HTML representation of the order
   const itemsHtml = items
-    .map((item) => `<li>${item.name} – ${item.quantity} x ${item.price.toFixed(2)} RON</li>`) // romanian currency
+    .map((item) => `<li>${item.name} – ${item.quantity} x ${item.price.toFixed(2)} RON</li>`)
     .join('');
 
   const addressLines = [];
@@ -69,17 +60,23 @@ export async function sendOrderEmails(details) {
     <p><strong>Total:</strong> ${totalAmount.toFixed(2)} RON</p>
   `;
 
-  // Build list of recipients.  Only include defined addresses.
+  // Build list of recipients
   const toAddresses = [customerEmail, adminEmail].filter(Boolean).join(',');
   if (!toAddresses) {
     console.warn('No recipients specified for order email');
     return;
   }
 
-  await transporter.sendMail({
-    from: fromAddress,
-    to: toAddresses,
-    subject: `Confirmare comanda #${orderId}`,
-    html,
-  });
+  try {
+    await transporter.sendMail({
+      from: fromAddress,
+      to: toAddresses,
+      subject: `Confirmare comanda #${orderId}`,
+      html,
+    });
+    console.log(`Order emails sent successfully for order #${orderId}`);
+  } catch (error) {
+    console.error('Error sending order emails:', error);
+    throw error;
+  }
 }
