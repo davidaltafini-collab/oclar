@@ -29,24 +29,21 @@ export const Home: React.FC = () => {
     fetchProducts();
   }, []);
 
-  // OPTIMIZARE SCROLL: Observer logic corectat
+  // OPTIMIZARE SCROLL
   useEffect(() => {
-    // Așteptăm puțin să se randeze DOM-ul dacă datele s-au încărcat
     if (loading) return;
 
-    // Mică întârziere pentru a ne asigura că elementele sunt în DOM
     const timeoutId = setTimeout(() => {
       observerRef.current = new IntersectionObserver((entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
             entry.target.classList.add('is-visible');
-            // FIX: Oprim observarea elementului după ce a apărut pentru performanță
             observerRef.current?.unobserve(entry.target);
           }
         });
       }, { 
         threshold: 0.1,
-        rootMargin: "50px" // Pre-încarcă animația puțin înainte să intre în ecran
+        rootMargin: "50px" 
       });
 
       const elements = document.querySelectorAll('.reveal-on-scroll');
@@ -57,15 +54,15 @@ export const Home: React.FC = () => {
       clearTimeout(timeoutId);
       observerRef.current?.disconnect();
     };
-  }, [loading, products]); // Re-rulează doar când produsele s-au încărcat
-
-  // FIX LOADING: Nu mai returnăm Loading Screen global.
-  // Lăsăm Hero-ul să se vadă și punem loading doar la produse.
+  }, [loading, products]);
 
   return (
     <main className="bg-white overflow-hidden">
-      {/* Hero Section - Se încarcă INSTANTANEU acum */}
-      <section className="relative min-h-screen flex flex-col justify-center px-6 md:px-12 border-b border-neutral-100 bg-white">
+      {/* FIX MOBIL: Am schimbat 'min-h-screen' cu 'min-h-[100dvh]'.
+         'dvh' (Dynamic Viewport Height) ignoră bara de browser când dai scroll 
+         și elimină glitch-ul vizual pe telefoane.
+      */}
+      <section className="relative min-h-[100dvh] flex flex-col justify-center px-6 md:px-12 border-b border-neutral-100 bg-white">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-brand-yellow/10 rounded-full blur-[120px] pointer-events-none animate-pulse-glow will-change-transform"></div>
         <div className="absolute top-0 right-0 w-[40vw] h-full bg-neutral-50 -z-10 skew-x-12 translate-x-20 hidden md:block"></div>
 
@@ -76,9 +73,16 @@ export const Home: React.FC = () => {
             </span>
           </div>
           
-          <h1 className="text-7xl sm:text-8xl md:text-[10rem] font-black uppercase tracking-tighter mb-8 leading-[0.85] text-neutral-950 animate-slide-up-delay drop-shadow-xl">
+          {/* FIX TEXT: 
+              1. leading-[0.85] -> leading-[0.9] (spațiere mai mare între linii)
+              2. Am adăugat 'pb-2' și 'inline-block' la span-ul "Până la" 
+                 pentru ca litera 'a' sau accentele să nu mai fie tăiate de gradient.
+          */}
+          <h1 className="text-7xl sm:text-8xl md:text-[10rem] font-black uppercase tracking-tighter mb-8 leading-[0.9] text-neutral-950 animate-slide-up-delay drop-shadow-xl">
             Vezi <br/>
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-neutral-800 to-neutral-500 hover:text-brand-yellow transition-colors duration-700 cursor-default">Până la</span> <br/>
+            <span className="inline-block pb-2 text-transparent bg-clip-text bg-gradient-to-r from-neutral-800 to-neutral-500 hover:text-brand-yellow transition-colors duration-700 cursor-default">
+              Până la
+            </span> <br/>
             Capăt.
           </h1>
           
@@ -165,7 +169,6 @@ export const Home: React.FC = () => {
           {!loading && <span className="text-sm font-bold uppercase tracking-widest mt-4 md:mt-0">{products.length} Modele Disponibile</span>}
         </div>
 
-        {/* LOADING STATE - mutat aici local */}
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20">
              <div className="w-12 h-12 border-4 border-neutral-200 border-t-brand-yellow rounded-full animate-spin mb-4"></div>
@@ -175,8 +178,6 @@ export const Home: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-20">
             {products.map((product, index) => (
               <div key={product.id} className="group flex flex-col cursor-pointer reveal-on-scroll" style={{transitionDelay: `${index * 50}ms`}}> 
-                {/* Am redus delay-ul pentru a părea mai rapid */}
-                
                 <Link to={`/product/${product.id}`} className="block relative overflow-hidden bg-neutral-100 mb-8 aspect-[4/5] isolate rounded-2xl shadow-sm hover:shadow-2xl hover:shadow-brand-yellow/20 transition-all duration-500">
                   <div className="w-full h-full overflow-hidden">
                      <img 
@@ -188,7 +189,7 @@ export const Home: React.FC = () => {
                   </div>
                   
                   <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
-                    <span className="bg-gray-100/30 text-black px-6 py-3 font-bold uppercase tracking-wider text-sm border border-black rounded-full transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300 shadow-xl">
+                    <span className="bg-neutral-100/30 text-black px-6 py-3 font-bold uppercase tracking-wider text-sm border border-black rounded-full transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300 shadow-xl backdrop-blur-sm">
                       Vezi Detalii
                     </span>
                   </div>
@@ -237,9 +238,22 @@ export const Home: React.FC = () => {
             <div className="w-full md:w-1/2">
                <h3 className="text-4xl font-black uppercase tracking-tighter mb-6">Investiție în tine.</h3>
                <p className="text-lg text-neutral-600 mb-8 leading-relaxed">
-                 Expunerea prelungită la lumina albastră suprimă melatonina și provoacă oboseală digitală. Ochelarii Oclarnu sunt doar un accesoriu, ci o unealtă de productivitate și sănătate.
+                 Expunerea prelungită la lumina albastră suprimă melatonina și provoacă oboseală digitală. Ochelarii Oclar nu sunt doar un accesoriu, ci o unealtă de productivitate și sănătate.
                </p>
-               {/* Content... */}
+               <ul className="space-y-4 font-bold uppercase tracking-wide text-sm">
+                 <li className="flex items-center gap-3">
+                   <div className="w-2 h-2 bg-green-500 rounded-full shadow-[0_0_10px_#22c55e]"></div>
+                   Reduce durerile de cap
+                 </li>
+                 <li className="flex items-center gap-3">
+                   <div className="w-2 h-2 bg-green-500 rounded-full shadow-[0_0_10px_#22c55e]"></div>
+                   Somn profund
+                 </li>
+                 <li className="flex items-center gap-3">
+                   <div className="w-2 h-2 bg-green-500 rounded-full shadow-[0_0_10px_#22c55e]"></div>
+                   Claritate vizuală
+                 </li>
+               </ul>
             </div>
             <div className="w-full md:w-1/2 aspect-video bg-neutral-200 relative overflow-hidden group rounded-3xl shadow-2xl">
                <img src="https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&q=80&w=1000" alt="OclarLifestyle" className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-1000" />
