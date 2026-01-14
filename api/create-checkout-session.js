@@ -37,7 +37,7 @@ export default async function handler(req, res) {
       quantity: item.quantity,
     }));
 
-    const origin = req.headers.origin || req.headers.referer || process.env.FRONTEND_URL || 'https://oclareyewear.vercel.app';
+    const origin = req.headers.origin || req.headers.referer || process.env.FRONTEND_URL || 'https://oclar.ro';
     const baseUrl = origin.replace(/\/$/, '');
 
     const session = await stripe.checkout.sessions.create({
