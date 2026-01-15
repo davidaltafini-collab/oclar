@@ -1,4 +1,7 @@
 import nodemailer from 'nodemailer';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 // Configurare SMTP Transporter
 const transporter = nodemailer.createTransport({
@@ -23,6 +26,8 @@ export async function sendOrderEmails(orderDetails) {
     address,
     totalAmount,
     items,
+    paymentMethod, // <--- ADAUGAT
+    paymentStatus  // <--- ADAUGAT
   } = orderDetails;
 
   // Verificare env variables
@@ -31,7 +36,26 @@ export async function sendOrderEmails(orderDetails) {
     return { success: false, message: 'SMTP not configured' };
   }
 
-  // Formatare produse pentru email
+  // --- LOGICĂ NOUĂ PENTRU MESAJ PLATĂ (Fără a simplifica restul) ---
+  let paymentBadgeHtml = '';
+  let paymentTextLabel = 'Ramburs';
+  
+  if (paymentMethod === 'card') {
+      paymentTextLabel = 'Card Online (Achitat)';
+      paymentBadgeHtml = `
+      <div style="background-color: #d4edda; color: #155724; padding: 15px; margin: 15px 0; border: 1px solid #c3e6cb; border-radius: 4px;">
+          ✅ <strong>Plată Confirmată!</strong> Comanda a fost achitată cu cardul. Nu mai trebuie să plătești nimic la curier.
+      </div>`;
+  } else {
+      paymentTextLabel = 'Ramburs (Numerar la livrare)';
+      paymentBadgeHtml = `
+      <div style="background-color: #fff3cd; color: #856404; padding: 15px; margin: 15px 0; border: 1px solid #ffeeba; border-radius: 4px;">
+          ⚠️ <strong>Plată Ramburs.</strong> Te rugăm să pregătești suma de <strong>${parseFloat(totalAmount).toFixed(2)} RON</strong> pentru curier.
+      </div>`;
+  }
+  // ---------------------------------------------------------------
+
+  // Formatare produse pentru email (Codul tău original)
   const itemsList = items
     .map(
       (item) =>
@@ -39,7 +63,7 @@ export async function sendOrderEmails(orderDetails) {
     )
     .join('\n');
 
-  // Formatare adresă
+  // Formatare adresă (Codul tău original)
   const addressText = address
     ? typeof address === 'string'
       ? address
@@ -58,15 +82,18 @@ Bună ${customerName},
 
 Comanda ta a fost înregistrată cu succes! 🎉
 
+${paymentMethod === 'card' ? '✅ COMANDA ESTE ACHITATĂ CU CARDUL' : '⚠️ PLATA SE VA FACE RAMBURS LA CURIER'}
+
 DETALII COMANDĂ:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ID Comandă: #${orderId}
 Data: ${new Date().toLocaleString('ro-RO')}
+Metodă Plată: ${paymentTextLabel}
 
 PRODUSE:
 ${itemsList}
 
-TOTAL: ${totalAmount.toFixed(2)} RON
+TOTAL: ${parseFloat(totalAmount).toFixed(2)} RON
 
 LIVRARE:
 ${addressText}
@@ -110,10 +137,12 @@ Echipa OCLAR
       <p>Bună <strong>${customerName}</strong>,</p>
       <p>Comanda ta a fost înregistrată cu succes! 🎉</p>
       
+      ${paymentBadgeHtml}
+      
       <div class="order-info">
         <p><strong>ID Comandă:</strong> #${orderId}</p>
         <p><strong>Data:</strong> ${new Date().toLocaleString('ro-RO')}</p>
-      </div>
+        <p><strong>Metodă Plată:</strong> ${paymentTextLabel}</p> </div>
       
       <div class="products">
         <h3>Produse Comandate:</h3>
@@ -122,7 +151,7 @@ Echipa OCLAR
             (item) => `
           <div class="product-item">
             <strong>${item.name}</strong><br>
-            Cantitate: ${item.quantity} x ${item.price.toFixed(2)} RON = ${(item.price * item.quantity).toFixed(2)} RON
+            Cantitate: ${item.quantity} x ${parseFloat(item.price).toFixed(2)} RON = ${(item.price * item.quantity).toFixed(2)} RON
           </div>
         `
           )
@@ -130,7 +159,7 @@ Echipa OCLAR
       </div>
       
       <div class="total">
-        TOTAL: ${totalAmount.toFixed(2)} RON
+        TOTAL: ${parseFloat(totalAmount).toFixed(2)} RON
       </div>
       
       <div class="order-info">
@@ -163,11 +192,12 @@ Echipa OCLAR
       await transporter.sendMail({
         from: process.env.SMTP_FROM || process.env.SMTP_USER,
         to: adminEmail,
-        subject: `🔔 Comandă Nouă #${orderId} - OCLAR`,
+        subject: `🔔 Comandă Nouă #${orderId} (${paymentTextLabel}) - OCLAR`, // ADAUGAT IN SUBIECT
         text: `
 COMANDĂ NOUĂ!
 
 ID: #${orderId}
+Metodă: ${paymentTextLabel}
 Data: ${new Date().toLocaleString('ro-RO')}
 
 CLIENT:
@@ -183,7 +213,7 @@ PRODUSE:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${itemsList}
 
-TOTAL: ${totalAmount.toFixed(2)} RON
+TOTAL: ${parseFloat(totalAmount).toFixed(2)} RON
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Procesează comanda pe https://oclar.ro
@@ -204,7 +234,7 @@ Procesează comanda pe https://oclar.ro
     <div class="alert">
       <h2>🔔 Comandă Nouă #${orderId}</h2>
       <p>${new Date().toLocaleString('ro-RO')}</p>
-    </div>
+      <p><strong>Metodă Plată: ${paymentTextLabel}</strong></p> </div>
     
     <div class="info-box">
       <h3>CLIENT</h3>
@@ -221,7 +251,7 @@ Procesează comanda pe https://oclar.ro
     <div class="info-box">
       <h3>PRODUSE</h3>
       ${items.map((item) => `<p>${item.name} x${item.quantity} = ${(item.price * item.quantity).toFixed(2)} RON</p>`).join('')}
-      <p><strong>TOTAL: ${totalAmount.toFixed(2)} RON</strong></p>
+      <p><strong>TOTAL: ${parseFloat(totalAmount).toFixed(2)} RON</strong></p>
     </div>
     
     <p><a href="https://oclar.ro" style="background: #000; color: #fff; padding: 10px 20px; text-decoration: none; display: inline-block;">Vezi Comandă</a></p>
