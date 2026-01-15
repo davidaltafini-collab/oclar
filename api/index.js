@@ -14,13 +14,13 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
 
 // --- 1. CONFIGURARE CORS ---
 app.use(cors({
-  origin: '*', // Pe VPS poți restricționa: process.env.FRONTEND_URL || 'https://oclar.ro'
+  origin: '*', 
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-secret', 'stripe-signature']
 }));
 
-// --- 2. WEBHOOK STRIPE (Trebuie să fie PRIMUL, înainte de express.json) ---
+// --- 2. WEBHOOK STRIPE ---
 app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
     const sig = req.headers['stripe-signature'];
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -45,7 +45,6 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
       try {
         connection = await pool.getConnection();
         
-        // Recuperăm produsele din sesiunea Stripe
         const lineItems = await stripe.checkout.sessions.listLineItems(session.id);
         
         const orderData = {
@@ -62,7 +61,6 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
           total_amount: (session.amount_total || 0) / 100,
         };
 
-        // Inserăm comanda în baza de date
         const [result] = await connection.query(
           `INSERT INTO orders 
            (stripe_session_id, customer_name, customer_email, customer_phone, shipping_address, items, total_amount, payment_method, status, created_at) 
@@ -70,7 +68,7 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
           [orderData.stripe_session_id, orderData.customer_name, orderData.customer_email, orderData.customer_phone, orderData.shipping_address, orderData.items, orderData.total_amount]
         );
 
-        // Trimitem Email Confirmare
+        // Trimitem Email Confirmare - SPECIFICĂM CARD
         if (orderData.customer_email) {
             const emailDetails = {
                 orderId: result.insertId.toString(),
@@ -84,6 +82,8 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
                     quantity: item.quantity || 1,
                     price: (item.amount_total || 0) / 100,
                 })),
+                paymentMethod: 'card',    // <--- MODIFICARE AICI
+                paymentStatus: 'paid'     // <--- MODIFICARE AICI
             };
             await sendOrderEmails(emailDetails).catch(err => console.error('Email error:', err));
         }
@@ -96,17 +96,16 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
     res.json({ received: true });
 });
 
-// --- 3. PARSER JSON (Pentru restul rutelor) ---
+// --- 3. PARSER JSON ---
 app.use(express.json());
 
-// --- 4. RUTE PRODUSE (Public) ---
+// --- 4. RUTE PRODUSE ---
 app.get('/api/products', async (req, res) => {
     let connection;
     try {
         connection = await pool.getConnection();
         const [rows] = await connection.query('SELECT * FROM products');
         
-        // Procesare JSON pentru frontend
         const products = rows.map(p => ({
             ...p,
             details: typeof p.details === 'string' ? JSON.parse(p.details) : p.details,
@@ -149,7 +148,6 @@ app.post('/api/create-order-ramburs', async (req, res) => {
     try {
         const { customerName, customerEmail, customerPhone, address, items, totalAmount } = req.body;
 
-        // Validare de bază
         if (!customerName || !customerPhone || !address || !items || !totalAmount) {
             return res.status(400).json({ error: 'Lipsesc date obligatorii' });
         }
@@ -157,7 +155,6 @@ app.post('/api/create-order-ramburs', async (req, res) => {
         connection = await pool.getConnection();
         const itemsJson = JSON.stringify(items);
 
-        // Inserare DB
         const [result] = await connection.query(
             `INSERT INTO orders 
             (customer_name, customer_email, customer_phone, county, city, address_line, items, total_amount, payment_method, status, created_at) 
@@ -165,13 +162,15 @@ app.post('/api/create-order-ramburs', async (req, res) => {
             [customerName, customerEmail, customerPhone, address.county, address.city, address.line, itemsJson, totalAmount]
         );
 
-        // Trimitere Email
+        // Trimitere Email - SPECIFICĂM RAMBURS
         if (customerEmail) {
             const emailDetails = {
                 orderId: result.insertId.toString(),
                 customerName, customerEmail, customerPhone,
                 address: { line1: address.line, city: address.city, county: address.county },
-                totalAmount, items
+                totalAmount, items,
+                paymentMethod: 'ramburs', // <--- MODIFICARE AICI
+                paymentStatus: 'pending'  // <--- MODIFICARE AICI
             };
             await sendOrderEmails(emailDetails).catch(err => console.error('Email error:', err));
         }
@@ -221,9 +220,8 @@ app.post('/api/create-checkout-session', async (req, res) => {
     }
 });
 
-// --- 7. RUTE ADMIN (Complet, CRUD Produse & Comenzi) ---
+// --- 7. RUTE ADMIN ---
 app.all('/api/admin', async (req, res) => {
-    // Verificare Securitate
     const adminSecret = req.headers['x-admin-secret'];
     if (!adminSecret || adminSecret !== process.env.ADMIN_SECRET) {
         return res.status(401).json({ error: 'Acces Neautorizat' });
@@ -233,7 +231,6 @@ app.all('/api/admin', async (req, res) => {
     try {
         connection = await pool.getConnection();
         
-        // GET: Citește Produse sau Comenzi
         if (req.method === 'GET') {
             const { type } = req.query;
             
@@ -255,36 +252,26 @@ app.all('/api/admin', async (req, res) => {
             }
         }
         
-        // POST: Adaugă sau Editează Produs
         if (req.method === 'POST') {
              const { id, name, description, price, original_price, stock_quantity, category, imageUrl, colors } = req.body;
-             
-             // Calculare status automat
              const status = (stock_quantity && stock_quantity > 0) ? 'active' : 'out_of_stock';
              const colorsJson = JSON.stringify(colors || []);
 
              if (id) {
-                 // UPDATE
                  await connection.query(
-                     `UPDATE products 
-                      SET name=?, description=?, price=?, original_price=?, stock_quantity=?, category=?, imageUrl=?, colors=?, status=?, updated_at=NOW() 
-                      WHERE id=?`,
+                     `UPDATE products SET name=?, description=?, price=?, original_price=?, stock_quantity=?, category=?, imageUrl=?, colors=?, status=?, updated_at=NOW() WHERE id=?`,
                      [name, description, price, original_price || null, stock_quantity || 0, category, imageUrl, colorsJson, status, id]
                  );
                  return res.json({ success: true, message: 'Produs actualizat' });
              } else {
-                 // INSERT
                  await connection.query(
-                     `INSERT INTO products 
-                      (name, description, price, original_price, stock_quantity, category, imageUrl, colors, status, created_at, updated_at) 
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+                     `INSERT INTO products (name, description, price, original_price, stock_quantity, category, imageUrl, colors, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
                      [name, description, price, original_price || null, stock_quantity || 0, category, imageUrl, colorsJson, status]
                  );
                  return res.json({ success: true, message: 'Produs creat' });
              }
         }
         
-        // DELETE: Șterge Produs
         if (req.method === 'DELETE') {
              await connection.query('DELETE FROM products WHERE id = ?', [req.query.id]);
              return res.json({ success: true });
@@ -300,7 +287,7 @@ app.all('/api/admin', async (req, res) => {
     }
 });
 
-// --- 8. RUTA DIAGNOSTIC (Health Check) ---
+// --- 8. RUTA DIAGNOSTIC ---
 app.get('/api/status', async (req, res) => {
     const status = {
         system: 'Online',
@@ -327,15 +314,8 @@ app.get('/api/status', async (req, res) => {
     }
 });
 
-// --- 9. PORNIRE SERVER VPS ---
+// --- 9. PORNIRE SERVER ---
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`
-    🚀 SERVER OCLAR PORNIRE COMPLETĂ
-    --------------------------------
-    📡 Port: ${PORT}
-    🔗 URL: http://localhost:${PORT}
-    🛠️  Mod: VPS / Production
-    --------------------------------
-    `);
+    console.log(`🚀 SERVER OCLAR PORNIRE COMPLETĂ (PORT ${PORT})`);
 });
