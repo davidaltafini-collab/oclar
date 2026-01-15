@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useCart } from '../context/CartContext';
 import { Button } from './Button';
 import { API_URL } from '../constants';
@@ -12,6 +12,9 @@ export const CartDrawer: React.FC = () => {
   const [step, setStep] = useState<CheckoutStep>('cart');
   const [loading, setLoading] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('ramburs');
+  
+  // Ref pentru containerul cu scroll pentru a reseta poziția
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   
   const [formData, setFormData] = useState({
     fullName: '',
@@ -31,14 +34,29 @@ export const CartDrawer: React.FC = () => {
     }
   }, [isCartOpen]);
 
+  // FIX: Scroll to top automat când trecem la pasul de detalii
+  useEffect(() => {
+    if (step === 'details' && scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [step]);
+
   if (!isCartOpen) return null;
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleSubmitOrder = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Această funcție este apelată DOAR de butonul de jos, nu de tasta Enter
+  const handleSubmitOrder = async (e?: React.MouseEvent) => {
+    if(e) e.preventDefault(); // Previne comportamentul default dacă e apelat din event
+
+    // Validare simplă manuală înainte de trimitere
+    if (!formData.fullName || !formData.phone || !formData.address || !formData.county) {
+        alert("Te rugăm să completezi toate câmpurile obligatorii.");
+        return;
+    }
+
     setLoading(true);
 
     try {
@@ -99,14 +117,17 @@ export const CartDrawer: React.FC = () => {
       <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-2xl flex flex-col animate-slide-in-right">
         
         {/* Header */}
-        <div className="p-5 border-b border-neutral-100 flex items-center justify-between bg-white">
+        <div className="p-5 border-b border-neutral-100 flex items-center justify-between bg-white shrink-0">
           <h2 className="text-xl font-bold uppercase tracking-tight">
             {step === 'cart' ? 'Coșul Tău' : 'Detalii Livrare'}
           </h2>
           <button onClick={toggleCart} className="p-2 hover:bg-neutral-100 rounded-full transition-colors">✕</button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 bg-neutral-50">
+        {/* FIX: Am adăugat 'ref={scrollContainerRef}' aici.
+           FIX: Input-urile au acum 'text-base' pe mobil pentru a preveni auto-zoom-ul.
+        */}
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-6 bg-neutral-50 scroll-smooth">
           
           {/* STEP 1: CART ITEMS */}
           {step === 'cart' ? (
@@ -145,7 +166,8 @@ export const CartDrawer: React.FC = () => {
           ) : (
             
             /* STEP 2: CHECKOUT FORM OPTIMIZAT */
-            <form id="checkout-form" onSubmit={handleSubmitOrder} className="space-y-4">
+            /* FIX: Am scos onSubmit de pe form pentru a preveni trimiterea la Enter */
+            <form id="checkout-form" className="space-y-4" onSubmit={(e) => e.preventDefault()}>
                {/* Secțiunea Date Contact */}
                <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
                   <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">
@@ -158,7 +180,8 @@ export const CartDrawer: React.FC = () => {
                     placeholder="Nume Complet" 
                     value={formData.fullName} 
                     onChange={handleInputChange} 
-                    className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-sm" 
+                    /* FIX: text-base previne zoom pe mobil, md:text-sm revine la font mic pe PC */
+                    className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm" 
                   />
                   <div className="grid grid-cols-2 gap-3">
                     <input 
@@ -168,7 +191,7 @@ export const CartDrawer: React.FC = () => {
                         placeholder="Email" 
                         value={formData.email} 
                         onChange={handleInputChange} 
-                        className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-sm" 
+                        className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm" 
                     />
                     <input 
                         required 
@@ -176,7 +199,7 @@ export const CartDrawer: React.FC = () => {
                         placeholder="Telefon" 
                         value={formData.phone} 
                         onChange={handleInputChange} 
-                        className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-sm" 
+                        className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm" 
                     />
                   </div>
                </div>
@@ -194,7 +217,7 @@ export const CartDrawer: React.FC = () => {
                         placeholder="Județ" 
                         value={formData.county} 
                         onChange={handleInputChange} 
-                        className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-sm" 
+                        className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm" 
                     />
                     <input 
                         required 
@@ -202,7 +225,7 @@ export const CartDrawer: React.FC = () => {
                         placeholder="Oraș / Sat" 
                         value={formData.city} 
                         onChange={handleInputChange} 
-                        className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-sm" 
+                        className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm" 
                     />
                   </div>
                   <textarea 
@@ -211,7 +234,7 @@ export const CartDrawer: React.FC = () => {
                     placeholder="Strada, Număr, Bloc, Etaj..." 
                     value={formData.address} 
                     onChange={handleInputChange} 
-                    className="w-full p-3 border border-neutral-200 rounded-lg h-20 resize-none focus:outline-none focus:border-black transition-colors text-sm" 
+                    className="w-full p-3 border border-neutral-200 rounded-lg h-20 resize-none focus:outline-none focus:border-black transition-colors text-base md:text-sm" 
                   />
                </div>
 
@@ -266,9 +289,9 @@ export const CartDrawer: React.FC = () => {
           )}
         </div>
 
-        {/* Footer Modificat: Fără buton de Înapoi și buton principal Full Width */}
+        {/* Footer */}
         {cart.length > 0 && (
-          <div className="p-6 border-t border-neutral-100 bg-white">
+          <div className="p-6 border-t border-neutral-100 bg-white shrink-0">
             <div className="flex justify-between items-center mb-4">
               <span className="text-sm text-neutral-500 uppercase">Total</span>
               <span className="text-xl font-bold">{cartTotal.toFixed(2)} RON</span>
@@ -279,13 +302,12 @@ export const CartDrawer: React.FC = () => {
                  Continuă spre Checkout
                </Button>
             ) : (
-                // AICI AM MODIFICAT: Doar butonul de submit, full width
+                /* FIX: Button type="button" pentru a nu declanșa submit automat de la formular */
                <Button 
                   fullWidth 
                   onClick={handleSubmitOrder} 
                   disabled={loading} 
-                  type="submit" 
-                  form="checkout-form"
+                  type="button" 
                   className="shadow-xl"
                >
                   {loading ? 'Se procesează...' : (paymentMethod === 'ramburs' ? 'Trimite Comanda' : 'Plătește cu Cardul')}
