@@ -2,7 +2,6 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import Stripe from 'stripe';
-import serverless from 'serverless-http';
 import { pool } from './db.js';
 import { sendOrderEmails } from './services/email.js';
 
@@ -13,321 +12,330 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2024-12-18.acacia',
 });
 
-// CORS configuration
+// --- 1. CONFIGURARE CORS ---
 app.use(cors({
-  origin: process.env.FRONTEND_URL || '*',
-  credentials: true
+  origin: '*', // Pe VPS poți restricționa: process.env.FRONTEND_URL || 'https://oclar.ro'
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-secret', 'stripe-signature']
 }));
 
-// Webhook route - MUST use raw body
-app.post(
-  '/api/webhook',
-  express.raw({ type: 'application/json' }),
-  async (req, res) => {
+// --- 2. WEBHOOK STRIPE (Trebuie să fie PRIMUL, înainte de express.json) ---
+app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
     const sig = req.headers['stripe-signature'];
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
     if (!sig || !webhookSecret) {
       console.error('Missing signature or webhook secret');
-      return res.status(400).send('Webhook Error: Missing signature or secret');
+      return res.status(400).send('Webhook Error: Missing signature/secret');
     }
 
     let event;
     try {
-      event = stripe.webhooks.constructEvent(req.body, sig.toString(), webhookSecret);
+      event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
     } catch (err) {
       console.error('Webhook signature verification failed:', err.message);
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
+    // Procesare eveniment plată reușită
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
-      
       let connection;
       try {
         connection = await pool.getConnection();
         
+        // Recuperăm produsele din sesiunea Stripe
         const lineItems = await stripe.checkout.sessions.listLineItems(session.id);
+        
         const orderData = {
           stripe_session_id: session.id,
-          customer_name: (session.customer_details && session.customer_details.name) || 'Client',
-          customer_email: (session.customer_details && session.customer_details.email) || '',
-          customer_phone: (session.customer_details && session.customer_details.phone) || '',
-          shipping_address: JSON.stringify((session.customer_details && session.customer_details.address) || {}),
-          items: JSON.stringify(
-            lineItems.data.map((item) => ({
+          customer_name: session.customer_details?.name || 'Client',
+          customer_email: session.customer_details?.email || '',
+          customer_phone: session.customer_details?.phone || '',
+          shipping_address: JSON.stringify(session.customer_details?.address || {}),
+          items: JSON.stringify(lineItems.data.map(item => ({
               name: item.description,
               quantity: item.quantity,
               price: (item.amount_total || 0) / 100,
-            }))
-          ),
+          }))),
           total_amount: (session.amount_total || 0) / 100,
         };
 
+        // Inserăm comanda în baza de date
         const [result] = await connection.query(
-          `INSERT INTO orders
-           (stripe_session_id, customer_name, customer_email, customer_phone,
-            shipping_address, items, total_amount, payment_method, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'card', 'paid')`,
-          [
-            orderData.stripe_session_id,
-            orderData.customer_name,
-            orderData.customer_email,
-            orderData.customer_phone,
-            orderData.shipping_address,
-            orderData.items,
-            orderData.total_amount,
-          ]
+          `INSERT INTO orders 
+           (stripe_session_id, customer_name, customer_email, customer_phone, shipping_address, items, total_amount, payment_method, status, created_at) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'card', 'paid', NOW())`,
+          [orderData.stripe_session_id, orderData.customer_name, orderData.customer_email, orderData.customer_phone, orderData.shipping_address, orderData.items, orderData.total_amount]
         );
 
-        const dbOrderId = result.insertId;
-
+        // Trimitem Email Confirmare
         if (orderData.customer_email) {
-          const emailDetails = {
-            orderId: dbOrderId.toString(),
-            customerName: orderData.customer_name,
-            customerEmail: orderData.customer_email,
-            customerPhone: orderData.customer_phone,
-            address: session.customer_details && session.customer_details.address,
-            totalAmount: orderData.total_amount,
-            items: lineItems.data.map((item) => ({
-              name: item.description || 'Produs',
-              quantity: item.quantity || 1,
-              price: (item.amount_total || 0) / 100,
-            })),
-          };
-          
-          // Send emails asynchronously
-          sendOrderEmails(emailDetails).catch(err => {
-            console.error('Error sending emails:', err);
-          });
+            const emailDetails = {
+                orderId: result.insertId.toString(),
+                customerName: orderData.customer_name,
+                customerEmail: orderData.customer_email,
+                customerPhone: orderData.customer_phone,
+                address: session.customer_details?.address,
+                totalAmount: orderData.total_amount,
+                items: lineItems.data.map(item => ({
+                    name: item.description || 'Produs',
+                    quantity: item.quantity || 1,
+                    price: (item.amount_total || 0) / 100,
+                })),
+            };
+            await sendOrderEmails(emailDetails).catch(err => console.error('Email error:', err));
         }
-        
-        connection.release();
       } catch (error) {
-        if (connection) connection.release();
         console.error('Error processing webhook:', error);
-        return res.status(500).json({ error: 'Internal server error' });
+      } finally {
+        if (connection) connection.release();
       }
     }
-    
     res.json({ received: true });
-  }
-);
+});
 
-// JSON body parser for all other routes
+// --- 3. PARSER JSON (Pentru restul rutelor) ---
 app.use(express.json());
 
-// Create ramburs (cash on delivery) order
-app.post('/api/create-order-ramburs', async (req, res) => {
-  let connection;
-  try {
-    const { customerName, customerEmail, customerPhone, address, items, totalAmount } = req.body;
-
-    if (!customerName || !customerPhone || !address || !items || !totalAmount) {
-      return res.status(400).json({ error: 'Missing required order fields' });
-    }
-
-    connection = await pool.getConnection();
-    
-    const itemsJson = JSON.stringify(items);
-
-    const [result] = await connection.query(
-      `INSERT INTO orders
-       (customer_name, customer_email, customer_phone, county, city, address_line,
-        items, total_amount, payment_method, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ramburs', 'pending')`,
-      [
-        customerName,
-        customerEmail || '',
-        customerPhone,
-        address.county,
-        address.city,
-        address.line,
-        itemsJson,
-        totalAmount,
-      ]
-    );
-
-    const orderId = result.insertId;
-
-    if (customerEmail) {
-      const emailDetails = {
-        orderId: orderId.toString(),
-        customerName,
-        customerEmail,
-        customerPhone,
-        address: {
-          line1: address.line,
-          city: address.city,
-          county: address.county,
-        },
-        totalAmount,
-        items,
-      };
-      
-      // Send emails asynchronously
-      sendOrderEmails(emailDetails).catch(err => {
-        console.error('Error sending emails:', err);
-      });
-    }
-
-    connection.release();
-    return res.json({ success: true, orderId });
-  } catch (error) {
-    if (connection) connection.release();
-    console.error('Error creating ramburs order:', error);
-    return res.status(500).json({ error: 'Nu am putut salva comanda.' });
-  }
-});
-
-// Get all products
+// --- 4. RUTE PRODUSE (Public) ---
 app.get('/api/products', async (req, res) => {
-  let connection;
-  try {
-    connection = await pool.getConnection();
-    const [rows] = await connection.query('SELECT * FROM products');
-    connection.release();
-    
-    const products = rows.map((product) => ({
-      ...product,
-      details: typeof product.details === 'string' ? JSON.parse(product.details) : product.details,
-      colors: typeof product.colors === 'string' ? JSON.parse(product.colors) : product.colors,
-      price: parseFloat(product.price),
-    }));
-    
-    res.json(products);
-  } catch (error) {
-    if (connection) connection.release();
-    console.error('Error fetching products:', error);
-    res.status(500).json({ error: 'Database error' });
-  }
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        const [rows] = await connection.query('SELECT * FROM products');
+        
+        // Procesare JSON pentru frontend
+        const products = rows.map(p => ({
+            ...p,
+            details: typeof p.details === 'string' ? JSON.parse(p.details) : p.details,
+            colors: typeof p.colors === 'string' ? JSON.parse(p.colors) : p.colors,
+            price: parseFloat(p.price),
+            original_price: p.original_price ? parseFloat(p.original_price) : null
+        }));
+        res.json(products);
+    } catch (e) { 
+        console.error(e);
+        res.status(500).json({ error: e.message }); 
+    } finally { 
+        if(connection) connection.release(); 
+    }
 });
 
-// Get single product
 app.get('/api/products/:id', async (req, res) => {
-  let connection;
-  try {
-    connection = await pool.getConnection();
-    const [rows] = await connection.query('SELECT * FROM products WHERE id = ?', [req.params.id]);
-    connection.release();
-    
-    if (rows.length === 0) {
-      return res.status(404).json({ error: 'Product not found' });
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        const [rows] = await connection.query('SELECT * FROM products WHERE id = ?', [req.params.id]);
+        if (rows.length === 0) return res.status(404).json({ error: 'Produs inexistent' });
+        
+        const p = rows[0];
+        p.details = typeof p.details === 'string' ? JSON.parse(p.details) : p.details;
+        p.colors = typeof p.colors === 'string' ? JSON.parse(p.colors) : p.colors;
+        p.price = parseFloat(p.price);
+        
+        res.json(p);
+    } catch (e) { 
+        res.status(500).json({ error: e.message }); 
+    } finally { 
+        if(connection) connection.release(); 
     }
-    
-    const product = rows[0];
-    if (typeof product.details === 'string') product.details = JSON.parse(product.details);
-    if (typeof product.colors === 'string') product.colors = JSON.parse(product.colors);
-    
-    res.json(product);
-  } catch (error) {
-    if (connection) connection.release();
-    console.error('Error fetching product by id:', error);
-    res.status(500).json({ error: 'Database error' });
-  }
 });
 
-// Create Stripe checkout session
+// --- 5. RUTA COMANDĂ RAMBURS ---
+app.post('/api/create-order-ramburs', async (req, res) => {
+    let connection;
+    try {
+        const { customerName, customerEmail, customerPhone, address, items, totalAmount } = req.body;
+
+        // Validare de bază
+        if (!customerName || !customerPhone || !address || !items || !totalAmount) {
+            return res.status(400).json({ error: 'Lipsesc date obligatorii' });
+        }
+
+        connection = await pool.getConnection();
+        const itemsJson = JSON.stringify(items);
+
+        // Inserare DB
+        const [result] = await connection.query(
+            `INSERT INTO orders 
+            (customer_name, customer_email, customer_phone, county, city, address_line, items, total_amount, payment_method, status, created_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ramburs', 'pending', NOW())`,
+            [customerName, customerEmail, customerPhone, address.county, address.city, address.line, itemsJson, totalAmount]
+        );
+
+        // Trimitere Email
+        if (customerEmail) {
+            const emailDetails = {
+                orderId: result.insertId.toString(),
+                customerName, customerEmail, customerPhone,
+                address: { line1: address.line, city: address.city, county: address.county },
+                totalAmount, items
+            };
+            await sendOrderEmails(emailDetails).catch(err => console.error('Email error:', err));
+        }
+        res.json({ success: true, orderId: result.insertId });
+    } catch (e) { 
+        console.error(e);
+        res.status(500).json({ error: 'Eroare la procesarea comenzii' }); 
+    } finally { 
+        if(connection) connection.release(); 
+    }
+});
+
+// --- 6. RUTA STRIPE CHECKOUT ---
 app.post('/api/create-checkout-session', async (req, res) => {
-  try {
-    const { items } = req.body;
-    
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: 'Missing or invalid items array' });
+    try {
+        const { items } = req.body;
+        const origin = req.headers.origin || process.env.FRONTEND_URL || 'https://oclar.ro';
+        
+        const lineItems = items.map(item => ({
+            price_data: {
+                currency: 'ron',
+                product_data: { 
+                    name: item.name, 
+                    images: item.imageUrl ? [item.imageUrl] : [] 
+                },
+                unit_amount: Math.round(item.price * 100),
+            },
+            quantity: item.quantity,
+        }));
+
+        const session = await stripe.checkout.sessions.create({
+            payment_method_types: ['card'],
+            line_items: lineItems,
+            mode: 'payment',
+            locale: 'ro',
+            billing_address_collection: 'required',
+            shipping_address_collection: { allowed_countries: ['RO'] },
+            phone_number_collection: { enabled: true },
+            success_url: `${origin}/#/success`,
+            cancel_url: `${origin}/#/`,
+        });
+        
+        res.json({ url: session.url });
+    } catch (e) { 
+        console.error(e);
+        res.status(500).json({ error: e.message }); 
+    }
+});
+
+// --- 7. RUTE ADMIN (Complet, CRUD Produse & Comenzi) ---
+app.all('/api/admin', async (req, res) => {
+    // Verificare Securitate
+    const adminSecret = req.headers['x-admin-secret'];
+    if (!adminSecret || adminSecret !== process.env.ADMIN_SECRET) {
+        return res.status(401).json({ error: 'Acces Neautorizat' });
     }
 
-    const lineItems = items.map((item) => ({
-      price_data: {
-        currency: 'ron',
-        product_data: {
-          name: item.name,
-          images: item.imageUrl ? [item.imageUrl] : [],
-        },
-        unit_amount: Math.round(item.price * 100),
-      },
-      quantity: item.quantity,
-    }));
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        
+        // GET: Citește Produse sau Comenzi
+        if (req.method === 'GET') {
+            const { type } = req.query;
+            
+            if (type === 'orders') {
+                const [orders] = await connection.query('SELECT * FROM orders ORDER BY created_at DESC');
+                return res.json(orders);
+            }
+            
+            if (type === 'products') {
+                const [products] = await connection.query('SELECT * FROM products ORDER BY id DESC');
+                const parsed = products.map(p => ({
+                    ...p,
+                    colors: typeof p.colors === 'string' ? JSON.parse(p.colors) : (p.colors || []),
+                    details: typeof p.details === 'string' ? JSON.parse(p.details) : (p.details || []),
+                    price: parseFloat(p.price),
+                    original_price: p.original_price ? parseFloat(p.original_price) : null
+                }));
+                return res.json(parsed);
+            }
+        }
+        
+        // POST: Adaugă sau Editează Produs
+        if (req.method === 'POST') {
+             const { id, name, description, price, original_price, stock_quantity, category, imageUrl, colors } = req.body;
+             
+             // Calculare status automat
+             const status = (stock_quantity && stock_quantity > 0) ? 'active' : 'out_of_stock';
+             const colorsJson = JSON.stringify(colors || []);
 
-    const origin = req.headers.origin || req.headers.referer || process.env.FRONTEND_URL || 'http://localhost:3000';
-    const baseUrl = origin.replace(/\/$/, '');
+             if (id) {
+                 // UPDATE
+                 await connection.query(
+                     `UPDATE products 
+                      SET name=?, description=?, price=?, original_price=?, stock_quantity=?, category=?, imageUrl=?, colors=?, status=?, updated_at=NOW() 
+                      WHERE id=?`,
+                     [name, description, price, original_price || null, stock_quantity || 0, category, imageUrl, colorsJson, status, id]
+                 );
+                 return res.json({ success: true, message: 'Produs actualizat' });
+             } else {
+                 // INSERT
+                 await connection.query(
+                     `INSERT INTO products 
+                      (name, description, price, original_price, stock_quantity, category, imageUrl, colors, status, created_at, updated_at) 
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+                     [name, description, price, original_price || null, stock_quantity || 0, category, imageUrl, colorsJson, status]
+                 );
+                 return res.json({ success: true, message: 'Produs creat' });
+             }
+        }
+        
+        // DELETE: Șterge Produs
+        if (req.method === 'DELETE') {
+             await connection.query('DELETE FROM products WHERE id = ?', [req.query.id]);
+             return res.json({ success: true });
+        }
 
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: lineItems,
-      mode: 'payment',
-      billing_address_collection: 'required',
-      shipping_address_collection: {
-        allowed_countries: ['RO'],
-      },
-      phone_number_collection: {
-        enabled: true,
-      },
-      success_url: `${baseUrl}/#/success`,
-      cancel_url: `${baseUrl}/#/`,
-    });
-    
-    res.json({ url: session.url });
-  } catch (error) {
-    console.error('Error creating checkout session:', error);
-    res.status(500).json({ error: error.message || 'Stripe error' });
-  }
+        return res.status(405).json({ error: 'Metodă nepermisă' });
+
+    } catch (e) {
+        console.error('Admin Error:', e);
+        res.status(500).json({ error: e.message });
+    } finally {
+        if(connection) connection.release();
+    }
 });
 
-// Health check / status route
+// --- 8. RUTA DIAGNOSTIC (Health Check) ---
 app.get('/api/status', async (req, res) => {
-  const status = {
-    system: 'Online',
-    timestamp: new Date().toISOString(),
-    environment: {
-      NODE_ENV: process.env.NODE_ENV,
-      has_DB_HOST: !!process.env.DB_HOST,
-      has_DB_USER: !!process.env.DB_USER,
-      has_DB_PASS: !!process.env.DB_PASS,
-      has_DB_NAME: !!process.env.DB_NAME,
-      db_name_value: process.env.DB_NAME,
-    },
-    database_connection: 'Pending...',
-    table_orders_exists: 'Pending...',
-  };
-  
-  let connection;
-  try {
-    connection = await pool.getConnection();
-    await connection.query('SELECT 1 + 1');
-    status.database_connection = 'SUCCESS: Connected to database';
-
-    const [tables] = await connection.query(
-      `SELECT table_name FROM information_schema.tables WHERE table_schema = ? AND table_name = 'orders'`,
-      [process.env.DB_NAME]
-    );
+    const status = {
+        system: 'Online',
+        timestamp: new Date().toISOString(),
+        env: {
+            db_host: !!process.env.DB_HOST,
+            stripe: !!process.env.STRIPE_SECRET_KEY,
+            smtp: !!process.env.SMTP_USER
+        },
+        database: 'Checking...'
+    };
     
-    status.table_orders_exists = tables.length > 0 ? 'YES' : 'NO - Tabelul lipsește!';
-
-    const [recentOrders] = await connection.query('SELECT id, created_at FROM orders ORDER BY id DESC LIMIT 3');
-    status.recent_orders_check = recentOrders;
-    
-    connection.release();
-    res.json(status);
-  } catch (error) {
-    if (connection) connection.release();
-    status.database_connection = 'FAILED';
-    status.error_message = error.message;
-    status.error_code = error.code;
-    res.status(500).json(status);
-  }
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        await connection.query('SELECT 1');
+        status.database = 'Connected ✅';
+        res.json(status);
+    } catch (e) {
+        status.database = `Error: ${e.message} ❌`;
+        res.status(500).json(status);
+    } finally {
+        if(connection) connection.release();
+    }
 });
 
-// Catch-all for undefined routes
-app.use((req, res) => {
-  res.status(404).json({ error: 'Route not found' });
+// --- 9. PORNIRE SERVER VPS ---
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`
+    🚀 SERVER OCLAR PORNIRE COMPLETĂ
+    --------------------------------
+    📡 Port: ${PORT}
+    🔗 URL: http://localhost:${PORT}
+    🛠️  Mod: VPS / Production
+    --------------------------------
+    `);
 });
-
-// Error handler
-app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err);
-  res.status(500).json({ error: 'Internal server error' });
-});
-
-// Export serverless handler
-export default serverless(app);
