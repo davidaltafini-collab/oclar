@@ -1,14 +1,29 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 
 export const Navbar: React.FC = () => {
   const { toggleCart, cart } = useCart();
   const location = useLocation();
+  const navigate = useNavigate();
 
   const cartCount = cart.reduce((acc, item) => acc + item.quantity, 0);
-
   const isActive = (path: string) => location.pathname === path;
+
+  // Funcție inteligentă pentru butonul Magazin
+  const handleShopClick = () => {
+    if (location.pathname === '/') {
+      // Cazul 1: Suntem deja pe Home -> Doar scroll
+      document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      // Cazul 2: Suntem pe altă pagină -> Navigăm la Home apoi scroll
+      navigate('/');
+      // Așteptăm puțin să se încarce pagina Home
+      setTimeout(() => {
+        document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    }
+  };
 
   return (
     <>
@@ -22,12 +37,12 @@ export const Navbar: React.FC = () => {
 
         {/* Desktop Links */}
         <div className="hidden md:flex items-center gap-8">
-          <Link 
-            to="/" 
+          <button 
+            onClick={handleShopClick}
             className={`text-xs font-bold uppercase tracking-widest hover:text-brand-yellow transition-colors ${isActive('/') ? 'text-black' : 'text-neutral-400'}`}
           >
             Magazin
-          </Link>
+          </button>
           <Link 
             to="/about" 
             className={`text-xs font-bold uppercase tracking-widest hover:text-brand-yellow transition-colors ${isActive('/about') ? 'text-black' : 'text-neutral-400'}`}
@@ -56,7 +71,11 @@ export const Navbar: React.FC = () => {
 
       {/* Mobile Bottom Nav */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-neutral-100 flex justify-around items-center h-16 pb-safe">
-        <Link to="/" className={`flex flex-col items-center gap-1 p-2 ${isActive('/') ? 'text-black' : 'text-neutral-400'}`}>
+        {/* MODIFICAT AICI: Folosim buton cu onClick în loc de Link simplu */}
+        <button 
+          onClick={handleShopClick}
+          className={`flex flex-col items-center gap-1 p-2 ${isActive('/') ? 'text-black' : 'text-neutral-400'}`}
+        >
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <rect x="3" y="3" width="7" height="7"></rect>
             <rect x="14" y="3" width="7" height="7"></rect>
@@ -64,7 +83,8 @@ export const Navbar: React.FC = () => {
             <rect x="3" y="14" width="7" height="7"></rect>
           </svg>
           <span className="text-[9px] uppercase font-bold tracking-widest">Magazin</span>
-        </Link>
+        </button>
+        
         <button onClick={toggleCart} className="flex flex-col items-center gap-1 p-2 text-neutral-400">
            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="9" cy="21" r="1"></circle>

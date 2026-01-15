@@ -12,6 +12,7 @@ import { About } from './pages/About';
 import { Terms } from './pages/Terms';
 import { Privacy } from './pages/Privacy';
 import { Diagnostics } from './pages/Diagnostics'; // <--- Importă componenta
+import { Admin } from './pages/Admin';
 
 // Scroll to top on route change
 const ScrollToTop = () => {
@@ -39,6 +40,7 @@ const App: React.FC = () => {
               <Route path="/about" element={<About />} />
               <Route path="/terms" element={<Terms />} />
               <Route path="/privacy" element={<Privacy />} />
+              <Route path="/admin-dashboard" element={<Admin />} />
               
               {/* Ruta pentru diagnosticare */}
               <Route path="/diagnostics" element={<Diagnostics />} />

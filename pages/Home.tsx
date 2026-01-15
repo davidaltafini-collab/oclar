@@ -6,260 +6,246 @@ import { useCart } from '../context/CartContext';
 import { API_URL, MOCK_PRODUCTS } from '../constants';
 
 export const Home: React.FC = () => {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
-  const { addToCart } = useCart();
-  
-  const observerRef = useRef<IntersectionObserver | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { addToCart } = useCart();
+  
+  const observerRef = useRef<IntersectionObserver | null>(null);
 
-  useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        const res = await fetch(`${API_URL}/products`);
-        if (!res.ok) throw new Error('Failed to fetch');
-        const data = await res.json();
-        setProducts(data);
-      } catch (error) {
-        console.warn('Using mock data:', error);
-        setProducts(MOCK_PRODUCTS);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchProducts();
-  }, []);
+  useEffect(() => {
+    const fetchProducts = async () => {
+      try {
+        const res = await fetch(`${API_URL}/products`);
+        if (!res.ok) throw new Error('Failed to fetch');
+        const data = await res.json();
+        setProducts(data);
+      } catch (error) {
+        console.warn('Using mock data:', error);
+        setProducts(MOCK_PRODUCTS);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchProducts();
+  }, []);
 
-  // OPTIMIZARE SCROLL
-  useEffect(() => {
-    if (loading) return;
+  // OPTIMIZARE SCROLL: Observer logic corectat
+  useEffect(() => {
+    // Așteptăm puțin să se randeze DOM-ul dacă datele s-au încărcat
+    if (loading) return;
 
-    const timeoutId = setTimeout(() => {
-      observerRef.current = new IntersectionObserver((entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add('is-visible');
-            observerRef.current?.unobserve(entry.target);
-          }
-        });
-      }, { 
-        threshold: 0.1,
-        rootMargin: "50px" 
-      });
+    // Mică întârziere pentru a ne asigura că elementele sunt în DOM
+    const timeoutId = setTimeout(() => {
+      observerRef.current = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-visible');
+            // FIX: Oprim observarea elementului după ce a apărut pentru performanță
+            observerRef.current?.unobserve(entry.target);
+          }
+        });
+      }, { 
+        threshold: 0.1,
+        rootMargin: "50px" // Pre-încarcă animația puțin înainte să intre în ecran
+      });
 
-      const elements = document.querySelectorAll('.reveal-on-scroll');
-      elements.forEach((el) => observerRef.current?.observe(el));
-    }, 100);
+      const elements = document.querySelectorAll('.reveal-on-scroll');
+      elements.forEach((el) => observerRef.current?.observe(el));
+    }, 100);
 
-    return () => {
-      clearTimeout(timeoutId);
-      observerRef.current?.disconnect();
-    };
-  }, [loading, products]);
+    return () => {
+      clearTimeout(timeoutId);
+      observerRef.current?.disconnect();
+    };
+  }, [loading, products]); // Re-rulează doar când produsele s-au încărcat
 
-  return (
-    <main className="bg-white overflow-hidden">
-      {/* FIX MOBIL: Am schimbat 'min-h-screen' cu 'min-h-[100dvh]'.
-         'dvh' (Dynamic Viewport Height) ignoră bara de browser când dai scroll 
-         și elimină glitch-ul vizual pe telefoane.
-      */}
-      <section className="relative min-h-[100dvh] flex flex-col justify-center px-6 md:px-12 border-b border-neutral-100 bg-white">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-brand-yellow/10 rounded-full blur-[120px] pointer-events-none animate-pulse-glow will-change-transform"></div>
-        <div className="absolute top-0 right-0 w-[40vw] h-full bg-neutral-50 -z-10 skew-x-12 translate-x-20 hidden md:block"></div>
+  // FIX LOADING: Nu mai returnăm Loading Screen global.
+  // Lăsăm Hero-ul să se vadă și punem loading doar la produse.
 
-        <div className="max-w-6xl z-10 pt-20 relative">
-          <div className="overflow-hidden mb-4">
-             <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-xs md:text-sm block animate-slide-up">
-              Eyewear for the Digital Age
-            </span>
-          </div>
-          
-          {/* FIX TEXT: 
-              1. leading-[0.85] -> leading-[0.9] (spațiere mai mare între linii)
-              2. Am adăugat 'pb-2' și 'inline-block' la span-ul "Până la" 
-                 pentru ca litera 'a' sau accentele să nu mai fie tăiate de gradient.
-          */}
-          <h1 className="text-7xl sm:text-8xl md:text-[10rem] font-black uppercase tracking-tighter mb-8 leading-[0.9] text-neutral-950 animate-slide-up-delay drop-shadow-xl">
-            Vezi <br/>
-            <span className="inline-block pb-2 text-transparent bg-clip-text bg-gradient-to-r from-neutral-800 to-neutral-500 hover:text-brand-yellow transition-colors duration-700 cursor-default">
-              Până la
-            </span> <br/>
-            Capăt.
-          </h1>
-          
-          <p className="text-neutral-500 max-w-lg text-lg md:text-xl leading-relaxed mb-12 animate-fade-in opacity-0" style={{animationDelay: '0.6s', animationFillMode: 'forwards'}}>
-            Ochelari premium anti-lumină albastră. O soluție simplă pentru o problemă modernă.
-          </p>
-          
-          <div className="flex gap-6 animate-fade-in opacity-0" style={{animationDelay: '0.8s', animationFillMode: 'forwards'}}>
-             <Button onClick={() => document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth' })}>
-               Vezi Toată Colecția
-             </Button>
-             <Link to="/about">
-               <Button variant="outline">Misiunea Noastră</Button>
-             </Link>
-          </div>
-        </div>
-      </section>
+  return (
+    <main className="bg-white overflow-hidden">
+      {/* Hero Section - Se încarcă INSTANTANEU acum */}
+      <section className="relative min-h-screen flex flex-col justify-center px-6 md:px-12 border-b border-neutral-100 bg-white">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-brand-yellow/10 rounded-full blur-[120px] pointer-events-none animate-pulse-glow will-change-transform"></div>
+        <div className="absolute top-0 right-0 w-[40vw] h-full bg-neutral-50 -z-10 skew-x-12 translate-x-20 hidden md:block"></div>
 
-      {/* Core Values Section */}
-      <section className="py-32 px-6 md:px-12 bg-neutral-950 text-white relative">
-        <div className="absolute top-0 left-12 w-1 h-24 bg-brand-yellow shadow-[0_0_15px_#FACC15]"></div>
-        
-        <div className="max-w-7xl mx-auto">
-          <h2 className="text-4xl md:text-6xl font-black uppercase tracking-tighter mb-20 text-center md:text-left reveal-on-scroll">
-            Esența Noastră
-          </h2>
+        <div className="max-w-6xl z-10 pt-20 relative">
+          <div className="overflow-hidden mb-4">
+             <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-xs md:text-sm block animate-slide-up">
+              Eyewear for the Digital Age
+            </span>
+          </div>
+          
+          <h1 className="text-7xl sm:text-8xl md:text-[10rem] font-black uppercase tracking-tighter mb-8 leading-[0.85] text-neutral-950 animate-slide-up-delay drop-shadow-xl">
+            Vezi <br/>
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-neutral-800 to-neutral-500 hover:text-brand-yellow transition-colors duration-700 cursor-default">Până la</span> <br/>
+            Capăt.
+          </h1>
+          
+          <p className="text-neutral-500 max-w-lg text-lg md:text-xl leading-relaxed mb-12 animate-fade-in opacity-0" style={{animationDelay: '0.6s', animationFillMode: 'forwards'}}>
+            Ochelari premium anti-lumină albastră. O soluție simplă pentru o problemă modernă.
+          </p>
+          
+          <div className="flex gap-6 animate-fade-in opacity-0" style={{animationDelay: '0.8s', animationFillMode: 'forwards'}}>
+             <Button onClick={() => document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth' })}>
+               Vezi Toată Colecția
+             </Button>
+             <Link to="/about">
+               <Button variant="outline">Misiunea Noastră</Button>
+             </Link>
+          </div>
+        </div>
+      </section>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-24">
-            {/* Value 1 */}
-            <div className="group reveal-on-scroll">
-              <span className="text-6xl font-black text-neutral-800 group-hover:text-brand-yellow transition-colors duration-500">01.</span>
-              <h3 className="text-xl font-bold uppercase tracking-wide mt-4 mb-2">Protecție Preventivă</h3>
-              <p className="text-neutral-400 leading-relaxed">
-                Nu aștepta simptomele. Ochelarii noștri formează un scut invizibil între retină și radiațiile nocive.
-              </p>
-            </div>
+      {/* Core Values Section */}
+      <section className="py-32 px-6 md:px-12 bg-neutral-950 text-white relative">
+        <div className="absolute top-0 left-12 w-1 h-24 bg-brand-yellow shadow-[0_0_15px_#FACC15]"></div>
+        
+        <div className="max-w-7xl mx-auto">
+          <h2 className="text-4xl md:text-6xl font-black uppercase tracking-tighter mb-20 text-center md:text-left reveal-on-scroll">
+            Esența Noastră
+          </h2>
 
-            {/* Value 2 */}
-             <div className="group reveal-on-scroll" style={{transitionDelay: '100ms'}}>
-              <span className="text-6xl font-black text-neutral-800 group-hover:text-brand-yellow transition-colors duration-500">02.</span>
-              <h3 className="text-xl font-bold uppercase tracking-wide mt-4 mb-2">Calitatea Vieții</h3>
-              <p className="text-neutral-400 leading-relaxed">
-                Mai mult decât protecție oculară. Prin blocarea luminii albastre seara, stimulăm melatonina.
-              </p>
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-24">
+            {/* Value 1 */}
+            <div className="group reveal-on-scroll">
+              <span className="text-6xl font-black text-neutral-800 group-hover:text-brand-yellow transition-colors duration-500">01.</span>
+              <h3 className="text-xl font-bold uppercase tracking-wide mt-4 mb-2">Protecție Preventivă</h3>
+              <p className="text-neutral-400 leading-relaxed">
+                Nu aștepta simptomele. Ochelarii noștri formează un scut invizibil între retină și radiațiile nocive.
+              </p>
+            </div>
 
-            {/* Value 3 */}
-             <div className="group reveal-on-scroll" style={{transitionDelay: '200ms'}}>
-              <span className="text-6xl font-black text-neutral-800 group-hover:text-brand-yellow transition-colors duration-500">03.</span>
-              <h3 className="text-xl font-bold uppercase tracking-wide mt-4 mb-2">Simplitate Radicală</h3>
-              <p className="text-neutral-400 leading-relaxed">
-                O soluție simplă pentru o problemă complexă. Fără software, fără setări complicate.
-              </p>
-            </div>
+            {/* Value 2 */}
+             <div className="group reveal-on-scroll" style={{transitionDelay: '100ms'}}>
+              <span className="text-6xl font-black text-neutral-800 group-hover:text-brand-yellow transition-colors duration-500">02.</span>
+              <h3 className="text-xl font-bold uppercase tracking-wide mt-4 mb-2">Calitatea Vieții</h3>
+              <p className="text-neutral-400 leading-relaxed">
+                Mai mult decât protecție oculară. Prin blocarea luminii albastre seara, stimulăm melatonina.
+              </p>
+            </div>
 
-             {/* Value 4 */}
-             <div className="group reveal-on-scroll" style={{transitionDelay: '300ms'}}>
-              <span className="text-6xl font-black text-neutral-800 group-hover:text-brand-yellow transition-colors duration-500">04.</span>
-              <h3 className="text-xl font-bold uppercase tracking-wide mt-4 mb-2">Accesibil & Premium</h3>
-              <p className="text-neutral-400 leading-relaxed">
-                Design de lux, materiale durabile (acetat, titan), la un preț care respectă munca ta.
-              </p>
-            </div>
+            {/* Value 3 */}
+             <div className="group reveal-on-scroll" style={{transitionDelay: '200ms'}}>
+              <span className="text-6xl font-black text-neutral-800 group-hover:text-brand-yellow transition-colors duration-500">03.</span>
+              <h3 className="text-xl font-bold uppercase tracking-wide mt-4 mb-2">Simplitate Radicală</h3>
+              <p className="text-neutral-400 leading-relaxed">
+                O soluție simplă pentru o problemă complexă. Fără software, fără setări complicate.
+              </p>
+            </div>
 
-             {/* Value 5 */}
-             <div className="group md:col-span-2 lg:col-span-2 bg-neutral-900 p-8 border border-neutral-800 hover:border-brand-yellow transition-colors duration-500 rounded-3xl relative overflow-hidden reveal-on-scroll" style={{transitionDelay: '400ms'}}>
-               <div className="absolute inset-0 bg-brand-yellow/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-               <span className="text-sm font-bold text-brand-yellow uppercase tracking-widest mb-2 block relative z-10">Motto-ul Nostru</span>
-               <h3 className="text-3xl md:text-5xl font-black uppercase tracking-tighter italic relative z-10">
-                 "Vezi până la capăt."
-               </h3>
-               <p className="text-neutral-500 mt-4 max-w-lg relative z-10">
-                 Fie că e vorba de un proiect important, un joc competitiv sau un maraton de filme. Rămâi OCLARat, rămâi protejat.
-               </p>
-            </div>
-          </div>
-        </div>
-      </section>
+             {/* Value 4 */}
+             <div className="group reveal-on-scroll" style={{transitionDelay: '300ms'}}>
+              <span className="text-6xl font-black text-neutral-800 group-hover:text-brand-yellow transition-colors duration-500">04.</span>
+              <h3 className="text-xl font-bold uppercase tracking-wide mt-4 mb-2">Accesibil & Premium</h3>
+              <p className="text-neutral-400 leading-relaxed">
+                Design de lux, materiale durabile (acetat, titan), la un preț care respectă munca ta.
+              </p>
+            </div>
 
-      {/* Product Grid */}
-      <section id="shop" className="py-32 px-4 md:px-12 max-w-screen-2xl mx-auto bg-white min-h-[600px]">
-        <div className="flex flex-col md:flex-row justify-between items-end mb-16 border-b-2 border-black pb-6 reveal-on-scroll">
-          <h3 className="text-5xl font-black uppercase tracking-tighter">Colecția</h3>
-          {!loading && <span className="text-sm font-bold uppercase tracking-widest mt-4 md:mt-0">{products.length} Modele Disponibile</span>}
-        </div>
+             {/* Value 5 */}
+             <div className="group md:col-span-2 lg:col-span-2 bg-neutral-900 p-8 border border-neutral-800 hover:border-brand-yellow transition-colors duration-500 rounded-3xl relative overflow-hidden reveal-on-scroll" style={{transitionDelay: '400ms'}}>
+               <div className="absolute inset-0 bg-brand-yellow/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+               <span className="text-sm font-bold text-brand-yellow uppercase tracking-widest mb-2 block relative z-10">Motto-ul Nostru</span>
+               <h3 className="text-3xl md:text-5xl font-black uppercase tracking-tighter italic relative z-10">
+                 "Vezi până la capăt."
+               </h3>
+               <p className="text-neutral-500 mt-4 max-w-lg relative z-10">
+                 Fie că e vorba de un proiect important, un joc competitiv sau un maraton de filme. Rămâi OCLARat, rămâi protejat.
+               </p>
+            </div>
+          </div>
+        </div>
+      </section>
 
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-20">
-             <div className="w-12 h-12 border-4 border-neutral-200 border-t-brand-yellow rounded-full animate-spin mb-4"></div>
-             <p className="text-xs uppercase font-bold tracking-widest text-neutral-400">Se încarcă colecția...</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-20">
-            {products.map((product, index) => (
-              <div key={product.id} className="group flex flex-col cursor-pointer reveal-on-scroll" style={{transitionDelay: `${index * 50}ms`}}> 
-                <Link to={`/product/${product.id}`} className="block relative overflow-hidden bg-neutral-100 mb-8 aspect-[4/5] isolate rounded-2xl shadow-sm hover:shadow-2xl hover:shadow-brand-yellow/20 transition-all duration-500">
-                  <div className="w-full h-full overflow-hidden">
-                     <img 
-                      src={product.imageUrl} 
-                      alt={product.name}
-                      className="w-full h-full object-cover object-center grayscale group-hover:grayscale-0 scale-100 group-hover:scale-110 transition-transform duration-700 ease-in-out will-change-transform"
-                      loading="lazy"
-                    />
-                  </div>
-                  
-                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
-                    <span className="bg-neutral-100/30 text-black px-6 py-3 font-bold uppercase tracking-wider text-sm border border-black rounded-full transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300 shadow-xl backdrop-blur-sm">
-                      Vezi Detalii
-                    </span>
-                  </div>
-                </Link>
-                
-                <div className="flex flex-col gap-2 px-2">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-[0.15em] mb-1 block">{product.category}</span>
-                      <Link to={`/product/${product.id}`}>
-                        <h2 className="text-2xl font-black uppercase tracking-tight group-hover:text-brand-yellow transition-colors duration-200 leading-none">
-                          {product.name}
-                        </h2>
-                      </Link>
-                    </div>
-                    <span className="font-bold text-lg">
-                      {product.price.toFixed(0)} RON
-                    </span>
-                  </div>
-                  <p className="text-sm text-neutral-500 line-clamp-2 leading-relaxed">{product.description}</p>
-                  
-                  {product.colors && (
-                    <div className="flex gap-2 mt-2">
-                      {product.colors.map((c, i) => (
-                        <div key={i} className="w-3 h-3 rounded-full border border-neutral-200" style={{backgroundColor: c}}></div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                
-                <button 
-                  onClick={() => addToCart(product)}
-                  className="mt-6 py-3 border border-neutral-200 hover:border-black hover:bg-black hover:text-white uppercase font-bold text-xs tracking-widest transition-colors duration-300 w-full rounded-xl self-start px-8"
-                >
-                  Adaugă în Coș
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+      {/* Product Grid */}
+      <section id="shop" className="py-32 px-4 md:px-12 max-w-screen-2xl mx-auto bg-white min-h-[600px]">
+        <div className="flex flex-col md:flex-row justify-between items-end mb-16 border-b-2 border-black pb-6 reveal-on-scroll">
+          <h3 className="text-5xl font-black uppercase tracking-tighter">Colecția</h3>
+          {!loading && <span className="text-sm font-bold uppercase tracking-widest mt-4 md:mt-0">{products.length} Modele Disponibile</span>}
+        </div>
 
-      {/* Impact Section */}
-      <section className="py-24 px-6 md:px-12 bg-neutral-50 border-t border-neutral-200">
-         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center gap-16 reveal-on-scroll">
-            <div className="w-full md:w-1/2">
-               <h3 className="text-4xl font-black uppercase tracking-tighter mb-6">Investiție în tine.</h3>
-               <p className="text-lg text-neutral-600 mb-8 leading-relaxed">
-                 Expunerea prelungită la lumina albastră suprimă melatonina și provoacă oboseală digitală. Ochelarii Oclar nu sunt doar un accesoriu, ci o unealtă de productivitate și sănătate.
-               </p>
-               <ul className="space-y-4 font-bold uppercase tracking-wide text-sm">
-                 <li className="flex items-center gap-3">
-                   <div className="w-2 h-2 bg-green-500 rounded-full shadow-[0_0_10px_#22c55e]"></div>
-                   Reduce durerile de cap
-                 </li>
-                 <li className="flex items-center gap-3">
-                   <div className="w-2 h-2 bg-green-500 rounded-full shadow-[0_0_10px_#22c55e]"></div>
-                   Somn profund
-                 </li>
-                 <li className="flex items-center gap-3">
-                   <div className="w-2 h-2 bg-green-500 rounded-full shadow-[0_0_10px_#22c55e]"></div>
-                   Claritate vizuală
-                 </li>
-               </ul>
-            </div>
-            <div className="w-full md:w-1/2 aspect-video bg-neutral-200 relative overflow-hidden group rounded-3xl shadow-2xl">
-               <img src="https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&q=80&w=1000" alt="OclarLifestyle" className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-1000" />
-            </div>
-         </div>
-      </section>
-    </main>
-  );
+        {/* LOADING STATE - mutat aici local */}
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20">
+             <div className="w-12 h-12 border-4 border-neutral-200 border-t-brand-yellow rounded-full animate-spin mb-4"></div>
+             <p className="text-xs uppercase font-bold tracking-widest text-neutral-400">Se încarcă colecția...</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-20">
+            {products.map((product, index) => (
+              <div key={product.id} className="group flex flex-col cursor-pointer reveal-on-scroll" style={{transitionDelay: `${index * 50}ms`}}> 
+                {/* Am redus delay-ul pentru a părea mai rapid */}
+                
+                <Link to={`/product/${product.id}`} className="block relative overflow-hidden bg-neutral-100 mb-8 aspect-[4/5] isolate rounded-2xl shadow-sm hover:shadow-2xl hover:shadow-brand-yellow/20 transition-all duration-500">
+                  <div className="w-full h-full overflow-hidden">
+                     <img 
+                      src={product.imageUrl} 
+                      alt={product.name}
+                      className="w-full h-full object-cover object-center grayscale group-hover:grayscale-0 scale-100 group-hover:scale-110 transition-transform duration-700 ease-in-out will-change-transform"
+                      loading="lazy"
+                    />
+                  </div>
+                  
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
+                    <span className="bg-gray-100/30 text-black px-6 py-3 font-bold uppercase tracking-wider text-sm border border-black rounded-full transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300 shadow-xl">
+                      Vezi Detalii
+                    </span>
+                  </div>
+                </Link>
+                
+                <div className="flex flex-col gap-2 px-2">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-[0.15em] mb-1 block">{product.category}</span>
+                      <Link to={`/product/${product.id}`}>
+                        <h2 className="text-2xl font-black uppercase tracking-tight group-hover:text-brand-yellow transition-colors duration-200 leading-none">
+                          {product.name}
+                        </h2>
+                      </Link>
+                    </div>
+                    <span className="font-bold text-lg">
+                      {product.price.toFixed(0)} RON
+                    </span>
+                  </div>
+                  <p className="text-sm text-neutral-500 line-clamp-2 leading-relaxed">{product.description}</p>
+                  
+                  {product.colors && (
+                    <div className="flex gap-2 mt-2">
+                      {product.colors.map((c, i) => (
+                        <div key={i} className="w-3 h-3 rounded-full border border-neutral-200" style={{backgroundColor: c}}></div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                
+                <button 
+                  onClick={() => addToCart(product)}
+                  className="mt-6 py-3 border border-neutral-200 hover:border-black hover:bg-black hover:text-white uppercase font-bold text-xs tracking-widest transition-colors duration-300 w-full rounded-xl self-start px-8"
+                >
+                  Adaugă în Coș
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Impact Section */}
+      <section className="py-24 px-6 md:px-12 bg-neutral-50 border-t border-neutral-200">
+         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center gap-16 reveal-on-scroll">
+            <div className="w-full md:w-1/2">
+               <h3 className="text-4xl font-black uppercase tracking-tighter mb-6">Investiție în tine.</h3>
+               <p className="text-lg text-neutral-600 mb-8 leading-relaxed">
+                 Expunerea prelungită la lumina albastră suprimă melatonina și provoacă oboseală digitală. Ochelarii Oclarnu sunt doar un accesoriu, ci o unealtă de productivitate și sănătate.
+               </p>
+               {/* Content... */}
+            </div>
+            <div className="w-full md:w-1/2 aspect-video bg-neutral-200 relative overflow-hidden group rounded-3xl shadow-2xl">
+               <img src="https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&q=80&w=1000" alt="OclarLifestyle" className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-1000" />
+            </div>
+         </div>
+      </section>
+    </main>
+  );
 };
