@@ -56,21 +56,29 @@ function Model({ url, autoRotate = false, enableOrbit = false, intensity = 0.22 
     });
   }, [cloned]);
 
-  useFrame(({ mouse }) => {
-    if (!group.current) return;
+  useFrame(({ mouse, clock }) => {
+  if (!group.current) return;
 
-    // mouse-reactive (desktop) - foarte subtil
-    const targetX = mouse.y * intensity;
-    const targetY = mouse.x * intensity;
+  // plutire (sus-jos) + micro tilt
+  const t = clock.getElapsedTime();
+  const floatY = Math.sin(t * 0.8) * 0.08;
+  const floatX = Math.sin(t * 0.6) * 0.02;
 
-    group.current.rotation.x = THREE.MathUtils.lerp(group.current.rotation.x, targetX, 0.06);
-    group.current.rotation.y = THREE.MathUtils.lerp(group.current.rotation.y, targetY, 0.06);
+  group.current.position.y = THREE.MathUtils.lerp(group.current.position.y, floatY, 0.06);
+  group.current.rotation.x = THREE.MathUtils.lerp(group.current.rotation.x, floatX + mouse.y * intensity, 0.06);
 
-    // auto-rotate foarte lent (premium)
-    if (autoRotate) {
-      group.current.rotation.y += 0.0006;
-    }
-  });
+  // auto rotate constant, chiar fara mouse
+  if (autoRotate) {
+    group.current.rotation.y += 0.006; // daca e prea rapid, scade la 0.003 / 0.002
+  }
+
+  // mouse influence subtil (se adauga peste auto-rotate)
+  group.current.rotation.y = THREE.MathUtils.lerp(
+    group.current.rotation.y,
+    group.current.rotation.y + mouse.x * intensity,
+    0.02
+  );
+});
 
   return (
     <group ref={group}>

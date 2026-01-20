@@ -73,37 +73,48 @@ export const Home: React.FC = () => {
   return (
     <main className="bg-white overflow-hidden">
       {/* Hero Section */}
-      <section className="relative min-h-screen flex flex-col justify-center px-6 md:px-12 border-b border-neutral-100 bg-white">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-brand-yellow/10 rounded-full blur-[120px] pointer-events-none animate-pulse-glow will-change-transform"></div>
+      <section className="relative min-h-[100vh] flex flex-col justify-center px-6 md:px-12 border-b border-neutral-100 bg-white">
+        {/* glow original */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[60vh] h-[60vh] bg-brand-yellow/10 rounded-full blur-[12vh] pointer-events-none animate-pulse-glow will-change-transform"></div>
+        {/* panel dreapta original */}
         <div className="absolute top-0 right-0 w-[40vw] h-full bg-neutral-50 -z-10 skew-x-12 translate-x-20 hidden md:block"></div>
 
         <div className="w-full max-w-6xl mx-auto z-10 pt-20 relative">
-          {/* IMPORTANT: pastram layout-ul de hero cu textul dominant, iar 3D-ul sta in dreapta si poate fi "pe sub" */}
           <div className="relative">
-            {/* 3D pe dreapta, in spate (textul poate trece peste el) */}
-            <div className="hidden md:block absolute right-0 top-1/2 -translate-y-1/2 w-[520px] h-[520px] pointer-events-auto">
-              <Oclar3D autoRotate enableOrbit intensity={0.22} className="w-full h-full" />
+            {/* DESKTOP: 3D in dreapta, mare, fara container vizibil */}
+            <div className="hidden md:block absolute right-0 top-1/2 -translate-y-1/2 w-[44vw] h-[70vh] pointer-events-auto">
+              <Oclar3D
+                autoRotate
+                enableOrbit
+                intensity={0.18}
+                className="w-full h-full"
+              />
             </div>
 
-            {/* 3D pe mobil: sub text, ca sa nu iasa din ecran */}
-            <div className="md:hidden w-full mt-8">
-              <Oclar3D autoRotate enableOrbit intensity={0.22} className="w-full h-[320px]" />
-            </div>
-
-            {/* TEXT */}
-            <div className="relative z-10 max-w-3xl">
+            {/* TEXT: stanga, mare, ca original */}
+            <div className="relative z-10 md:max-w-[52%]">
               <div className="overflow-hidden mb-4">
                 <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-xs md:text-sm block animate-slide-up">
                   Eyewear for the Digital Age
                 </span>
               </div>
 
-              {/* FIX: inlocuim complet headline-ul si eliminam orice overlap nedorit */}
-              <h1 className="text-6xl sm:text-7xl md:text-[5.5rem] lg:text-[6.5rem] font-black uppercase tracking-tighter mb-8 leading-[0.9] text-neutral-950 animate-slide-up-delay drop-shadow-xl">
+              {/* FIX: headline nou, fara overlap urat (si ramane “poster-like” pe desktop) */}
+              <h1 className="text-6xl sm:text-7xl md:text-[10vh] lg:text-[11vh] font-black uppercase tracking-tighter mb-6 leading-[0.85] text-neutral-950 animate-slide-up-delay drop-shadow-xl">
                 Ochii tăi <br />
                 merită <br />
                 ce e mai bun.
               </h1>
+
+              {/* MOBILE: sub titlu vine 3D, apoi abia dupa vine paragraful */}
+              <div className="md:hidden w-full mt-6">
+                <Oclar3D
+                  autoRotate
+                  enableOrbit
+                  intensity={0.18}
+                  className="w-full h-[38vh]"
+                />
+              </div>
 
               <p
                 className="text-neutral-500 max-w-lg text-lg md:text-xl leading-relaxed mb-12 animate-fade-in opacity-0"
@@ -138,7 +149,6 @@ export const Home: React.FC = () => {
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-24">
-            {/* Value 1 */}
             <div className="group reveal-on-scroll">
               <span className="text-6xl font-black text-neutral-800 group-hover:text-brand-yellow transition-colors duration-500">
                 01.
@@ -149,7 +159,6 @@ export const Home: React.FC = () => {
               </p>
             </div>
 
-            {/* Value 2 */}
             <div className="group reveal-on-scroll" style={{ transitionDelay: '100ms' }}>
               <span className="text-6xl font-black text-neutral-800 group-hover:text-brand-yellow transition-colors duration-500">
                 02.
@@ -160,7 +169,6 @@ export const Home: React.FC = () => {
               </p>
             </div>
 
-            {/* Value 3 */}
             <div className="group reveal-on-scroll" style={{ transitionDelay: '200ms' }}>
               <span className="text-6xl font-black text-neutral-800 group-hover:text-brand-yellow transition-colors duration-500">
                 03.
@@ -171,7 +179,6 @@ export const Home: React.FC = () => {
               </p>
             </div>
 
-            {/* Value 4 */}
             <div className="group reveal-on-scroll" style={{ transitionDelay: '300ms' }}>
               <span className="text-6xl font-black text-neutral-800 group-hover:text-brand-yellow transition-colors duration-500">
                 04.
@@ -182,7 +189,6 @@ export const Home: React.FC = () => {
               </p>
             </div>
 
-            {/* Value 5 */}
             <div
               className="group md:col-span-2 lg:col-span-2 bg-neutral-900 p-8 border border-neutral-800 hover:border-brand-yellow transition-colors duration-500 rounded-3xl relative overflow-hidden reveal-on-scroll"
               style={{ transitionDelay: '400ms' }}
