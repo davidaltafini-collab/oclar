@@ -12,7 +12,7 @@ export const Home: React.FC = () => {
 
   const observerRef = useRef<IntersectionObserver | null>(null);
 
-  // Helper: normalizare pentru a evita toFixed pe string/null
+  // Helper sigur pentru toFixed
   const toNumber = (v: unknown): number => {
     if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
     if (typeof v === 'string') {
@@ -73,6 +73,7 @@ export const Home: React.FC = () => {
     <main className="bg-white overflow-hidden">
       {/* Hero Section */}
       <section className="relative min-h-screen flex flex-col justify-center px-6 md:px-12 border-b border-neutral-100 bg-white">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/ desarrollado are central? no this is code; keep */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-brand-yellow/10 rounded-full blur-[120px] pointer-events-none animate-pulse-glow will-change-transform"></div>
         <div className="absolute top-0 right-0 w-[40vw] h-full bg-neutral-50 -z-10 skew-x-12 translate-x-20 hidden md:block"></div>
 
@@ -233,7 +234,7 @@ export const Home: React.FC = () => {
                   </Link>
 
                   <div className="flex flex-col gap-2 px-2">
-                    <div className="flex justify-between items-start">
+                    <div className="flex justify-between items-start gap-6">
                       <div>
                         <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-[0.15em] mb-1 block">
                           {product.category}
@@ -245,13 +246,13 @@ export const Home: React.FC = () => {
                         </Link>
                       </div>
 
-                      <div className="flex items-baseline gap-2">
-                        <span className="font-bold text-lg">{price.toFixed(0)} RON</span>
-
+                      {/* Pret simplu: curent + (optional) taiat sub el */}
+                      <div className="text-right leading-none">
+                        <div className="font-bold text-lg">{price.toFixed(0)} RON</div>
                         {hasDiscount && (
-                          <span className="text-xs text-red-500 line-through font-mono">
+                          <div className="text-xs text-red-500 line-through font-mono mt-1">
                             {original.toFixed(0)} RON
-                          </span>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -274,7 +275,6 @@ export const Home: React.FC = () => {
                   <button
                     onClick={() => addToCart(product)}
                     className="mt-6 py-3 border border-neutral-200 hover:border-black hover:bg-black hover:text-white uppercase font-bold text-xs tracking-widest transition-colors duration-300 w-full rounded-xl self-start px-8"
-                    type="button"
                   >
                     Adaugă în Coș
                   </button>
@@ -291,8 +291,8 @@ export const Home: React.FC = () => {
           <div className="w-full md:w-1/2">
             <h3 className="text-4xl font-black uppercase tracking-tighter mb-6">Investiție în tine.</h3>
             <p className="text-lg text-neutral-600 mb-8 leading-relaxed">
-              Expunerea prelungită la lumina albastră suprimă melatonina și provoacă oboseală digitală. Ochelarii Oclarnu
-              sunt doar un accesoriu, ci o unealtă de productivitate și sănătate.
+              Expunerea prelungită la lumina albastră suprimă melatonina și provoacă oboseală digitală. Ochelarii
+              Oclarnu sunt doar un accesoriu, ci o unealtă de productivitate și sănătate.
             </p>
           </div>
 
