@@ -133,6 +133,7 @@ app.get('/api/products/:id', async (req, res) => {
         const p = rows[0];
         p.details = typeof p.details === 'string' ? JSON.parse(p.details) : p.details;
         p.colors = typeof p.colors === 'string' ? JSON.parse(p.colors) : p.colors;
+        p.gallery = typeof p.gallery === 'string' ? JSON.parse(p.gallery) : (p.gallery || []);
         p.price = parseFloat(p.price);
         
         res.json(p);
