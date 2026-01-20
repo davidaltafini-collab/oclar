@@ -252,21 +252,25 @@ app.all('/api/admin', async (req, res) => {
             }
         }
         
-        if (req.method === 'POST') {
-             const { id, name, description, price, original_price, stock_quantity, category, imageUrl, colors } = req.body;
+       if (req.method === 'POST') {
+             // Preluăm și gallery și details
+             const { id, name, description, price, original_price, stock_quantity, category, imageUrl, gallery, colors, details } = req.body;
+             
              const status = (stock_quantity && stock_quantity > 0) ? 'active' : 'out_of_stock';
              const colorsJson = JSON.stringify(colors || []);
+             const detailsJson = JSON.stringify(details || []);
+             const galleryJson = JSON.stringify(gallery || []); // Serializăm galeria
 
              if (id) {
                  await connection.query(
-                     `UPDATE products SET name=?, description=?, price=?, original_price=?, stock_quantity=?, category=?, imageUrl=?, colors=?, status=?, updated_at=NOW() WHERE id=?`,
-                     [name, description, price, original_price || null, stock_quantity || 0, category, imageUrl, colorsJson, status, id]
+                     `UPDATE products SET name=?, description=?, price=?, original_price=?, stock_quantity=?, category=?, imageUrl=?, gallery=?, colors=?, details=?, status=?, updated_at=NOW() WHERE id=?`,
+                     [name, description, price, original_price || null, stock_quantity || 0, category, imageUrl, galleryJson, colorsJson, detailsJson, status, id]
                  );
                  return res.json({ success: true, message: 'Produs actualizat' });
              } else {
                  await connection.query(
-                     `INSERT INTO products (name, description, price, original_price, stock_quantity, category, imageUrl, colors, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-                     [name, description, price, original_price || null, stock_quantity || 0, category, imageUrl, colorsJson, status]
+                     `INSERT INTO products (name, description, price, original_price, stock_quantity, category, imageUrl, gallery, colors, details, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+                     [name, description, price, original_price || null, stock_quantity || 0, category, imageUrl, galleryJson, colorsJson, detailsJson, status]
                  );
                  return res.json({ success: true, message: 'Produs creat' });
              }
