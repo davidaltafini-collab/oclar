@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { API_URL } from '../constants';
 import { Button } from '../components/Button';
 
-// Tipuri adaptate la baza ta de date
+// Tipuri adaptate la baza ta de date actualizată
 interface AdminProduct {
   id?: number;
   name: string;
@@ -12,7 +12,9 @@ interface AdminProduct {
   description: string;
   category: string;
   imageUrl: string;
+  gallery: string[]; // Array de string-uri Base64 pentru mai multe poze
   colors: string[];
+  details: string[]; // Array de string-uri pentru specificații
 }
 
 export const Admin: React.FC = () => {
@@ -23,20 +25,19 @@ export const Admin: React.FC = () => {
   const [orders, setOrders] = useState<any[]>([]);
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [loading, setLoading] = useState(false);
-  const [loginLoading, setLoginLoading] = useState(false); // Loading specific pentru login
+  const [loginLoading, setLoginLoading] = useState(false);
 
   // Formular Produs
   const [editingProduct, setEditingProduct] = useState<AdminProduct | null>(null);
   const [showForm, setShowForm] = useState(false);
 
-  // --- 1. LOGIN VERIFICAT ---
+  // --- 1. LOGIN ---
   const handleLogin = async (e?: React.FormEvent) => {
     if(e) e.preventDefault();
     if(!secret) return;
 
     setLoginLoading(true);
     try {
-        // Facem un request de test pentru a verifica cheia
         const res = await fetch(`${API_URL}/admin?type=orders`, {
             headers: { 'x-admin-secret': secret }
         });
@@ -54,13 +55,10 @@ export const Admin: React.FC = () => {
     }
   };
   
-  // Auto-login la refresh
   useEffect(() => {
       const savedSecret = sessionStorage.getItem('admin_secret');
       if(savedSecret) {
           setSecret(savedSecret);
-          // Nu setăm direct auth true, lăsăm fetch-ul de date să decidă dacă e valid
-          // Dar pentru UX rapid, putem presupune true și logout la eroare 401
           setIsAuthenticated(true);
       }
   }, []);
@@ -92,6 +90,42 @@ export const Admin: React.FC = () => {
     }
   }, [activeTab, isAuthenticated]);
 
+  // --- 2. GESTIONARE IMAGINI (BASE64) ---
+  const handleImageFile = (e: React.ChangeEvent<HTMLInputElement>, isGallery: boolean = false) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        if (editingProduct) {
+            if (isGallery) {
+                // Adăugăm la galeria existentă
+                setEditingProduct({
+                    ...editingProduct,
+                    gallery: [...(editingProduct.gallery || []), base64String]
+                });
+            } else {
+                // Setăm imaginea principală
+                setEditingProduct({
+                    ...editingProduct,
+                    imageUrl: base64String
+                });
+            }
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeGalleryImage = (index: number) => {
+      if (!editingProduct) return;
+      const newGallery = [...editingProduct.gallery];
+      newGallery.splice(index, 1);
+      setEditingProduct({ ...editingProduct, gallery: newGallery });
+  };
+
+  // --- 3. SUBMIT PRODUS ---
   const handleProductSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProduct) return;
@@ -193,7 +227,7 @@ export const Admin: React.FC = () => {
             </div>
         </div>
 
-        {/* --- TAB COMENZI --- */}
+        {/* --- TAB COMENZI (NESCHIMBAT) --- */}
         {activeTab === 'orders' && (
             <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
                 <div className="overflow-x-auto">
@@ -254,14 +288,14 @@ export const Admin: React.FC = () => {
             </div>
         )}
 
-        {/* --- TAB PRODUSE --- */}
+        {/* --- TAB PRODUSE (COMPLET ACTUALIZAT) --- */}
         {activeTab === 'products' && (
             <div>
                 <div className="flex justify-end mb-6">
                     <Button onClick={() => {
                         setEditingProduct({
                             name: '', price: 0, original_price: null, stock_quantity: 10, description: '', 
-                            category: 'Ochelari', imageUrl: '', colors: []
+                            category: 'Ochelari', imageUrl: '', gallery: [], colors: [], details: []
                         });
                         setShowForm(true);
                     }}>+ Adaugă Produs Nou</Button>
@@ -274,33 +308,36 @@ export const Admin: React.FC = () => {
                              {editingProduct.id ? '✏️ Editează Produs' : '✨ Produs Nou'}
                         </h3>
                         
-                        <form onSubmit={handleProductSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <form onSubmit={handleProductSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            {/* COLOANA STÂNGA: Informații Generale */}
                             <div className="space-y-4">
-                                <label className="block text-xs font-bold uppercase text-neutral-500">Nume Produs</label>
-                                <input 
-                                    className="w-full p-3 border border-neutral-200 rounded-lg text-base md:text-sm focus:border-black focus:outline-none transition-colors"
-                                    value={editingProduct.name}
-                                    onChange={e => setEditingProduct({...editingProduct, name: e.target.value})}
-                                    required
-                                    placeholder="ex: Oclar Pro Titanium"
-                                />
+                                <div>
+                                    <label className="label-admin">Nume Produs</label>
+                                    <input 
+                                        className="input-admin"
+                                        value={editingProduct.name}
+                                        onChange={e => setEditingProduct({...editingProduct, name: e.target.value})}
+                                        required
+                                        placeholder="ex: Oclar Pro Titanium"
+                                    />
+                                </div>
                                 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-xs font-bold uppercase text-neutral-500 mb-1">Preț Actual (RON)</label>
+                                        <label className="label-admin">Preț Actual (RON)</label>
                                         <input 
                                             type="number" step="0.01"
-                                            className="w-full p-3 border border-neutral-200 rounded-lg font-bold text-base md:text-sm focus:border-black focus:outline-none transition-colors"
+                                            className="input-admin font-bold"
                                             value={editingProduct.price}
                                             onChange={e => setEditingProduct({...editingProduct, price: parseFloat(e.target.value)})}
                                             required
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-bold uppercase text-red-500 mb-1">Preț Vechi (Reducere)</label>
+                                        <label className="label-admin text-red-500">Preț Vechi (Reducere)</label>
                                         <input 
                                             type="number" step="0.01"
-                                            className="w-full p-3 border border-neutral-200 rounded-lg text-neutral-500 text-base md:text-sm focus:border-black focus:outline-none transition-colors"
+                                            className="input-admin text-red-500"
                                             placeholder="Opțional"
                                             value={editingProduct.original_price || ''}
                                             onChange={e => setEditingProduct({...editingProduct, original_price: e.target.value ? parseFloat(e.target.value) : null})}
@@ -308,51 +345,122 @@ export const Admin: React.FC = () => {
                                     </div>
                                 </div>
 
-                                <div>
-                                    <label className="block text-xs font-bold uppercase text-green-600 mb-1">Stoc Disponibil</label>
-                                    <input 
-                                        type="number" 
-                                        className="w-full p-3 border border-neutral-200 rounded-lg text-base md:text-sm focus:border-black focus:outline-none transition-colors"
-                                        value={editingProduct.stock_quantity}
-                                        onChange={e => setEditingProduct({...editingProduct, stock_quantity: parseInt(e.target.value)})}
-                                        required
-                                    />
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="label-admin">Stoc</label>
+                                        <input 
+                                            type="number" 
+                                            className="input-admin"
+                                            value={editingProduct.stock_quantity}
+                                            onChange={e => setEditingProduct({...editingProduct, stock_quantity: parseInt(e.target.value)})}
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="label-admin">Categorie</label>
+                                        <input 
+                                            className="input-admin"
+                                            value={editingProduct.category}
+                                            onChange={e => setEditingProduct({...editingProduct, category: e.target.value})}
+                                            required
+                                            placeholder="ex: Daytime"
+                                        />
+                                    </div>
                                 </div>
                                 
                                 <div>
-                                    <label className="block text-xs font-bold uppercase text-neutral-500 mb-1">Categorie</label>
-                                    <input 
-                                        className="w-full p-3 border border-neutral-200 rounded-lg text-base md:text-sm focus:border-black focus:outline-none transition-colors"
-                                        value={editingProduct.category}
-                                        onChange={e => setEditingProduct({...editingProduct, category: e.target.value})}
+                                    <label className="label-admin">Descriere</label>
+                                    <textarea 
+                                        className="input-admin h-32 resize-none"
+                                        value={editingProduct.description}
+                                        onChange={e => setEditingProduct({...editingProduct, description: e.target.value})}
                                         required
-                                        placeholder="ex: Daytime, Nighttime"
                                     />
+                                </div>
+
+                                {/* EDITOR SPECIFICAȚII */}
+                                <div className="bg-neutral-50 p-4 rounded-xl border border-neutral-200">
+                                    <label className="label-admin mb-2 block">Specificații Tehnice</label>
+                                    {editingProduct.details.map((spec, idx) => (
+                                        <div key={idx} className="flex gap-2 mb-2">
+                                            <input 
+                                                className="input-admin py-1 text-sm bg-white" 
+                                                value={spec} 
+                                                onChange={(e) => {
+                                                    const newSpecs = [...editingProduct.details];
+                                                    newSpecs[idx] = e.target.value;
+                                                    setEditingProduct({...editingProduct, details: newSpecs});
+                                                }}
+                                            />
+                                            <button type="button" onClick={() => {
+                                                const newSpecs = editingProduct.details.filter((_, i) => i !== idx);
+                                                setEditingProduct({...editingProduct, details: newSpecs});
+                                            }} className="text-red-500 px-2 font-bold hover:bg-red-50 rounded">×</button>
+                                        </div>
+                                    ))}
+                                    <Button 
+                                        type="button" 
+                                        variant="outline" 
+                                        className="w-full py-2 text-xs border-dashed border-neutral-300 hover:border-black" 
+                                        onClick={() => setEditingProduct({...editingProduct, details: [...editingProduct.details, "Caracteristică: Valoare"]})}
+                                    >
+                                        + Adaugă Specificație
+                                    </Button>
                                 </div>
                             </div>
 
-                            <div className="space-y-4">
+                            {/* COLOANA DREAPTA: Media & Vizual */}
+                            <div className="space-y-6">
+                                {/* Imagine Principală - Upload */}
                                 <div>
-                                    <label className="block text-xs font-bold uppercase text-neutral-500 mb-1">URL Imagine</label>
-                                    <input 
-                                        className="w-full p-3 border border-neutral-200 rounded-lg text-base md:text-sm focus:border-black focus:outline-none transition-colors"
-                                        value={editingProduct.imageUrl}
-                                        onChange={e => setEditingProduct({...editingProduct, imageUrl: e.target.value})}
-                                        required
-                                        placeholder="https://..."
-                                    />
-                                    {editingProduct.imageUrl && (
-                                        <div className="mt-2 h-20 w-20 rounded-lg overflow-hidden border border-neutral-200">
-                                            <img src={editingProduct.imageUrl} className="w-full h-full object-cover" alt="Preview" />
-                                        </div>
-                                    )}
+                                    <label className="label-admin">Imagine Principală (Cover)</label>
+                                    <div className="border-2 border-dashed border-neutral-300 rounded-xl p-4 text-center hover:bg-neutral-50 transition-colors cursor-pointer relative group overflow-hidden bg-neutral-50 min-h-[200px] flex items-center justify-center">
+                                        <input type="file" onChange={(e) => handleImageFile(e, false)} className="absolute inset-0 opacity-0 cursor-pointer z-10" accept="image/*" />
+                                        {editingProduct.imageUrl ? (
+                                            <img src={editingProduct.imageUrl} className="w-full h-full object-contain" alt="Cover" />
+                                        ) : (
+                                            <div className="text-neutral-400 text-sm">
+                                                <span className="block text-2xl mb-2">📷</span>
+                                                Click sau Trage o poză aici
+                                            </div>
+                                        )}
+                                        {editingProduct.imageUrl && (
+                                            <div className="absolute inset-0 bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">Schimbă Poza</div>
+                                        )}
+                                    </div>
+                                    {editingProduct.imageUrl.length > 500000 && <p className="text-xs text-yellow-600 mt-1">⚠️ Atenție: Imagine mare. Poate încetini site-ul.</p>}
                                 </div>
 
+                                {/* Galerie - Multiple Upload */}
                                 <div>
-                                    <label className="block text-xs font-bold uppercase text-neutral-500 mb-1">Culori (Coduri HEX separate prin virgulă)</label>
+                                    <label className="label-admin">Galerie (Mai multe poze)</label>
+                                    <div className="grid grid-cols-3 gap-2 mb-2">
+                                        {editingProduct.gallery.map((img, idx) => (
+                                            <div key={idx} className="relative group aspect-square border rounded-lg overflow-hidden bg-white shadow-sm">
+                                                <img src={img} className="w-full h-full object-cover" alt={`Gallery ${idx}`} />
+                                                <button 
+                                                    type="button" 
+                                                    onClick={() => removeGalleryImage(idx)} 
+                                                    className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-red-600"
+                                                >
+                                                    ×
+                                                </button>
+                                            </div>
+                                        ))}
+                                        <div className="border-2 border-dashed border-neutral-300 rounded-lg flex items-center justify-center aspect-square hover:bg-neutral-50 cursor-pointer relative text-neutral-300 hover:text-neutral-500 transition-colors">
+                                            <input type="file" onChange={(e) => handleImageFile(e, true)} className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" />
+                                            <span className="text-4xl font-light">+</span>
+                                        </div>
+                                    </div>
+                                    <p className="text-[10px] text-neutral-400">Pozele sunt salvate direct în baza de date.</p>
+                                </div>
+
+                                {/* Culori */}
+                                <div>
+                                    <label className="label-admin">Culori Disponibile (HEX)</label>
                                     <input 
+                                        className="input-admin"
                                         placeholder="#000000, #FFFFFF" 
-                                        className="w-full p-3 border border-neutral-200 rounded-lg text-base md:text-sm focus:border-black focus:outline-none transition-colors"
                                         value={editingProduct.colors.join(', ')}
                                         onChange={e => setEditingProduct({...editingProduct, colors: e.target.value.split(',').map(c => c.trim())})}
                                     />
@@ -362,16 +470,6 @@ export const Admin: React.FC = () => {
                                             <div key={i} className="w-5 h-5 rounded-full border border-neutral-200 shadow-sm" style={{backgroundColor: c}}></div>
                                         ))}
                                     </div>
-                                </div>
-
-                                <div>
-                                    <label className="block text-xs font-bold uppercase text-neutral-500 mb-1">Descriere</label>
-                                    <textarea 
-                                        className="w-full p-3 border border-neutral-200 rounded-lg h-32 resize-none text-base md:text-sm focus:border-black focus:outline-none transition-colors"
-                                        value={editingProduct.description}
-                                        onChange={e => setEditingProduct({...editingProduct, description: e.target.value})}
-                                        required
-                                    />
                                 </div>
                             </div>
 
@@ -383,11 +481,17 @@ export const Admin: React.FC = () => {
                     </div>
                 )}
 
+                {/* LISTA PRODUSE */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {products.map(p => (
                         <div key={p.id} className="bg-white p-5 rounded-2xl shadow-sm border border-neutral-100 flex flex-col group hover:shadow-md transition-shadow">
                             <div className="flex justify-between items-start mb-4">
-                                <img src={p.imageUrl} className="w-20 h-20 rounded-lg object-cover bg-neutral-50 border border-neutral-100" />
+                                <div className="w-20 h-20 rounded-lg overflow-hidden border border-neutral-100 bg-neutral-50 relative">
+                                    <img src={p.imageUrl} className="w-full h-full object-cover" alt={p.name} />
+                                    {p.gallery && p.gallery.length > 0 && (
+                                        <div className="absolute bottom-0 right-0 bg-black/50 text-white text-[9px] px-1">+{p.gallery.length}</div>
+                                    )}
+                                </div>
                                 <div className="text-right">
                                     <div className="font-bold text-xl">{p.price} <span className="text-xs font-normal">RON</span></div>
                                     {p.original_price && p.original_price > p.price && (
@@ -429,6 +533,32 @@ export const Admin: React.FC = () => {
             </div>
         )}
       </div>
+      
+      {/* Stiluri CSS locale pentru input-urile de admin */}
+      <style>{`
+        .input-admin { 
+            width: 100%; 
+            padding: 0.75rem; 
+            border: 1px solid #e5e5e5; 
+            border-radius: 0.5rem; 
+            transition: all 0.2s; 
+            outline: none; 
+            font-size: 0.875rem; /* text-sm equivalent */
+        }
+        .input-admin:focus { 
+            border-color: black; 
+            box-shadow: 0 0 0 1px black;
+        }
+        .label-admin { 
+            display: block; 
+            font-size: 0.75rem; 
+            font-weight: 700; 
+            text-transform: uppercase; 
+            color: #737373; 
+            margin-bottom: 0.35rem; 
+            letter-spacing: 0.05em;
+        }
+      `}</style>
     </div>
   );
 };
