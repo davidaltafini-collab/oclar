@@ -4,10 +4,10 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Environment, Html, OrbitControls, useGLTF } from '@react-three/drei';
 
 type ModelProps = {
-  url: string;                // ex: "/models/oclar.glb"
-  autoRotate?: boolean;       // default false
-  enableOrbit?: boolean;      // default false (doar daca vrei drag)
-  intensity?: number;         // cat de "reactiv" e la mouse
+  url: string; // ex: "/models/oclar.glb"
+  autoRotate?: boolean; // default false
+  enableOrbit?: boolean; // default false (drag)
+  intensity?: number; // cat de "reactiv" e la mouse
 };
 
 function FitCameraToObject({ target }: { target: THREE.Object3D }) {
@@ -61,19 +61,20 @@ function Model({ url, autoRotate = false, enableOrbit = false, intensity = 0.35 
     });
   }, [cloned]);
 
-  // mouse reactive rotation
+  // mouse reactive rotation + auto-rotate VERY SLOW
   useFrame(({ mouse }) => {
     if (!group.current) return;
 
-    // smooth follow
-    const targetX = mouse.y * intensity;  // invers (mouse up -> tilt down)
+    // smooth follow (desktop)
+    const targetX = mouse.y * intensity; // invers (mouse up -> tilt down)
     const targetY = mouse.x * intensity;
 
-    group.current.rotation.x = THREE.MathUtils.lerp(group.current.rotation.x, targetX, 0.08);
-    group.current.rotation.y = THREE.MathUtils.lerp(group.current.rotation.y, targetY, 0.08);
+    group.current.rotation.x = THREE.MathUtils.lerp(group.current.rotation.x, targetX, 0.06);
+    group.current.rotation.y = THREE.MathUtils.lerp(group.current.rotation.y, targetY, 0.06);
 
+    // auto-rotate foarte lent (premium)
     if (autoRotate) {
-      group.current.rotation.y += 0.003;
+      group.current.rotation.y += 0.0006;
     }
   });
 
@@ -81,13 +82,20 @@ function Model({ url, autoRotate = false, enableOrbit = false, intensity = 0.35 
     <group ref={group}>
       <primitive object={cloned} />
       <FitCameraToObject target={cloned} />
+
+      {/* Touch/drag rotate (si pe mobil), dar limitat ca sa nu "fuga" din ecran */}
       {enableOrbit && (
         <OrbitControls
           enablePan={false}
           enableZoom={false}
-          rotateSpeed={0.7}
+          rotateSpeed={0.6}
           dampingFactor={0.08}
           enableDamping
+          // limite ca sa nu se rastoarne / nu "fuge"
+          minPolarAngle={Math.PI * 0.35}
+          maxPolarAngle={Math.PI * 0.65}
+          minAzimuthAngle={-Math.PI * 0.35}
+          maxAzimuthAngle={Math.PI * 0.35}
         />
       )}
     </group>
@@ -119,7 +127,7 @@ export const Oclar3D: React.FC<{
   intensity = 0.35,
 }) => {
   return (
-    <div className={`w-full aspect-[4/5] rounded-3xl overflow-hidden bg-neutral-50 ${className}`}>
+    <div className={`w-full rounded-3xl overflow-hidden bg-neutral-50 ${className}`}>
       <Canvas
         shadows
         dpr={[1, 2]}
