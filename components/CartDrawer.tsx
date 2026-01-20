@@ -273,57 +273,101 @@ export const CartDrawer: React.FC = () => {
                 />
               </div>
 
-              {/* Plata */}
-              <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
-                <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">
-                  Metoda Plata
-                </h3>
+            {/* Plata */}
+<div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
+  <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">
+    Metoda Plata
+  </h3>
 
-                <div className="grid grid-cols-1 gap-3">
-                  <label
-                    className={`relative flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all duration-200 ${
-                      paymentMethod === 'ramburs'
-                        ? 'border-black bg-neutral-50 shadow-inner'
-                        : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="payment"
-                      checked={paymentMethod === 'ramburs'}
-                      onChange={() => setPaymentMethod('ramburs')}
-                      className="accent-black w-5 h-5"
-                    />
-                    <div>
-                      <span className="font-bold block text-sm">Plata Ramburs (Cash)</span>
-                      <span className="text-xs text-neutral-500">Platesti curierului la livrare</span>
-                    </div>
-                  </label>
+  <div className="grid grid-cols-1 gap-3">
+    {/* RAMBURS */}
+    <label
+      className={`relative flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all duration-200 ${
+        paymentMethod === 'ramburs'
+          ? 'border-black bg-neutral-50 shadow-inner'
+          : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
+      }`}
+    >
+      <input
+        type="radio"
+        name="payment"
+        checked={paymentMethod === 'ramburs'}
+        onChange={() => setPaymentMethod('ramburs')}
+        className="accent-black w-5 h-5"
+      />
 
-                  <label
-                    className={`relative flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all duration-200 ${
-                      paymentMethod === 'card'
-                        ? 'border-black bg-neutral-50 shadow-inner'
-                        : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="payment"
-                      checked={paymentMethod === 'card'}
-                      onChange={() => setPaymentMethod('card')}
-                      className="accent-black w-5 h-5"
-                    />
-                    <div>
-                      <span className="font-bold block text-sm">Card Online</span>
-                      <span className="text-xs text-neutral-500">Securizat prin Stripe</span>
-                    </div>
-                  </label>
-                </div>
-              </div>
-            </form>
-          )}
-        </div>
+      {/* ICON RAMBURS */}
+      <div className="p-2 bg-white rounded-full border border-neutral-100 shadow-sm shrink-0">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#16a34a"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <line x1="12" y1="1" x2="12" y2="23" />
+          <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+        </svg>
+      </div>
+
+      <div>
+        <span className="font-bold block text-sm">Plata Ramburs (Cash)</span>
+        <span className="text-xs text-neutral-500">Platesti curierului la livrare</span>
+      </div>
+    </label>
+
+    {/* CARD */}
+    <label
+      className={`relative flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all duration-200 ${
+        paymentMethod === 'card'
+          ? 'border-black bg-neutral-50 shadow-inner'
+          : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
+      }`}
+    >
+      <input
+        type="radio"
+        name="payment"
+        checked={paymentMethod === 'card'}
+        onChange={() => setPaymentMethod('card')}
+        className="accent-black w-5 h-5"
+      />
+
+      {/* ICON CARD */}
+      <div className="p-2 bg-white rounded-full border border-neutral-100 shadow-sm shrink-0">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#2563eb"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+          <line x1="1" y1="10" x2="23" y2="10" />
+        </svg>
+      </div>
+
+      <div>
+        <span className="font-bold block text-sm">Card Online</span>
+        <span className="text-xs text-neutral-500">Securizat prin Stripe</span>
+      </div>
+
+      {/* CARD PLACEHOLDERS (ca in designul tau initial) */}
+      <div className="absolute right-4 top-1/2 -translate-y-1/2 flex gap-1 opacity-50">
+        <div className="w-8 h-5 bg-neutral-200 rounded"></div>
+        <div className="w-8 h-5 bg-neutral-200 rounded"></div>
+      </div>
+    </label>
+  </div>
+</div>
+
 
         {/* Footer */}
         {cart.length > 0 && (
