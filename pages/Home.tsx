@@ -12,7 +12,7 @@ export const Home: React.FC = () => {
 
   const observerRef = useRef<IntersectionObserver | null>(null);
 
-  // Helper sigur pentru toFixed
+  // helper sigur pentru toFixed
   const toNumber = (v: unknown): number => {
     if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
     if (typeof v === 'string') {
@@ -71,9 +71,8 @@ export const Home: React.FC = () => {
 
   return (
     <main className="bg-white overflow-hidden">
-      {/* Hero Section */}
+      {/* Hero Section - Se încarcă INSTANTANEU acum */}
       <section className="relative min-h-screen flex flex-col justify-center px-6 md:px-12 border-b border-neutral-100 bg-white">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/ desarrollado are central? no this is code; keep */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-brand-yellow/10 rounded-full blur-[120px] pointer-events-none animate-pulse-glow will-change-transform"></div>
         <div className="absolute top-0 right-0 w-[40vw] h-full bg-neutral-50 -z-10 skew-x-12 translate-x-20 hidden md:block"></div>
 
@@ -124,6 +123,7 @@ export const Home: React.FC = () => {
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-24">
+            {/* Value 1 */}
             <div className="group reveal-on-scroll">
               <span className="text-6xl font-black text-neutral-800 group-hover:text-brand-yellow transition-colors duration-500">
                 01.
@@ -134,6 +134,7 @@ export const Home: React.FC = () => {
               </p>
             </div>
 
+            {/* Value 2 */}
             <div className="group reveal-on-scroll" style={{ transitionDelay: '100ms' }}>
               <span className="text-6xl font-black text-neutral-800 group-hover:text-brand-yellow transition-colors duration-500">
                 02.
@@ -144,6 +145,7 @@ export const Home: React.FC = () => {
               </p>
             </div>
 
+            {/* Value 3 */}
             <div className="group reveal-on-scroll" style={{ transitionDelay: '200ms' }}>
               <span className="text-6xl font-black text-neutral-800 group-hover:text-brand-yellow transition-colors duration-500">
                 03.
@@ -154,6 +156,7 @@ export const Home: React.FC = () => {
               </p>
             </div>
 
+            {/* Value 4 */}
             <div className="group reveal-on-scroll" style={{ transitionDelay: '300ms' }}>
               <span className="text-6xl font-black text-neutral-800 group-hover:text-brand-yellow transition-colors duration-500">
                 04.
@@ -164,6 +167,7 @@ export const Home: React.FC = () => {
               </p>
             </div>
 
+            {/* Value 5 */}
             <div
               className="group md:col-span-2 lg:col-span-2 bg-neutral-900 p-8 border border-neutral-800 hover:border-brand-yellow transition-colors duration-500 rounded-3xl relative overflow-hidden reveal-on-scroll"
               style={{ transitionDelay: '400ms' }}
@@ -234,7 +238,7 @@ export const Home: React.FC = () => {
                   </Link>
 
                   <div className="flex flex-col gap-2 px-2">
-                    <div className="flex justify-between items-start gap-6">
+                    <div className="flex justify-between items-start">
                       <div>
                         <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-[0.15em] mb-1 block">
                           {product.category}
@@ -246,7 +250,7 @@ export const Home: React.FC = () => {
                         </Link>
                       </div>
 
-                      {/* Pret simplu: curent + (optional) taiat sub el */}
+                      {/* Pret simplu: curent + (optional) taiat sub */}
                       <div className="text-right leading-none">
                         <div className="font-bold text-lg">{price.toFixed(0)} RON</div>
                         {hasDiscount && (
@@ -291,11 +295,9 @@ export const Home: React.FC = () => {
           <div className="w-full md:w-1/2">
             <h3 className="text-4xl font-black uppercase tracking-tighter mb-6">Investiție în tine.</h3>
             <p className="text-lg text-neutral-600 mb-8 leading-relaxed">
-              Expunerea prelungită la lumina albastră suprimă melatonina și provoacă oboseală digitală. Ochelarii
-              Oclarnu sunt doar un accesoriu, ci o unealtă de productivitate și sănătate.
+              Expunerea prelungită la lumina albastră suprimă melatonina și provoacă oboseală digitală. Ochelarii Oclarnu sunt doar un accesoriu, ci o unealtă de productivitate și sănătate.
             </p>
           </div>
-
           <div className="w-full md:w-1/2 aspect-video bg-neutral-200 relative overflow-hidden group rounded-3xl shadow-2xl">
             <img
               src="https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&q=80&w=1000"
