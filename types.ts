@@ -3,10 +3,12 @@ export interface Product {
   name: string;
   description: string;
   price: number;
+  original_price?: number | null; // Asigură-te că e definit
   imageUrl: string;
+  gallery?: string[]; // <--- Câmp nou pentru poze multiple
   category: string;
   details?: string[];
-  colors?: string[]; // Hex codes or CSS colors
+  colors?: string[];
 }
 
 export interface CartItem extends Product {
