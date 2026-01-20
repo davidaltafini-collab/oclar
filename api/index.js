@@ -97,7 +97,8 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
 });
 
 // --- 3. PARSER JSON ---
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // --- 4. RUTE PRODUSE ---
 app.get('/api/products', async (req, res) => {
