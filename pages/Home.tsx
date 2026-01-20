@@ -72,29 +72,37 @@ export const Home: React.FC = () => {
 
   return (
     <main className="bg-white overflow-hidden">
-      {/* Hero Section - Se încarcă INSTANTANEU acum */}
+      {/* Hero Section */}
       <section className="relative min-h-screen flex flex-col justify-center px-6 md:px-12 border-b border-neutral-100 bg-white">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-brand-yellow/10 rounded-full blur-[120px] pointer-events-none animate-pulse-glow will-change-transform"></div>
         <div className="absolute top-0 right-0 w-[40vw] h-full bg-neutral-50 -z-10 skew-x-12 translate-x-20 hidden md:block"></div>
 
-        {/* IMPORTANT: centrare corecta (nu fuge la dreapta) */}
         <div className="w-full max-w-6xl mx-auto z-10 pt-20 relative">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-10 items-center">
+          {/* IMPORTANT: pastram layout-ul de hero cu textul dominant, iar 3D-ul sta in dreapta si poate fi "pe sub" */}
+          <div className="relative">
+            {/* 3D pe dreapta, in spate (textul poate trece peste el) */}
+            <div className="hidden md:block absolute right-0 top-1/2 -translate-y-1/2 w-[520px] h-[520px] pointer-events-auto">
+              <Oclar3D autoRotate enableOrbit intensity={0.22} className="w-full h-full" />
+            </div>
+
+            {/* 3D pe mobil: sub text, ca sa nu iasa din ecran */}
+            <div className="md:hidden w-full mt-8">
+              <Oclar3D autoRotate enableOrbit intensity={0.22} className="w-full h-[320px]" />
+            </div>
+
             {/* TEXT */}
-            <div>
+            <div className="relative z-10 max-w-3xl">
               <div className="overflow-hidden mb-4">
                 <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-xs md:text-sm block animate-slide-up">
                   Eyewear for the Digital Age
                 </span>
               </div>
 
-              <h1 className="text-7xl sm:text-8xl md:text-[10rem] font-black uppercase tracking-tighter mb-8 leading-[0.85] text-neutral-950 animate-slide-up-delay drop-shadow-xl">
-                Vezi <br />
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-neutral-800 to-neutral-500 hover:text-brand-yellow transition-colors duration-700 cursor-default">
-                  Până la
-                </span>{' '}
-                <br />
-                Capăt.
+              {/* FIX: inlocuim complet headline-ul si eliminam orice overlap nedorit */}
+              <h1 className="text-6xl sm:text-7xl md:text-[5.5rem] lg:text-[6.5rem] font-black uppercase tracking-tighter mb-8 leading-[0.9] text-neutral-950 animate-slide-up-delay drop-shadow-xl">
+                Ochii tăi <br />
+                merită <br />
+                ce e mai bun.
               </h1>
 
               <p
@@ -115,20 +123,6 @@ export const Home: React.FC = () => {
                   <Button variant="outline">Misiunea Noastră</Button>
                 </Link>
               </div>
-            </div>
-
-            {/* 3D */}
-            {/* IMPORTANT:
-                - pe mobile: aspect-square + mx-auto => nu iese din ecran
-                - pe desktop: ramane aliniat in coloana, fara justify-self-end (care impinge prea tare)
-            */}
-            <div className="w-full max-w-[520px] mx-auto md:mx-0">
-              <Oclar3D
-                autoRotate
-                enableOrbit
-                intensity={0.28}
-                className="aspect-square md:aspect-[4/5]"
-              />
             </div>
           </div>
         </div>
@@ -271,7 +265,6 @@ export const Home: React.FC = () => {
                         </Link>
                       </div>
 
-                      {/* Pret simplu: curent + (optional) taiat sub */}
                       <div className="text-right leading-none">
                         <div className="font-bold text-lg">{price.toFixed(0)} RON</div>
                         {hasDiscount && (

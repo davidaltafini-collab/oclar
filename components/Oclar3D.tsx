@@ -1,13 +1,13 @@
 import React, { Suspense, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Environment, Html, OrbitControls, useGLTF } from '@react-three/drei';
+import { Html, OrbitControls, useGLTF } from '@react-three/drei';
 
 type ModelProps = {
-  url: string; // ex: "/models/oclar.glb"
-  autoRotate?: boolean; // default false
-  enableOrbit?: boolean; // default false (drag)
-  intensity?: number; // cat de "reactiv" e la mouse
+  url: string;
+  autoRotate?: boolean;
+  enableOrbit?: boolean;
+  intensity?: number;
 };
 
 function FitCameraToObject({ target }: { target: THREE.Object3D }) {
@@ -20,7 +20,6 @@ function FitCameraToObject({ target }: { target: THREE.Object3D }) {
 
     if (!sphere) return;
 
-    // Camera distance based on FOV and bounding sphere
     const fov = (camera as THREE.PerspectiveCamera).fov * (Math.PI / 180);
     const distance = sphere.radius / Math.sin(fov / 2);
 
@@ -30,7 +29,6 @@ function FitCameraToObject({ target }: { target: THREE.Object3D }) {
     camera.updateProjectionMatrix();
     camera.lookAt(center);
 
-    // handle resize aspect
     camera.aspect = size.width / size.height;
     camera.updateProjectionMatrix();
   }, [camera, size, target]);
@@ -38,35 +36,31 @@ function FitCameraToObject({ target }: { target: THREE.Object3D }) {
   return null;
 }
 
-function Model({ url, autoRotate = false, enableOrbit = false, intensity = 0.35 }: ModelProps) {
+function Model({ url, autoRotate = false, enableOrbit = false, intensity = 0.22 }: ModelProps) {
   const group = useRef<THREE.Group>(null);
   const { scene } = useGLTF(url);
 
-  // clone scene so we don't mutate cached gltf
   const cloned = useMemo(() => scene.clone(true), [scene]);
 
-  // improve material quality a bit (safe)
   useEffect(() => {
     cloned.traverse((obj: any) => {
       if (obj.isMesh) {
-        obj.castShadow = true;
-        obj.receiveShadow = true;
+        obj.castShadow = false;
+        obj.receiveShadow = false;
 
-        if (obj.material) {
-          // ensure correct color space for textures
-          if (obj.material.map) obj.material.map.colorSpace = THREE.SRGBColorSpace;
-          obj.material.needsUpdate = true;
+        if (obj.material?.map) {
+          obj.material.map.colorSpace = THREE.SRGBColorSpace;
         }
+        if (obj.material) obj.material.needsUpdate = true;
       }
     });
   }, [cloned]);
 
-  // mouse reactive rotation + auto-rotate VERY SLOW
   useFrame(({ mouse }) => {
     if (!group.current) return;
 
-    // smooth follow (desktop)
-    const targetX = mouse.y * intensity; // invers (mouse up -> tilt down)
+    // mouse-reactive (desktop) - foarte subtil
+    const targetX = mouse.y * intensity;
     const targetY = mouse.x * intensity;
 
     group.current.rotation.x = THREE.MathUtils.lerp(group.current.rotation.x, targetX, 0.06);
@@ -83,7 +77,6 @@ function Model({ url, autoRotate = false, enableOrbit = false, intensity = 0.35 
       <primitive object={cloned} />
       <FitCameraToObject target={cloned} />
 
-      {/* Touch/drag rotate (si pe mobil), dar limitat ca sa nu "fuga" din ecran */}
       {enableOrbit && (
         <OrbitControls
           enablePan={false}
@@ -91,7 +84,7 @@ function Model({ url, autoRotate = false, enableOrbit = false, intensity = 0.35 
           rotateSpeed={0.6}
           dampingFactor={0.08}
           enableDamping
-          // limite ca sa nu se rastoarne / nu "fuge"
+          // limite anti-"fuga"
           minPolarAngle={Math.PI * 0.35}
           maxPolarAngle={Math.PI * 0.65}
           minAzimuthAngle={-Math.PI * 0.35}
@@ -122,26 +115,24 @@ export const Oclar3D: React.FC<{
 }> = ({
   url = '/models/oclar.glb',
   className = '',
-  autoRotate = false,
-  enableOrbit = false,
-  intensity = 0.35,
+  autoRotate = true,
+  enableOrbit = true,
+  intensity = 0.22,
 }) => {
   return (
-    <div className={`w-full rounded-3xl overflow-hidden bg-neutral-50 ${className}`}>
+    <div className={`w-full ${className}`} style={{ background: 'transparent' }}>
       <Canvas
-        shadows
-        dpr={[1, 2]}
-        gl={{ antialias: true, alpha: true }}
+        // PERF: dpr mai mic => mai rapid/mai stabil pe desktop
+        dpr={[1, 1.5]}
+        gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
         camera={{ fov: 35, near: 0.1, far: 2000, position: [0, 0, 5] }}
       >
-        {/* lights */}
-        <ambientLight intensity={0.6} />
-        <directionalLight position={[5, 8, 5]} intensity={1.1} castShadow />
-        <directionalLight position={[-6, 3, -2]} intensity={0.55} />
+        {/* lights - fara Environment preset (care e greu la download) */}
+        <ambientLight intensity={0.9} />
+        <directionalLight position={[6, 10, 6]} intensity={1.0} />
+        <directionalLight position={[-6, 3, -2]} intensity={0.45} />
 
-        {/* environment (nice reflections) */}
         <Suspense fallback={<Loader />}>
-          <Environment preset="city" />
           <Model url={url} autoRotate={autoRotate} enableOrbit={enableOrbit} intensity={intensity} />
         </Suspense>
       </Canvas>
