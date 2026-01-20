@@ -4,6 +4,7 @@ import { Product } from '../types';
 import { Button } from '../components/Button';
 import { useCart } from '../context/CartContext';
 import { API_URL, MOCK_PRODUCTS } from '../constants';
+import { Oclar3D } from '../components/Oclar3D';
 
 export const Home: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -76,39 +77,59 @@ export const Home: React.FC = () => {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-brand-yellow/10 rounded-full blur-[120px] pointer-events-none animate-pulse-glow will-change-transform"></div>
         <div className="absolute top-0 right-0 w-[40vw] h-full bg-neutral-50 -z-10 skew-x-12 translate-x-20 hidden md:block"></div>
 
-        <div className="max-w-6xl z-10 pt-20 relative">
-          <div className="overflow-hidden mb-4">
-            <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-xs md:text-sm block animate-slide-up">
-              Eyewear for the Digital Age
-            </span>
-          </div>
+        {/* IMPORTANT: centrare corecta (nu fuge la dreapta) */}
+        <div className="w-full max-w-6xl mx-auto z-10 pt-20 relative">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-10 items-center">
+            {/* TEXT */}
+            <div>
+              <div className="overflow-hidden mb-4">
+                <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-xs md:text-sm block animate-slide-up">
+                  Eyewear for the Digital Age
+                </span>
+              </div>
 
-          <h1 className="text-7xl sm:text-8xl md:text-[10rem] font-black uppercase tracking-tighter mb-8 leading-[0.85] text-neutral-950 animate-slide-up-delay drop-shadow-xl">
-            Vezi <br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-neutral-800 to-neutral-500 hover:text-brand-yellow transition-colors duration-700 cursor-default">
-              Până la
-            </span>{' '}
-            <br />
-            Capăt.
-          </h1>
+              <h1 className="text-7xl sm:text-8xl md:text-[10rem] font-black uppercase tracking-tighter mb-8 leading-[0.85] text-neutral-950 animate-slide-up-delay drop-shadow-xl">
+                Vezi <br />
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-neutral-800 to-neutral-500 hover:text-brand-yellow transition-colors duration-700 cursor-default">
+                  Până la
+                </span>{' '}
+                <br />
+                Capăt.
+              </h1>
 
-          <p
-            className="text-neutral-500 max-w-lg text-lg md:text-xl leading-relaxed mb-12 animate-fade-in opacity-0"
-            style={{ animationDelay: '0.6s', animationFillMode: 'forwards' }}
-          >
-            Ochelari premium anti-lumină albastră. O soluție simplă pentru o problemă modernă.
-          </p>
+              <p
+                className="text-neutral-500 max-w-lg text-lg md:text-xl leading-relaxed mb-12 animate-fade-in opacity-0"
+                style={{ animationDelay: '0.6s', animationFillMode: 'forwards' }}
+              >
+                Ochelari premium anti-lumină albastră. O soluție simplă pentru o problemă modernă.
+              </p>
 
-          <div
-            className="flex gap-6 animate-fade-in opacity-0"
-            style={{ animationDelay: '0.8s', animationFillMode: 'forwards' }}
-          >
-            <Button onClick={() => document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth' })}>
-              Vezi Toată Colecția
-            </Button>
-            <Link to="/about">
-              <Button variant="outline">Misiunea Noastră</Button>
-            </Link>
+              <div
+                className="flex gap-6 animate-fade-in opacity-0"
+                style={{ animationDelay: '0.8s', animationFillMode: 'forwards' }}
+              >
+                <Button onClick={() => document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth' })}>
+                  Vezi Toată Colecția
+                </Button>
+                <Link to="/about">
+                  <Button variant="outline">Misiunea Noastră</Button>
+                </Link>
+              </div>
+            </div>
+
+            {/* 3D */}
+            {/* IMPORTANT:
+                - pe mobile: aspect-square + mx-auto => nu iese din ecran
+                - pe desktop: ramane aliniat in coloana, fara justify-self-end (care impinge prea tare)
+            */}
+            <div className="w-full max-w-[520px] mx-auto md:mx-0">
+              <Oclar3D
+                autoRotate
+                enableOrbit
+                intensity={0.28}
+                className="aspect-square md:aspect-[4/5]"
+              />
+            </div>
           </div>
         </div>
       </section>
