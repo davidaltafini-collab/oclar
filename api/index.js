@@ -247,6 +247,7 @@ app.all('/api/admin', async (req, res) => {
                     ...p,
                     colors: typeof p.colors === 'string' ? JSON.parse(p.colors) : (p.colors || []),
                     details: typeof p.details === 'string' ? JSON.parse(p.details) : (p.details || []),
+                    gallery: typeof p.gallery === 'string' ? JSON.parse(p.gallery) : (p.gallery || []),
                     price: parseFloat(p.price),
                     original_price: p.original_price ? parseFloat(p.original_price) : null
                 }));
