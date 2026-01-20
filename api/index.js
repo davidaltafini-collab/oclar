@@ -110,6 +110,7 @@ app.get('/api/products', async (req, res) => {
             ...p,
             details: typeof p.details === 'string' ? JSON.parse(p.details) : p.details,
             colors: typeof p.colors === 'string' ? JSON.parse(p.colors) : p.colors,
+            gallery: typeof p.gallery === 'string' ? JSON.parse(p.gallery) : (p.gallery || []),
             price: parseFloat(p.price),
             original_price: p.original_price ? parseFloat(p.original_price) : null
         }));
