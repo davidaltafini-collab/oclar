@@ -144,6 +144,14 @@ export const CartDrawer: React.FC = () => {
                        <img src={item.imageUrl} alt={item.name} className="w-20 h-20 object-cover rounded-md" />
                        <div className="flex-1">
                           <h3 className="font-bold text-sm">{item.name}</h3>
+                         <div className="flex items-center gap-2">
+        <p className="text-neutral-900 font-bold text-sm">{item.price.toFixed(2)} RON</p>
+        {item.original_price && item.original_price > item.price && (
+            <p className="text-xs text-red-500 line-through font-mono">
+                {item.original_price.toFixed(2)} RON
+            </p>
+        )}
+    </div>
                           {item.selectedColor && (
                             <div className="flex items-center gap-2 mt-1">
                               <div className="w-4 h-4 rounded-full border border-neutral-200" style={{backgroundColor: item.selectedColor}}/>
