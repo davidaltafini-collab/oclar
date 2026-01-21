@@ -56,30 +56,28 @@ interface DiscountCode {
 export const Admin: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [secret, setSecret] = useState('');
-  // Adăugat tab 'discounts'
   const [activeTab, setActiveTab] = useState<'orders' | 'products' | 'discounts'>('orders');
   
+  // DATA STATES
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [discounts, setDiscounts] = useState<DiscountCode[]>([]);
   
+  // UI STATES
   const [loading, setLoading] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
-  // Filtre comenzi
+  // FILTRE COMENZI
   const [selectedOrders, setSelectedOrders] = useState<number[]>([]);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
 
-  // Formular Produs
+  // FORMS STATE
   const [editingProduct, setEditingProduct] = useState<AdminProduct | null>(null);
   const [showProductForm, setShowProductForm] = useState(false);
-
-  // Formular Comandă (NOU)
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
-  
-  // Formular Reduceri (NOU)
   const [editingDiscount, setEditingDiscount] = useState<Partial<DiscountCode> | null>(null);
   const [showDiscountForm, setShowDiscountForm] = useState(false);
 
@@ -118,6 +116,7 @@ export const Admin: React.FC = () => {
   // --- FETCH DATA ---
   const fetchData = async (type: 'orders' | 'products' | 'discounts') => {
     setLoading(true);
+    setErrorMsg('');
     try {
       let url = `${API_URL}/admin?type=${type}`;
       
@@ -136,8 +135,16 @@ export const Admin: React.FC = () => {
         sessionStorage.removeItem('admin_secret');
         return;
       }
+      
       const data = await res.json();
       
+      // PROTECȚIE CRITICĂ: Verifică dacă e array
+      if (!Array.isArray(data)) {
+          console.error("API Error - Data is not array:", data);
+          setErrorMsg(data.error || 'Eroare date server. Verifică logs.');
+          return;
+      }
+
       if (type === 'orders') {
         setOrders(data);
         setSelectedOrders([]);
@@ -147,6 +154,7 @@ export const Admin: React.FC = () => {
 
     } catch (err) {
       console.error(err);
+      setErrorMsg('Eroare de conexiune. Serverul este oprit?');
     } finally {
       setLoading(false);
     }
@@ -246,22 +254,6 @@ export const Admin: React.FC = () => {
     }
   };
 
-  const handleQuickDateFilter = (range: 'today' | 'week' | 'month' | 'year') => {
-    const now = new Date();
-    const end = now.toISOString().split('T')[0];
-    let start = '';
-
-    switch(range) {
-      case 'today': start = end; break;
-      case 'week': start = new Date(now.setDate(now.getDate() - 7)).toISOString().split('T')[0]; break;
-      case 'month': start = new Date(now.setMonth(now.getMonth() - 1)).toISOString().split('T')[0]; break;
-      case 'year': start = new Date(now.setFullYear(now.getFullYear() - 1)).toISOString().split('T')[0]; break;
-    }
-    setStartDate(start);
-    setEndDate(end);
-  };
-
-  // NOU: Editare Comandă
   const handleUpdateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingOrder) return;
@@ -298,27 +290,27 @@ export const Admin: React.FC = () => {
     }
   };
 
-  // Oblio & AWB & Export (Păstrate)
-  const handleSendInvoices = async () => { /* ... cod existent ... */ 
-      if (selectedOrders.length === 0) { alert('Selectează cel puțin o comandă'); return; }
-      if (!confirm(`Trimitem ${selectedOrders.length} facturi în Oblio?`)) return;
-      setLoading(true);
-      try {
-        const response = await fetch(`${API_URL}/admin/send-invoices`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-admin-secret': secret },
-          body: JSON.stringify({ orderIds: selectedOrders })
-        });
-        const result = await response.json();
-        if (result.success) {
-          alert(`Facturi trimise!\nSucces: ${result.results.filter((r: any) => r.success).length}`);
-          fetchData('orders');
-        }
-      } catch (error) { alert('Eroare conexiune'); } finally { setLoading(false); }
+  const handleSendInvoices = async () => {
+    if (selectedOrders.length === 0) { alert('Selectează comenzi'); return; }
+    if (!confirm(`Trimitem ${selectedOrders.length} facturi în Oblio?`)) return;
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/admin/send-invoices`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-secret': secret },
+        body: JSON.stringify({ orderIds: selectedOrders })
+      });
+      const result = await response.json();
+      if (result.success) {
+        alert(`Facturi trimise!\nSucces: ${result.results.filter((r: any) => r.success).length}`);
+        fetchData('orders');
+      }
+    } catch (error) { alert('Eroare conexiune'); } finally { setLoading(false); }
   };
-  const handleGenerateAWB = async () => { /* ... cod existent ... */
+
+  const handleGenerateAWB = async () => {
      if (selectedOrders.length === 0) { alert('Selectează comenzi'); return; }
-     const courier = prompt('Selectează curier:\n1. fancourier\n2. cargus\n3. gls', 'fancourier');
+     const courier = prompt('Selectează curier (fancourier, cargus, gls):', 'fancourier');
      if (!courier) return;
      setLoading(true);
      try {
@@ -334,7 +326,8 @@ export const Admin: React.FC = () => {
        }
      } catch (e) { alert('Eroare'); } finally { setLoading(false); }
   };
-  const handleExport = async (format: 'xml' | 'excel') => { /* ... cod existent ... */
+
+  const handleExport = async (format: 'xml' | 'excel') => {
     if (selectedOrders.length === 0) { alert('Selectează comenzi'); return; }
     try {
         const response = await fetch(`${API_URL}/admin/export-orders`, {
@@ -354,7 +347,7 @@ export const Admin: React.FC = () => {
     } catch (e) { alert('Eroare export'); }
   };
 
-  // --- HANDLERS REDUCERI (NOU) ---
+  // --- HANDLERS REDUCERI ---
   const handleDiscountSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingDiscount) return;
@@ -435,22 +428,17 @@ export const Admin: React.FC = () => {
             </div>
         </div>
 
+        {errorMsg && (
+            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4">
+                <strong>Eroare:</strong> {errorMsg}
+            </div>
+        )}
+
         {/* --- TAB COMENZI --- */}
         {activeTab === 'orders' && (
             <>
-              {/* Filtre */}
               <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 p-6 mb-6">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                    <div>
-                        <label className="label-admin">Perioadă</label>
-                        <div className="flex gap-1">
-                             <button onClick={() => handleQuickDateFilter('today')} className="bg-neutral-100 px-2 py-1 rounded text-xs hover:bg-neutral-200">Azi</button>
-                             <button onClick={() => handleQuickDateFilter('week')} className="bg-neutral-100 px-2 py-1 rounded text-xs hover:bg-neutral-200">7 zile</button>
-                             <button onClick={() => handleQuickDateFilter('month')} className="bg-neutral-100 px-2 py-1 rounded text-xs hover:bg-neutral-200">30 zile</button>
-                        </div>
-                    </div>
-                    <div><label className="label-admin">Start</label><input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input-admin py-1" /></div>
-                    <div><label className="label-admin">End</label><input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="input-admin py-1" /></div>
                     <div>
                         <label className="label-admin">Status</label>
                         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="input-admin py-1">
@@ -476,7 +464,6 @@ export const Admin: React.FC = () => {
                 </div>
               </div>
 
-              {/* Tabel Comenzi */}
               <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm text-left">
@@ -492,7 +479,7 @@ export const Admin: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-neutral-100">
-                            {orders.map(order => (
+                            {Array.isArray(orders) && orders.map(order => (
                                 <tr key={order.id} className="hover:bg-neutral-50 transition-colors">
                                     <td className="px-4 py-3"><input type="checkbox" checked={selectedOrders.includes(order.id)} onChange={() => toggleOrderSelection(order.id)} /></td>
                                     <td className="px-4 py-3 font-mono text-neutral-400">#{order.id}</td>
@@ -521,7 +508,7 @@ export const Admin: React.FC = () => {
                                             onClick={() => setEditingOrder(order)}
                                             className="text-neutral-500 hover:text-black font-bold text-xs border border-neutral-200 px-2 py-1 rounded bg-white"
                                         >
-                                            ✏️ Modifică
+                                            ✏️ Edit
                                         </button>
                                     </td>
                                 </tr>
@@ -585,7 +572,7 @@ export const Admin: React.FC = () => {
             </div>
         )}
 
-        {/* --- TAB REDUCERI (NOU) --- */}
+        {/* --- TAB REDUCERI --- */}
         {activeTab === 'discounts' && (
             <div>
                 <div className="flex justify-end mb-6">
@@ -648,7 +635,7 @@ export const Admin: React.FC = () => {
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {discounts.map(d => (
+                    {Array.isArray(discounts) && discounts.map(d => (
                         <div key={d.id} className={`p-4 rounded-xl border ${d.is_active ? 'bg-white border-neutral-200' : 'bg-neutral-50 border-neutral-100 opacity-70'} relative group`}>
                             <div className="flex justify-between items-start">
                                 <div>
@@ -669,15 +656,14 @@ export const Admin: React.FC = () => {
                             </div>
                         </div>
                     ))}
-                    {discounts.length === 0 && <div className="text-neutral-400 p-8 col-span-full text-center">Nu există coduri de reducere.</div>}
+                    {Array.isArray(discounts) && discounts.length === 0 && <div className="text-neutral-400 p-8 col-span-full text-center">Nu există coduri de reducere.</div>}
                 </div>
             </div>
         )}
 
-        {/* --- TAB PRODUSE (PĂSTRAT) --- */}
+        {/* --- TAB PRODUSE --- */}
         {activeTab === 'products' && (
             <div>
-                {/* ... (Codul pentru produse rămâne identic cu cel original, doar îl chem pe showProductForm) ... */}
                  <div className="flex justify-end mb-6">
                     <Button onClick={() => {
                         setEditingProduct({
@@ -689,14 +675,12 @@ export const Admin: React.FC = () => {
                 </div>
                 
                 {showProductForm && editingProduct && (
-                    /* ... (Formularul produselor - copiat din codul tău original, neschimbat, doar variabila de state showProductForm) ... */
                     <div className="bg-white p-8 rounded-2xl shadow-xl mb-8 border border-neutral-200 animate-fade-in relative scroll-mt-24" id="productForm">
                         <h3 className="text-xl font-bold mb-6 flex items-center gap-2 border-b border-neutral-100 pb-4">
                              {editingProduct.id ? '✏️ Editează Produs' : '✨ Produs Nou'}
                         </h3>
                         
                         <form onSubmit={handleProductSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                             {/* ... aceleași câmpuri ca înainte ... */}
                              <div className="space-y-4">
                                 <div>
                                     <label className="label-admin">Nume Produs</label>
@@ -755,7 +739,7 @@ export const Admin: React.FC = () => {
                 )}
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {products.map(p => (
+                    {Array.isArray(products) && products.map(p => (
                         <div key={p.id} className="bg-white p-5 rounded-2xl shadow-sm border border-neutral-100 flex flex-col group hover:shadow-md transition-shadow">
                             <div className="flex justify-between items-start mb-4">
                                 <div className="w-20 h-20 rounded-lg overflow-hidden border border-neutral-100 bg-neutral-50 relative"><img src={p.imageUrl} className="w-full h-full object-cover" /></div>
