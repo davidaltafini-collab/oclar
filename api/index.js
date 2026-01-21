@@ -506,7 +506,80 @@ app.all('/api/admin', async (req, res) => {
     }
 });
 
-// --- 10. RUTE OBLIO & AWB ---
+// --- 10. RUTE ADMIN: DISCOUNT CODES ---
+app.post('/api/admin/discount-codes', async (req, res) => {
+    const adminSecret = req.headers['x-admin-secret'];
+    if (!adminSecret || adminSecret !== process.env.ADMIN_SECRET) {
+        return res.status(401).json({ error: 'Acces Neautorizat' });
+    }
+
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        const { code, discount_type, discount_value, min_order_amount, max_uses, valid_from, valid_until, is_active } = req.body;
+
+        await connection.query(
+            `INSERT INTO discount_codes (code, discount_type, discount_value, min_order_amount, max_uses, valid_from, valid_until, is_active) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [code, discount_type, discount_value, min_order_amount || 0, max_uses || null, valid_from, valid_until || null, is_active ? 1 : 0]
+        );
+
+        res.json({ success: true, message: 'Cod creat cu succes' });
+    } catch (error) {
+        console.error('Error creating discount code:', error);
+        res.status(500).json({ error: 'Eroare la creare cod' });
+    } finally {
+        if (connection) connection.release();
+    }
+});
+
+app.put('/api/admin/discount-codes', async (req, res) => {
+    const adminSecret = req.headers['x-admin-secret'];
+    if (!adminSecret || adminSecret !== process.env.ADMIN_SECRET) {
+        return res.status(401).json({ error: 'Acces Neautorizat' });
+    }
+
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        const { id, code, discount_type, discount_value, min_order_amount, max_uses, valid_from, valid_until, is_active } = req.body;
+
+        await connection.query(
+            `UPDATE discount_codes 
+             SET code=?, discount_type=?, discount_value=?, min_order_amount=?, max_uses=?, valid_from=?, valid_until=?, is_active=?
+             WHERE id=?`,
+            [code, discount_type, discount_value, min_order_amount || 0, max_uses || null, valid_from, valid_until || null, is_active ? 1 : 0, id]
+        );
+
+        res.json({ success: true, message: 'Cod actualizat cu succes' });
+    } catch (error) {
+        console.error('Error updating discount code:', error);
+        res.status(500).json({ error: 'Eroare la actualizare cod' });
+    } finally {
+        if (connection) connection.release();
+    }
+});
+
+app.delete('/api/admin/discount-codes', async (req, res) => {
+    const adminSecret = req.headers['x-admin-secret'];
+    if (!adminSecret || adminSecret !== process.env.ADMIN_SECRET) {
+        return res.status(401).json({ error: 'Acces Neautorizat' });
+    }
+
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        await connection.query('DELETE FROM discount_codes WHERE id = ?', [req.query.id]);
+        res.json({ success: true, message: 'Cod șters cu succes' });
+    } catch (error) {
+        console.error('Error deleting discount code:', error);
+        res.status(500).json({ error: 'Eroare la ștergere cod' });
+    } finally {
+        if (connection) connection.release();
+    }
+});
+
+// --- 11. RUTE OBLIO & AWB ---
 app.post('/api/admin/send-invoices', async (req, res) => {
     const adminSecret = req.headers['x-admin-secret'];
     if (!adminSecret || adminSecret !== process.env.ADMIN_SECRET) {
