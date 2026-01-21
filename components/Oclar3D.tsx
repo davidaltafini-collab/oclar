@@ -1,17 +1,16 @@
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Environment, Html, OrbitControls, useGLTF } from '@react-three/drei';
+import { Environment, Html, useGLTF } from '@react-three/drei';
 
 type ModelProps = {
   url: string;
   autoRotate?: boolean;
   autoRotateSpeed?: number;
-  enableOrbit?: boolean;
   intensity?: number;
   floatIntensity?: number;
   floatSpeed?: number;
-  allowTouchOrbit?: boolean;
+  dragSensitivity?: number;
 };
 
 function FitCameraToObject({ target }: { target: THREE.Object3D }) {
@@ -43,23 +42,25 @@ function Model({
   url,
   autoRotate = true,
   autoRotateSpeed = 0.006,
-  enableOrbit = true,
   intensity = 0.18,
   floatIntensity = 0.08,
   floatSpeed = 0.8,
-  allowTouchOrbit = true,
+  dragSensitivity = 0.005,
 }: ModelProps) {
   const group = useRef<THREE.Group>(null);
   const { scene } = useGLTF(url);
-
   const cloned = useMemo(() => scene.clone(true), [scene]);
+  
+  // Manual rotation state for drag
+  const rotationRef = useRef({ x: 0, y: 0 });
+  const isDraggingRef = useRef(false);
+  const lastPosRef = useRef({ x: 0, y: 0 });
 
   useEffect(() => {
     cloned.traverse((obj: any) => {
       if (obj?.isMesh) {
         obj.castShadow = true;
         obj.receiveShadow = true;
-
         if (obj.material) {
           if (obj.material.map) obj.material.map.colorSpace = THREE.SRGBColorSpace;
           obj.material.needsUpdate = true;
@@ -68,39 +69,80 @@ function Model({
     });
   }, [cloned]);
 
+  // Handle pointer events for drag
+  useEffect(() => {
+    const handlePointerDown = (e: PointerEvent) => {
+      isDraggingRef.current = true;
+      lastPosRef.current = { x: e.clientX, y: e.clientY };
+    };
+
+    const handlePointerMove = (e: PointerEvent) => {
+      if (!isDraggingRef.current) return;
+      
+      const deltaX = e.clientX - lastPosRef.current.x;
+      const deltaY = e.clientY - lastPosRef.current.y;
+      
+      rotationRef.current.y += deltaX * dragSensitivity;
+      rotationRef.current.x += deltaY * dragSensitivity;
+      
+      lastPosRef.current = { x: e.clientX, y: e.clientY };
+    };
+
+    const handlePointerUp = () => {
+      isDraggingRef.current = false;
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, [dragSensitivity]);
+
   useFrame(({ mouse, clock }) => {
     if (!group.current) return;
 
+    // Floating
     const t = clock.getElapsedTime();
     const floatY = Math.sin(t * floatSpeed) * floatIntensity;
     group.current.position.y = THREE.MathUtils.lerp(group.current.position.y, floatY, 0.08);
 
-    const targetX = mouse.y * intensity;
-    const targetY = mouse.x * intensity;
-
-    group.current.rotation.x = THREE.MathUtils.lerp(group.current.rotation.x, targetX, 0.06);
-
-    if (autoRotate) {
-      group.current.rotation.y += autoRotateSpeed;
+    // Mouse reactive tilt (only when not dragging)
+    if (!isDraggingRef.current) {
+      const targetX = mouse.y * intensity;
+      group.current.rotation.x = THREE.MathUtils.lerp(
+        group.current.rotation.x, 
+        rotationRef.current.x + targetX, 
+        0.06
+      );
+    } else {
+      group.current.rotation.x = THREE.MathUtils.lerp(
+        group.current.rotation.x,
+        rotationRef.current.x,
+        0.1
+      );
     }
 
-    group.current.rotation.y = THREE.MathUtils.lerp(group.current.rotation.y, group.current.rotation.y + targetY * 0.0, 0.0);
+    // Auto rotate + drag rotation
+    if (autoRotate && !isDraggingRef.current) {
+      rotationRef.current.y += autoRotateSpeed;
+    }
+    
+    group.current.rotation.y = THREE.MathUtils.lerp(
+      group.current.rotation.y,
+      rotationRef.current.y,
+      isDraggingRef.current ? 0.2 : 0.1
+    );
   });
 
   return (
     <group ref={group}>
       <primitive object={cloned} />
       <FitCameraToObject target={cloned} />
-
-      {enableOrbit && allowTouchOrbit && (
-        <OrbitControls
-          enablePan={false}
-          enableZoom={false}
-          rotateSpeed={0.7}
-          dampingFactor={0.08}
-          enableDamping
-        />
-      )}
     </group>
   );
 }
@@ -109,78 +151,11 @@ function Loader() {
   return (
     <Html center>
       <div className="flex items-center gap-3">
-        <div className="w-6 h-6 border-4 border-neutral-200 border-t-black rounded-full animate-spin" />
+        <div className="w-6 h-6 border-4 border-neutral-200 border-t-brand-yellow rounded-full animate-spin" />
         <span className="text-xs font-bold uppercase tracking-widest text-neutral-400">Loading 3D...</span>
       </div>
     </Html>
   );
-}
-
-/**
- * SIMPLIFIED: Only activate orbit on strong horizontal swipe (3x ratio)
- * Never block vertical scroll
- */
-function useTouchDirectionLock(containerRef: React.RefObject<HTMLDivElement>) {
-  const [allowTouchOrbit, setAllowTouchOrbit] = useState(false);
-  
-  const stateRef = useRef({
-    startX: 0,
-    startY: 0,
-    decided: false,
-  });
-
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-
-    const onTouchStart = (e: TouchEvent) => {
-      const touch = e.touches[0];
-      stateRef.current = {
-        startX: touch.clientX,
-        startY: touch.clientY,
-        decided: false,
-      };
-      setAllowTouchOrbit(false);
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      if (stateRef.current.decided) return;
-      
-      const touch = e.touches[0];
-      const dx = Math.abs(touch.clientX - stateRef.current.startX);
-      const dy = Math.abs(touch.clientY - stateRef.current.startY);
-
-      // Need 20px movement to decide
-      if (dx < 20 && dy < 20) return;
-
-      // Horizontal needs to be 3x stronger than vertical
-      if (dx > dy * 3) {
-        stateRef.current.decided = true;
-        setAllowTouchOrbit(true);
-        e.preventDefault();
-      } else {
-        stateRef.current.decided = true;
-        // Vertical = let scroll happen naturally
-      }
-    };
-
-    const onTouchEnd = () => {
-      stateRef.current.decided = false;
-      setAllowTouchOrbit(false);
-    };
-
-    el.addEventListener('touchstart', onTouchStart, { passive: true });
-    el.addEventListener('touchmove', onTouchMove, { passive: false });
-    el.addEventListener('touchend', onTouchEnd, { passive: true });
-
-    return () => {
-      el.removeEventListener('touchstart', onTouchStart as any);
-      el.removeEventListener('touchmove', onTouchMove as any);
-      el.removeEventListener('touchend', onTouchEnd as any);
-    };
-  }, []);
-
-  return allowTouchOrbit;
 }
 
 export const Oclar3D: React.FC<{
@@ -188,35 +163,50 @@ export const Oclar3D: React.FC<{
   className?: string;
   autoRotate?: boolean;
   autoRotateSpeed?: number;
-  enableOrbit?: boolean;
   intensity?: number;
   floatIntensity?: number;
   floatSpeed?: number;
+  dragSensitivity?: number;
 }> = ({
   url = '/models/oclar.glb',
   className = '',
   autoRotate = true,
   autoRotateSpeed = 0.006,
-  enableOrbit = true,
   intensity = 0.18,
   floatIntensity = 0.08,
   floatSpeed = 0.8,
+  dragSensitivity = 0.005,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const allowTouchOrbit = useTouchDirectionLock(containerRef);
+  // FIXED viewport height - calculate once and never change
+  const [fixedHeight, setFixedHeight] = useState<number | null>(null);
+
+  useEffect(() => {
+    // Calculate viewport height ONCE on mount
+    const vh = window.innerHeight;
+    setFixedHeight(vh);
+  }, []);
+
+  if (!fixedHeight) return null; // Wait for calculation
 
   return (
     <div
       ref={containerRef}
-      className={`w-full h-full ${className}`}
+      className={`w-full ${className}`}
       style={{
+        height: `${fixedHeight}px`, // Use fixed pixel value, not vh
         touchAction: 'pan-y',
+        cursor: 'grab',
       }}
     >
       <Canvas
         shadows
         dpr={[1, 2]}
-        gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
+        gl={{ 
+          antialias: true, 
+          alpha: true, 
+          powerPreference: 'high-performance' 
+        }}
         camera={{ fov: 35, near: 0.1, far: 2000, position: [0, 0, 5] }}
       >
         <ambientLight intensity={0.6} />
@@ -229,11 +219,10 @@ export const Oclar3D: React.FC<{
             url={url}
             autoRotate={autoRotate}
             autoRotateSpeed={autoRotateSpeed}
-            enableOrbit={enableOrbit}
             intensity={intensity}
             floatIntensity={floatIntensity}
             floatSpeed={floatSpeed}
-            allowTouchOrbit={allowTouchOrbit}
+            dragSensitivity={dragSensitivity}
           />
         </Suspense>
       </Canvas>

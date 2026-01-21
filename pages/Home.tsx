@@ -67,100 +67,126 @@ export const Home: React.FC = () => {
 
   return (
     <main className="bg-white overflow-hidden">
-      {/* HERO - Added padding bottom */}
-      <section className="relative min-h-screen flex flex-col justify-center px-[4vw] border-b border-neutral-100 bg-white pb-20 md:pb-24">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[65vh] h-[65vh] bg-brand-yellow/10 rounded-full blur-[120px] pointer-events-none animate-pulse-glow will-change-transform" />
-        <div className="absolute top-0 right-0 w-[40vw] h-full bg-neutral-50 -z-10 skew-x-12 translate-x-[10vw] hidden md:block" />
-
-        <div className="w-full max-w-6xl mx-auto z-10 pt-[10vh] md:pt-[12vh] relative">
-          <div className="relative flex flex-col md:flex-row items-center md:items-start gap-[4vh] md:gap-[3vw]">
-            {/* TEXT COLUMN */}
-            <div className="w-full md:w-1/2 relative z-20">
-              <div className="overflow-hidden mb-[2vh]">
-                <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-xs md:text-sm block animate-slide-up">
-                  Eyewear for the Digital Age
-                </span>
-              </div>
-
-              <h1 className="text-7xl sm:text-8xl md:text-[10rem] font-black uppercase tracking-tighter mb-[3vh] leading-[0.85] text-neutral-950 animate-slide-up-delay drop-shadow-xl">
-                Vezi <br />
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-neutral-800 to-neutral-500 hover:text-brand-yellow transition-colors duration-700 cursor-default">
-                  Până la
-                </span>{' '}
-                <br />
-                Capăt.
-              </h1>
-
-              <p
-                className="hidden md:block text-neutral-500 max-w-lg text-lg md:text-xl leading-relaxed mb-[3vh] animate-fade-in opacity-0"
-                style={{ animationDelay: '0.6s', animationFillMode: 'forwards' }}
-              >
-                Ochelari premium anti-lumină albastră. O soluție simplă pentru o problemă modernă.
-              </p>
-
-              {/* FIXED BUTTONS - Desktop - smaller, tighter */}
-              <div
-                className="hidden md:flex flex-wrap gap-3 animate-fade-in opacity-0"
-                style={{ animationDelay: '0.8s', animationFillMode: 'forwards' }}
-              >
-                <button
-                  onClick={() => document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth' })}
-                  className="group relative px-5 py-2.5 bg-black text-white font-bold uppercase text-xs tracking-widest overflow-hidden transition-all duration-300 hover:shadow-lg hover:shadow-brand-yellow/30 rounded-lg"
-                >
-                  <div className="absolute inset-0 bg-brand-yellow/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                  <span className="relative z-10">Vezi Toată Colecția</span>
-                </button>
-                
-                <Link to="/about">
-                  <button className="px-5 py-2.5 bg-white text-black font-bold uppercase text-xs tracking-widest border-2 border-black transition-all duration-300 hover:border-brand-yellow hover:text-brand-yellow rounded-lg">
-                    Misiunea Noastră
-                  </button>
-                </Link>
-              </div>
+      {/* HERO - Layout ca în poză: text mic în stânga, model URIAȘ în dreapta */}
+      <section className="relative min-h-screen flex flex-col justify-center bg-white pb-20 md:pb-24 overflow-hidden border-b border-neutral-100">
+        {/* Background effects */}
+        <div className="absolute top-1/2 right-1/3 w-[800px] h-[800px] bg-brand-yellow/10 rounded-full blur-[120px] pointer-events-none animate-pulse-glow" />
+        
+        {/* DESKTOP LAYOUT - Asimetric */}
+        <div className="hidden md:flex w-full h-screen items-center">
+          {/* TEXT COLUMN - 30% stânga */}
+          <div className="w-[30%] pl-12 pr-8 relative z-20">
+            <div className="overflow-hidden mb-4">
+              <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-xs block animate-slide-up">
+                Eyewear for the Digital Age
+              </span>
             </div>
 
-            {/* 3D COLUMN */}
-            <div className="w-full md:w-1/2 relative z-10">
-              <div className="relative w-full h-[42vh] md:h-[72vh]">
-                <div className="absolute inset-0 md:-translate-x-[2vw]">
-                  <Oclar3D
-                    autoRotate
-                    enableOrbit
-                    intensity={0.18}
-                    autoRotateSpeed={0.006}
-                    className="w-full h-full"
-                  />
-                </div>
-              </div>
+            <h1 className="text-7xl lg:text-8xl font-black uppercase tracking-tighter mb-6 leading-[0.85] text-neutral-950 animate-slide-up-delay">
+              Vezi <br />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-neutral-800 to-neutral-500">
+                Până
+              </span>{' '}
+              <br />
+              la <br />
+              Capăt.
+            </h1>
 
-              {/* MOBILE ORDER: text -> model -> paragraf -> butoane */}
-              <div className="md:hidden mt-[2vh]">
-                <p
-                  className="text-neutral-500 max-w-lg text-lg leading-relaxed mb-[2.5vh] animate-fade-in opacity-0"
-                  style={{ animationDelay: '0.6s', animationFillMode: 'forwards' }}
-                >
-                  Ochelari premium anti-lumină albastră. O soluție simplă pentru o problemă modernă.
-                </p>
+            <p
+              className="text-neutral-500 text-base leading-relaxed mb-6 animate-fade-in opacity-0"
+              style={{ animationDelay: '0.6s', animationFillMode: 'forwards' }}
+            >
+              Ochelari premium anti-lumină albastră. O soluție simplă pentru o problemă modernă.
+            </p>
 
-                {/* FIXED BUTTONS - Mobile - smaller, tighter */}
-                <div
-                  className="flex flex-col gap-2.5 animate-fade-in opacity-0"
-                  style={{ animationDelay: '0.8s', animationFillMode: 'forwards' }}
-                >
-                  <button
-                    onClick={() => document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth' })}
-                    className="w-full px-5 py-2.5 bg-black text-white font-bold uppercase text-xs tracking-widest rounded-lg active:scale-95 transition-transform"
-                  >
-                    Vezi Toată Colecția
-                  </button>
-                  
-                  <Link to="/about" className="w-full">
-                    <button className="w-full px-5 py-2.5 bg-white text-black font-bold uppercase text-xs tracking-widest border-2 border-black rounded-lg active:scale-95 transition-transform">
-                      Misiunea Noastră
-                    </button>
-                  </Link>
-                </div>
-              </div>
+            {/* Buttons - simple și profesionale */}
+            <div
+              className="flex flex-col gap-3 animate-fade-in opacity-0"
+              style={{ animationDelay: '0.8s', animationFillMode: 'forwards' }}
+            >
+              <button
+                onClick={() => document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth' })}
+                className="group relative px-6 py-3 bg-black text-white font-bold uppercase text-xs tracking-widest overflow-hidden transition-all duration-300 hover:shadow-lg hover:shadow-brand-yellow/30 rounded-lg"
+              >
+                <div className="absolute inset-0 bg-brand-yellow/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <span className="relative z-10">Vezi Toată Colecția</span>
+              </button>
+              
+              <Link to="/about">
+                <button className="w-full px-6 py-3 bg-white text-black font-bold uppercase text-xs tracking-widest border-2 border-black transition-all duration-300 hover:border-brand-yellow hover:text-brand-yellow rounded-lg">
+                  Misiunea Noastră
+                </button>
+              </Link>
+            </div>
+          </div>
+
+          {/* 3D MODEL - 70% dreapta, URIAȘ */}
+          <div className="w-[70%] h-full relative">
+            <Oclar3D
+              autoRotate
+              intensity={0.2}
+              autoRotateSpeed={0.004}
+              dragSensitivity={0.006}
+              className="w-full h-full"
+            />
+          </div>
+        </div>
+
+        {/* MOBILE LAYOUT - Vertical stack */}
+        <div className="md:hidden flex flex-col min-h-screen justify-center px-6 pt-20">
+          {/* Text */}
+          <div className="mb-8">
+            <div className="overflow-hidden mb-3">
+              <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-xs block animate-slide-up">
+                Eyewear for the Digital Age
+              </span>
+            </div>
+
+            <h1 className="text-6xl font-black uppercase tracking-tighter mb-4 leading-[0.85] text-neutral-950 animate-slide-up-delay">
+              Vezi <br />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-neutral-800 to-neutral-500">
+                Până la
+              </span>{' '}
+              Capăt.
+            </h1>
+          </div>
+
+          {/* 3D Model - Fixed height în pixeli */}
+          <div className="w-full" style={{ height: '400px' }}>
+            <Oclar3D
+              autoRotate
+              intensity={0.15}
+              autoRotateSpeed={0.004}
+              dragSensitivity={0.008}
+              className="w-full h-full"
+            />
+          </div>
+
+          {/* Paragraf + Butoane */}
+          <div className="mt-6">
+            <p
+              className="text-neutral-500 text-base leading-relaxed mb-6 animate-fade-in opacity-0"
+              style={{ animationDelay: '0.6s', animationFillMode: 'forwards' }}
+            >
+              Ochelari premium anti-lumină albastră. O soluție simplă pentru o problemă modernă.
+            </p>
+
+            <div
+              className="flex flex-col gap-3 animate-fade-in opacity-0 pb-8"
+              style={{ animationDelay: '0.8s', animationFillMode: 'forwards' }}
+            >
+              <button
+                onClick={() => document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth' })}
+                className="w-full px-6 py-3 bg-black text-white font-bold uppercase text-xs tracking-widest rounded-lg active:scale-95 transition-transform"
+              >
+                Vezi Toată Colecția
+              </button>
+              
+              <Link to="/about" className="w-full">
+                <button className="w-full px-6 py-3 bg-white text-black font-bold uppercase text-xs tracking-widest border-2 border-black rounded-lg active:scale-95 transition-transform">
+                  Misiunea Noastră
+                </button>
+              </Link>
             </div>
           </div>
         </div>
