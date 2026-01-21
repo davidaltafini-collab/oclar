@@ -73,24 +73,22 @@ export const Home: React.FC = () => {
         <div className="absolute top-1/2 right-1/4 w-[1000px] h-[1000px] bg-brand-yellow/15 rounded-full blur-[150px] pointer-events-none animate-pulse-glow hidden md:block" />
         
         {/* DESKTOP LAYOUT - Asimetric */}
-        <div className="hidden md:flex w-full h-screen items-center">
-          {/* TEXT COLUMN - 30% stânga */}
-          <div className="w-[30%] pl-12 pr-8 relative z-20">
-            <div className="overflow-hidden mb-4">
-              <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-xs block animate-slide-up">
-                Eyewear for the Digital Age
-              </span>
-            </div>
+        <div className="w-[30%] pl-12 pr-8 relative z-20"> {/* Poți schimba w-[30%] în w-[35%] sau w-[40%] dacă textul e prea lat */}
+          <div className="overflow-hidden mb-4">
+            <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-xs block animate-slide-up">
+              Eyewear for the Digital Age
+            </span>
+          </div>
 
-            <h1 className="text-7xl lg:text-8xl font-black uppercase tracking-tighter mb-6 leading-[0.65] text-neutral-950 animate-slide-up-delay">
-              Totul <br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-neutral-800 to-neutral-500">
-                Pentru
-              </span>{' '}
-              <br />
-              Ochii <br />
-              Tăi.
-            </h1>
+          <h1 className="text-[5rem] lg:text-[8rem] xl:text-[10rem] font-black uppercase tracking-tighter mb-6 leading-[0.75] text-neutral-950 animate-slide-up-delay">
+            Totul <br />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-neutral-800 to-neutral-500">
+              Pentru
+            </span>{' '}
+            <br />
+            Ochii <br />
+            Tăi.
+          </h1>
 
             <p
               className="text-neutral-500 text-base leading-relaxed mb-6 animate-fade-in opacity-0"
@@ -132,23 +130,25 @@ export const Home: React.FC = () => {
         </div>
 
         {/* MOBILE LAYOUT - TEXT MULT MAI MARE */}
-        <div className="md:hidden flex flex-col min-h-screen justify-center px-6 pt-20">
-          {/* Text - 3X MAI MARE */}
-          <div className="mb-6">
-            <div className="overflow-hidden mb-3">
-              <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-sm block animate-slide-up">
-                Eyewear for the Digital Age
-              </span>
-            </div>
-
-            <h1 className="text-[15vw] sm:text-8xl font-black uppercase tracking-tighter mb-4 leading-[0.85] text-neutral-950 animate-slide-up-delay">
-              Vezi <br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-neutral-800 to-neutral-500">
-                Până la
-              </span>{' '}
-              Capăt.
-            </h1>
+      <div className="md:hidden flex flex-col min-h-screen justify-center px-4 pt-20">
+        {/* Text - MAXIMIZAT PENTRU MOBIL */}
+        <div className="mb-6">
+          <div className="overflow-hidden mb-3">
+            {/* Am schimbat text-sm în text-base (mai mare) */}
+            <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-base block animate-slide-up">
+              Eyewear for the Digital Age
+            </span>
           </div>
+
+          {/* Am schimbat text-[18vw] în text-[21vw] și leading-[0.8] în leading-[0.75] */}
+          <h1 className="text-[21vw] font-black uppercase tracking-tighter mb-4 leading-[0.75] text-neutral-950 animate-slide-up-delay">
+            Totul <br />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-neutral-800 to-neutral-500">
+              Pentru Ochii
+            </span>{' '}
+            Tăi.
+          </h1>
+        </div>
 
           {/* 3D Model - Fixed height în pixeli */}
           <div className="w-full" style={{ height: '350px' }}>
