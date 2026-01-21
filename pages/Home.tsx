@@ -114,27 +114,14 @@ export const Home: React.FC = () => {
         </div>
 
         {/* ---------------- MOBILE LAYOUT (<768px) - FIXED STRUCTURE ---------------- */}
-        <div className="md:hidden relative w-full h-[100svh] overflow-hidden bg-white">
+        <div className="md:hidden relative w-full h-[100svh] flex flex-col bg-white overflow-hidden">
            
-           {/* 1. 3D MODEL - BACKGROUND LAYER (Dar interactiv) */}
-           {/* Îl punem pe tot ecranul ca să fie MARE */}
-           <div className="absolute inset-0 z-10">
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-brand-yellow/20 rounded-full blur-[80px] pointer-events-none"></div>
-              <Oclar3D
-                autoRotate
-                intensity={0.5}
-                autoRotateSpeed={0.004}
-                dragSensitivity={0.02}
-                className="w-full h-full"
-              />
-           </div>
-
-           {/* 2. TITLU - ANCORAT SUS (FIXED VISUAL) */}
-           <div className="absolute top-0 left-0 w-full z-20 px-5 pt-24 pointer-events-none">
+           {/* 1. TITLU - SUS */}
+           <div className="relative z-20 px-5 pt-20 pb-4 pointer-events-none shrink-0">
               <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-[10px] block mb-2 animate-slide-up">
                   Eyewear for the Digital Age
               </span>
-              <h1 className="text-[5rem] leading-[0.85] font-black uppercase tracking-tighter text-neutral-950 animate-slide-up-delay drop-shadow-lg">
+              <h1 className="text-[3.5rem] leading-[0.85] font-black uppercase tracking-tighter text-neutral-950 animate-slide-up-delay drop-shadow-lg">
                 Totul <br/>
                 <span className="text-neutral-400">
                   Pentru
@@ -143,8 +130,25 @@ export const Home: React.FC = () => {
               </h1>
            </div>
 
-           {/* 3. BUTOANE - ANCORATE JOS (FIXED VISUAL) */}
-           <div className="absolute bottom-0 left-0 w-full z-30 px-5 pb-8 pt-12 bg-gradient-to-t from-white via-white/90 to-transparent">
+           {/* 2. CONTAINER 3D MODEL - MIJLOC (VIZIBIL ȘI INTERACTIV) */}
+           <div className="relative flex-1 flex items-center justify-center px-5 z-10 min-h-0">
+              {/* Glow effect behind 3D model */}
+              <div className="absolute w-[280px] h-[280px] bg-brand-yellow/20 rounded-full blur-[80px] pointer-events-none animate-pulse-glow"></div>
+              
+              {/* 3D Model Container - dimensiune rezonabilă */}
+              <div className="relative w-full max-w-[400px] aspect-square">
+                <Oclar3D
+                  autoRotate
+                  intensity={0.5}
+                  autoRotateSpeed={0.004}
+                  dragSensitivity={0.02}
+                  className="w-full h-full"
+                />
+              </div>
+           </div>
+
+           {/* 3. BUTOANE - JOS */}
+           <div className="relative z-30 px-5 pb-8 pt-6 bg-gradient-to-t from-white via-white/95 to-transparent shrink-0">
               <p className="text-neutral-600 text-sm font-medium mb-5 text-center leading-tight">
                   Ochelari premium anti-lumină albastră.
               </p>
