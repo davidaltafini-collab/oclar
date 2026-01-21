@@ -37,7 +37,7 @@ app.use(cors({
 }));
 
 // OPTIONS pentru preflight
-app.options('(.*)', cors());
+//app.options('(.*)', cors());
 
 // --- 2. WEBHOOK STRIPE (TREBUIE ÎNAINTEA JSON PARSER!) ---
 app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
