@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Product } from '../types';
-import { Button } from '../components/Button'; // Deși folosim butoane custom mai jos, păstrăm importul dacă e necesar
+import { Button } from '../components/Button';
 import { useCart } from '../context/CartContext';
 import { API_URL, MOCK_PRODUCTS } from '../constants';
 import { Oclar3D } from '../components/Oclar3D';
@@ -70,95 +70,95 @@ export const Home: React.FC = () => {
       {/* ================= HERO SECTION ================= */}
       <section className="relative min-h-screen flex flex-col justify-center bg-white pb-10 md:pb-24 overflow-hidden border-b border-neutral-100">
         
-        {/* Background Glow Effect (Desktop Only) */}
-        <div className="absolute top-1/2 right-1/4 w-[1000px] h-[1000px] bg-brand-yellow/15 rounded-full blur-[150px] pointer-events-none animate-pulse-glow hidden md:block" />
+        {/* Background Glow Effect - Subtil în spate */}
+        <div className="absolute top-1/2 left-1/4 w-[800px] h-[800px] bg-brand-yellow/10 rounded-full blur-[120px] pointer-events-none hidden md:block" />
 
         {/* ---------------- DESKTOP LAYOUT (>768px) ---------------- */}
-        <div className="hidden md:flex w-full h-screen items-center relative">
+        <div className="hidden md:flex w-full h-screen items-center relative max-w-[1920px] mx-auto">
           
-          {/* Coloana Text - Stânga */}
-          <div className="w-[35%] pl-12 pr-8 relative z-20 pt-20">
-            <div className="overflow-hidden mb-4">
-              <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-xs block animate-slide-up">
+          {/* COLOANA TEXT - Stânga (Lățită la 55% pentru a arăta ca în design) */}
+          {/* IMPORTANT: pointer-events-none pe container ca să poți roti ochelarii chiar dacă sunt sub text */}
+          <div className="w-[55%] pl-12 pr-4 relative z-20 pt-10 pointer-events-none">
+            <div className="overflow-hidden mb-6 pointer-events-auto">
+              <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-sm block animate-slide-up">
                 Eyewear for the Digital Age
               </span>
             </div>
 
-            <h1 className="text-[5rem] lg:text-[7rem] xl:text-[9rem] font-black uppercase tracking-tighter mb-6 leading-[0.8] text-neutral-950 animate-slide-up-delay">
-              Totul <br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-neutral-800 to-neutral-500">
-                Pentru
+            {/* TEXT TITLU - ACTUALIZAT: VEZI PÂNĂ LA CAPĂT */}
+            <h1 className="text-[6rem] lg:text-[8rem] xl:text-[10rem] font-black uppercase tracking-tighter mb-8 leading-[0.8] text-neutral-950 animate-slide-up-delay pointer-events-auto select-none">
+              TOTUL <br />
+              <span className="text-brand-yellow">
+                PENTRU OCHII
               </span>{' '}
               <br />
-              Ochii <br />
-              Tăi.
+              TĂI.
             </h1>
 
             <p
-              className="text-neutral-500 text-base leading-relaxed mb-8 animate-fade-in opacity-0 max-w-md"
+              className="text-neutral-500 text-lg leading-relaxed mb-10 animate-fade-in opacity-0 max-w-lg pointer-events-auto"
               style={{ animationDelay: '0.6s', animationFillMode: 'forwards' }}
             >
               Ochelari premium anti-lumină albastră. O soluție simplă pentru o problemă modernă.
             </p>
 
             <div
-              className="flex flex-col gap-4 animate-fade-in opacity-0 w-3/4"
+              className="flex items-center gap-4 animate-fade-in opacity-0 pointer-events-auto"
               style={{ animationDelay: '0.8s', animationFillMode: 'forwards' }}
             >
               <button
                 onClick={() => document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth' })}
-                className="group relative px-8 py-4 bg-brand-yellow text-black font-bold uppercase text-sm tracking-widest overflow-hidden transition-all duration-300 hover:bg-yellow-400 hover:shadow-lg rounded-lg"
+                className="group px-10 py-5 bg-brand-yellow text-black font-black uppercase text-sm tracking-widest rounded-full transition-all duration-300 hover:bg-yellow-400 hover:shadow-lg hover:scale-105"
               >
                 Vezi Toată Colecția
               </button>
               
               <Link to="/about">
-                <button className="w-full px-8 py-4 bg-white text-black font-bold uppercase text-sm tracking-widest border-2 border-black transition-all duration-300 hover:border-brand-yellow hover:text-brand-yellow rounded-lg">
+                <button className="px-10 py-5 bg-transparent text-black font-black uppercase text-sm tracking-widest border-2 border-neutral-200 rounded-full transition-all duration-300 hover:border-black hover:bg-neutral-50">
                   Misiunea Noastră
                 </button>
               </Link>
             </div>
           </div>
 
-          {/* Coloana 3D Model - Dreapta */}
-          <div className="w-[65%] h-full relative">
+          {/* COLOANA 3D MODEL - Dreapta */}
+          {/* Poziționat absolut sau flex pentru a permite suprapunerea */}
+          <div className="absolute right-0 top-0 w-[60%] h-full z-10">
             <Oclar3D
               autoRotate
-              intensity={0.3}
-              autoRotateSpeed={0.004}
-              dragSensitivity={0.006}
+              intensity={0.4}
+              autoRotateSpeed={0.003}
+              dragSensitivity={0.008}
               className="w-full h-full"
             />
           </div>
         </div>
 
         {/* ---------------- MOBILE LAYOUT (<768px) ---------------- */}
-        <div className="md:hidden flex flex-col min-h-screen justify-center px-4 pt-24 pb-8 relative">
+        <div className="md:hidden flex flex-col min-h-screen justify-center px-5 pt-24 pb-8 relative">
           
           {/* 1. TEXT TITLU */}
-          <div className="mb-2 relative z-20">
-            <div className="overflow-hidden mb-2">
-              <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-sm block animate-slide-up">
+          <div className="mb-4 relative z-20">
+            <div className="overflow-hidden mb-3">
+              <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-xs block animate-slide-up">
                 Eyewear for the Digital Age
               </span>
             </div>
 
-            <h1 className="text-[19vw] font-black uppercase tracking-tighter leading-[0.8] text-neutral-950 animate-slide-up-delay">
-              Totul <br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-neutral-800 to-neutral-500">
-                Pentru Ochii
+            <h1 className="text-[17vw] font-black uppercase tracking-tighter leading-[0.8] text-neutral-950 animate-slide-up-delay">
+              TOTUL <br />
+              <span className="text-brand-yellow">
+                PENTRU OCHII
               </span>{' '}
-              Tăi.
+              TĂI.
             </h1>
           </div>
 
           {/* 2. MODEL 3D */}
-          {/* 🎛️ CONTROL: Modifică height (ex: 300px) pentru mărimea zonei 3D */}
-          {/* 🎛️ CONTROL: Modifică -mt-6 (margin-top negativ) ca să urci ochelarii mai aproape de titlu */}
-          <div className="w-full relative z-10 -mt-8" style={{ height: '320px' }}>
+          <div className="w-full relative z-10 -mt-4" style={{ height: '300px' }}>
             <Oclar3D
               autoRotate
-              intensity={0.25}
+              intensity={0.3}
               autoRotateSpeed={0.004}
               dragSensitivity={0.01}
               className="w-full h-full"
@@ -166,10 +166,9 @@ export const Home: React.FC = () => {
           </div>
 
           {/* 3. PARAGRAF + BUTOANE */}
-          {/* 🎛️ CONTROL: Modifică -mt-10 ca să urci textul mai aproape de ochelari */}
-          <div className="relative z-20 -mt-10 bg-white/30 backdrop-blur-sm rounded-xl p-2">
+          <div className="relative z-20 -mt-8">
             <p
-              className="text-neutral-600 text-lg font-medium leading-relaxed mb-6 animate-fade-in opacity-0 text-center"
+              className="text-neutral-500 text-base font-medium leading-relaxed mb-8 animate-fade-in opacity-0"
               style={{ animationDelay: '0.6s', animationFillMode: 'forwards' }}
             >
               Ochelari premium anti-lumină albastră. <br/>
@@ -180,16 +179,15 @@ export const Home: React.FC = () => {
               className="flex flex-col gap-3 animate-fade-in opacity-0"
               style={{ animationDelay: '0.8s', animationFillMode: 'forwards' }}
             >
-              {/* BUTOANE MAI MARI: py-4, text-sm */}
               <button
                 onClick={() => document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth' })}
-                className="w-full px-6 py-4 bg-brand-yellow text-black font-bold uppercase text-sm tracking-widest rounded-xl shadow-lg active:scale-95 transition-transform"
+                className="w-full px-6 py-4 bg-brand-yellow text-black font-black uppercase text-xs tracking-widest rounded-full shadow-lg active:scale-95 transition-transform"
               >
                 Vezi Toată Colecția
               </button>
               
               <Link to="/about" className="w-full">
-                <button className="w-full px-6 py-4 bg-white text-black font-bold uppercase text-sm tracking-widest border-2 border-black rounded-xl active:scale-95 transition-transform hover:bg-neutral-50">
+                <button className="w-full px-6 py-4 bg-transparent text-black font-black uppercase text-xs tracking-widest border-2 border-neutral-200 rounded-full active:scale-95 transition-transform hover:border-black">
                   Misiunea Noastră
                 </button>
               </Link>
@@ -199,7 +197,7 @@ export const Home: React.FC = () => {
         </div>
       </section>
 
-      {/* ================= CORE VALUES SECTION ================= */}
+      {/* ================= RESTUL SITE-ULUI (NESCHIMBAT) ================= */}
       <section className="py-32 px-6 md:px-12 bg-neutral-950 text-white relative">
         <div className="absolute top-0 left-12 w-1 h-24 bg-brand-yellow shadow-[0_0_15px_#FACC15]" />
 
