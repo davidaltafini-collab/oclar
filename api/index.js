@@ -58,6 +58,7 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
         const discountCode = metadata.discountCode || null;
         const discountAmount = parseFloat(metadata.discountAmount || 0);
         const shippingMethod = metadata.shippingMethod || 'courier';
+        // FIX: Asigurăm parsarea corectă a costului de transport
         const shippingCost = parseFloat(metadata.shippingCost || 0);
         const subtotal = parseFloat(metadata.subtotal || 0);
 
@@ -96,7 +97,7 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
                 customerPhone: orderData.customer_phone,
                 address: session.customer_details?.address,
                 subtotal: orderData.subtotal,
-                shippingCost: orderData.shippingCost,
+                shippingCost: orderData.shipping_cost,
                 shippingMethod: orderData.shipping_method,
                 discountCode: orderData.discount_code,
                 discountAmount: orderData.discount_amount,
@@ -250,6 +251,10 @@ app.post('/api/calculate-shipping', async (req, res) => {
 app.post('/api/create-order-ramburs', async (req, res) => {
     let connection;
     try {
+        const body = req.body;
+        // FIX: Acceptăm și shippingCost (camelCase) și shipping_cost (snake_case)
+        const shippingCostVal = body.shippingCost !== undefined ? body.shippingCost : (body.shipping_cost || 0);
+
         const { 
             customerName, 
             customerEmail, 
@@ -258,11 +263,10 @@ app.post('/api/create-order-ramburs', async (req, res) => {
             items, 
             subtotal,
             shippingMethod,
-            shippingCost,
             discountCode,
             discountAmount,
             totalAmount 
-        } = req.body;
+        } = body;
 
         if (!customerName || !customerPhone || !address || !items || !totalAmount) {
             return res.status(400).json({ error: 'Lipsesc date obligatorii' });
@@ -275,7 +279,7 @@ app.post('/api/create-order-ramburs', async (req, res) => {
             `INSERT INTO orders 
             (customer_name, customer_email, customer_phone, county, city, address_line, items, subtotal, shipping_method, shipping_cost, discount_code, discount_amount, total_amount, payment_method, status, created_at) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ramburs', 'pending', NOW())`,
-            [customerName, customerEmail, customerPhone, address.county, address.city, address.line, itemsJson, subtotal, shippingMethod, shippingCost, discountCode, discountAmount, totalAmount]
+            [customerName, customerEmail, customerPhone, address.county, address.city, address.line, itemsJson, subtotal, shippingMethod, shippingCostVal, discountCode, discountAmount, totalAmount]
         );
 
         // Dacă este cod de reducere, incrementăm usage
@@ -295,7 +299,7 @@ app.post('/api/create-order-ramburs', async (req, res) => {
                 customerPhone,
                 address: { line1: address.line, city: address.city, county: address.county },
                 subtotal,
-                shippingCost,
+                shippingCost: shippingCostVal,
                 shippingMethod,
                 discountCode,
                 discountAmount,
@@ -318,7 +322,11 @@ app.post('/api/create-order-ramburs', async (req, res) => {
 // --- 8. RUTA STRIPE CHECKOUT (ACTUALIZATĂ) ---
 app.post('/api/create-checkout-session', async (req, res) => {
     try {
-        const { items, discountCode, discountAmount, shippingMethod, shippingCost, subtotal } = req.body;
+        const body = req.body;
+        // FIX: Asigurare preluare cost transport
+        const shippingCostVal = body.shippingCost !== undefined ? body.shippingCost : (body.shipping_cost || 0);
+        const { items, discountCode, discountAmount, shippingMethod, subtotal } = body;
+        
         const origin = req.headers.origin || process.env.FRONTEND_URL || 'https://oclar.ro';
         
         const lineItems = items.map(item => ({
@@ -334,14 +342,14 @@ app.post('/api/create-checkout-session', async (req, res) => {
         }));
 
         // Adăugăm shipping ca line item
-        if (shippingCost > 0) {
+        if (shippingCostVal > 0) {
             lineItems.push({
                 price_data: {
                     currency: 'ron',
                     product_data: {
                         name: `Transport (${shippingMethod === 'easybox' ? 'Easy Box' : 'Curier la adresă'})`,
                     },
-                    unit_amount: Math.round(shippingCost * 100),
+                    unit_amount: Math.round(shippingCostVal * 100),
                 },
                 quantity: 1,
             });
@@ -375,7 +383,7 @@ app.post('/api/create-checkout-session', async (req, res) => {
                 discountCode: discountCode || '',
                 discountAmount: discountAmount || 0,
                 shippingMethod: shippingMethod || 'courier',
-                shippingCost: shippingCost || 0,
+                shippingCost: shippingCostVal || 0,
                 subtotal: subtotal || 0
             }
         });
@@ -519,8 +527,8 @@ app.post('/api/admin/discount-codes', async (req, res) => {
         const { code, discount_type, discount_value, min_order_amount, max_uses, valid_from, valid_until, is_active } = req.body;
 
         await connection.query(
-            `INSERT INTO discount_codes (code, discount_type, discount_value, min_order_amount, max_uses, valid_from, valid_until, is_active) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO discount_codes (code, discount_type, discount_value, min_order_amount, max_uses, valid_from, valid_until, is_active, created_at) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
             [code, discount_type, discount_value, min_order_amount || 0, max_uses || null, valid_from, valid_until || null, is_active ? 1 : 0]
         );
 
@@ -579,6 +587,7 @@ app.delete('/api/admin/discount-codes', async (req, res) => {
     }
 });
 
+// ... Restul fișierului rămâne neschimbat (rutele de Oblio, AWB, Export, Status) ...
 // --- 11. RUTE OBLIO & AWB ---
 app.post('/api/admin/send-invoices', async (req, res) => {
     const adminSecret = req.headers['x-admin-secret'];
