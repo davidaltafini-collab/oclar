@@ -111,59 +111,58 @@ export const Home: React.FC = () => {
         </div>
 
         {/* ---------------- MOBILE LAYOUT (<768px) ---------------- */}
-        <div className="md:hidden flex flex-col min-h-screen justify-center px-6 pt-24 pb-8 relative">
-           
-           {/* 1. TEXT */}
-           <div className="relative z-20 mb-4">
-              <div className="overflow-hidden mb-4">
-                <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-xs block animate-slide-up">
-                  Eyewear for the Digital Age
-                </span>
-              </div>
-              
-              {/* Text mare pe mobil */}
-              <h1 className="text-7xl sm:text-8xl font-black uppercase tracking-tighter leading-[0.85] text-neutral-950 animate-slide-up-delay drop-shadow-xl">
-                Vezi <br/>
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-neutral-800 to-neutral-500">
-                  Până la
-                </span> <br/>
-                Capăt.
-              </h1>
-           </div>
+        <div className="md:hidden flex flex-col min-h-screen relative pt-20 pb-10">
 
-           {/* 2. 3D MODEL - MULT MAI MIC ȘI MAI SUS */}
-           {/* w-[80%] -> Mai îngust */}
-           {/* height: '220px' -> ~30% mai mic decât înainte */}
-           {/* -mt-44 -> Urcă masiv peste textul "CAPĂT" pentru suprapunere */}
-           <div className="w-[80%] mx-auto relative z-10 -mt-44" style={{ height: '220px' }}>
-              
-              {/* Lumina Galbenă Mobile - În spatele ochelarilor */}
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[200px] h-[200px] bg-brand-yellow/30 rounded-full blur-[60px] pointer-events-none -z-10"></div>
-              
-              <Oclar3D
-                autoRotate
-                intensity={0.3}
-                autoRotateSpeed={0.004}
-                dragSensitivity={0.015} // Sensibilitate mai mare pe mobil pt control fin
-                className="w-full h-full" // Umple containerul de 220px
-              />
-           </div>
+          {/* 1. SECȚIUNEA DE SUS: TITLU */}
+          <div className="px-6 flex-none relative z-20">
+            <div className="overflow-hidden mb-4">
+              <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-xs block animate-slide-up">
+                Eyewear for the Digital Age
+              </span>
+            </div>
 
-           {/* 3. BUTOANE - TRAS SUS SUB OCHELARI */}
-           <div className="relative z-20 -mt-2 bg-white/60 backdrop-blur-sm rounded-xl p-4">
-              <p className="text-neutral-600 font-medium mb-6 animate-fade-in opacity-0 leading-tight" style={{animationDelay: '0.6s', animationFillMode: 'forwards'}}>
-                 Ochelari premium anti-lumină albastră. <br/> Soluție modernă.
-              </p>
-              
-              <div className="flex flex-col gap-3 animate-fade-in opacity-0" style={{animationDelay: '0.8s', animationFillMode: 'forwards'}}>
-                 <Button fullWidth onClick={() => document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth' })}>
-                   Vezi Colecția
-                 </Button>
-                 <Link to="/about">
-                   <Button fullWidth variant="outline">Misiunea Noastră</Button>
-                 </Link>
-              </div>
-           </div>
+            <h1 className="text-6xl sm:text-7xl font-black uppercase tracking-tighter leading-[0.9] text-neutral-950 animate-slide-up-delay drop-shadow-xl">
+              Totul <br />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-neutral-800 to-neutral-500">
+                Pentru Ochii
+              </span> <br />
+              Tăi.
+            </h1>
+          </div>
+
+          {/* 2. SECȚIUNEA MIJLOC: 3D MODEL 
+               Acesta va ocupa spațiul rămas, dar cu o înălțime minimă garantată.
+               Poziționat natural între text și butoane.
+           */}
+          <div className="flex-1 w-full relative z-10 min-h-[350px] -my-4">
+            {/* Lumina Galbenă Mobile */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[250px] h-[250px] bg-brand-yellow/30 rounded-full blur-[60px] pointer-events-none"></div>
+
+            {/* Aici Oclar3D va lua 100% din acest container flex */}
+            <Oclar3D
+              autoRotate
+              intensity={0.3}
+              autoRotateSpeed={0.004}
+              dragSensitivity={0.015} // Sensibilitate mai mare pe mobil
+              className="w-full h-full"
+            />
+          </div>
+
+          {/* 3. SECȚIUNEA JOS: DESCRIERE ȘI BUTOANE */}
+          <div className="px-6 flex-none relative z-20 bg-white/60 backdrop-blur-sm rounded-t-2xl pt-4 pb- safe-bottom">
+            <p className="text-neutral-600 font-medium mb-6 text-center animate-fade-in opacity-0 leading-tight" style={{ animationDelay: '0.6s', animationFillMode: 'forwards' }}>
+              Ochelari premium anti-lumină albastră. <br /> Soluție modernă pentru ochii tăi.
+            </p>
+
+            <div className="flex flex-col gap-3 animate-fade-in opacity-0" style={{ animationDelay: '0.8s', animationFillMode: 'forwards' }}>
+              <Button fullWidth onClick={() => document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth' })}>
+                Vezi Colecția
+              </Button>
+              <Link to="/about">
+                <Button fullWidth variant="outline">Misiunea Noastră</Button>
+              </Link>
+            </div>
+          </div>
         </div>
       </section>
 
