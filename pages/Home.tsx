@@ -54,10 +54,7 @@ export const Home: React.FC = () => {
             }
           });
         },
-        {
-          threshold: 0.1,
-          rootMargin: '50px',
-        }
+        { threshold: 0.1, rootMargin: '50px' }
       );
 
       const elements = document.querySelectorAll('.reveal-on-scroll');
@@ -72,67 +69,101 @@ export const Home: React.FC = () => {
 
   return (
     <main className="bg-white overflow-hidden">
-      {/* Hero Section */}
-      <section className="relative min-h-[100vh] flex flex-col justify-center px-6 md:px-12 border-b border-neutral-100 bg-white">
-        {/* glow original */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[60vh] h-[60vh] bg-brand-yellow/10 rounded-full blur-[12vh] pointer-events-none animate-pulse-glow will-change-transform"></div>
-        {/* panel dreapta original */}
-        <div className="absolute top-0 right-0 w-[40vw] h-full bg-neutral-50 -z-10 skew-x-12 translate-x-20 hidden md:block"></div>
+      {/* HERO */}
+      <section className="relative min-h-screen flex flex-col justify-center px-[4vw] border-b border-neutral-100 bg-white">
+        {/* glow + background shape (ca original) */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[65vh] h-[65vh] bg-brand-yellow/10 rounded-full blur-[120px] pointer-events-none animate-pulse-glow will-change-transform" />
+        <div className="absolute top-0 right-0 w-[40vw] h-full bg-neutral-50 -z-10 skew-x-12 translate-x-[10vw] hidden md:block" />
 
-        <div className="w-full max-w-6xl mx-auto z-10 pt-20 relative">
-          <div className="relative">
-            {/* DESKTOP: 3D in dreapta, mare, fara container vizibil */}
-            <div className="hidden md:block absolute right-0 top-1/2 -translate-y-1/2 w-[44vw] h-[70vh] pointer-events-auto">
-              <Oclar3D
-                autoRotate
-                enableOrbit
-                intensity={0.18}
-                className="w-full h-full"
-              />
-            </div>
-
-            {/* TEXT: stanga, mare, ca original */}
-            <div className="relative z-10 md:max-w-[52%]">
-              <div className="overflow-hidden mb-4">
+        {/* IMPORTANT: centrare corecta */}
+        <div className="w-full max-w-6xl mx-auto z-10 pt-[10vh] md:pt-[12vh] relative">
+          <div className="relative flex flex-col md:flex-row items-center md:items-start gap-[4vh] md:gap-[3vw]">
+            {/* TEXT COLUMN */}
+            <div className="w-full md:w-1/2 relative z-20">
+              <div className="overflow-hidden mb-[2vh]">
                 <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-xs md:text-sm block animate-slide-up">
                   Eyewear for the Digital Age
                 </span>
               </div>
 
-              {/* FIX: headline nou, fara overlap urat (si ramane “poster-like” pe desktop) */}
-              <h1 className="text-6xl sm:text-7xl md:text-[10vh] lg:text-[11vh] font-black uppercase tracking-tighter mb-6 leading-[0.85] text-neutral-950 animate-slide-up-delay drop-shadow-xl">
-                Ochii tăi <br />
-                merită <br />
-                ce e mai bun.
+              {/* Pastreaza stilul/structura ta (tu schimbi textul daca vrei) */}
+              <h1 className="text-7xl sm:text-8xl md:text-[10rem] font-black uppercase tracking-tighter mb-[3vh] leading-[0.85] text-neutral-950 animate-slide-up-delay drop-shadow-xl">
+                Vezi <br />
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-neutral-800 to-neutral-500 hover:text-brand-yellow transition-colors duration-700 cursor-default">
+                  Până la
+                </span>{' '}
+                <br />
+                Capăt.
               </h1>
 
-              {/* MOBILE: sub titlu vine 3D, apoi abia dupa vine paragraful */}
-              <div className="md:hidden w-full mt-6">
-                <Oclar3D
-                  autoRotate
-                  enableOrbit
-                  intensity={0.18}
-                  className="w-full h-[38vh]"
-                />
-              </div>
-
+              {/* MOBILE: paragraful se muta SUB model (cerinta ta) */}
               <p
-                className="text-neutral-500 max-w-lg text-lg md:text-xl leading-relaxed mb-12 animate-fade-in opacity-0"
+                className="hidden md:block text-neutral-500 max-w-lg text-lg md:text-xl leading-relaxed mb-[3vh] animate-fade-in opacity-0"
                 style={{ animationDelay: '0.6s', animationFillMode: 'forwards' }}
               >
                 Ochelari premium anti-lumină albastră. O soluție simplă pentru o problemă modernă.
               </p>
 
+              {/* Buttons (mai “tight”, spacing corect) */}
               <div
-                className="flex gap-6 animate-fade-in opacity-0"
+                className="hidden md:flex flex-wrap gap-[1.2vw] animate-fade-in opacity-0 pb-[2vh]"
                 style={{ animationDelay: '0.8s', animationFillMode: 'forwards' }}
               >
-                <Button onClick={() => document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth' })}>
+                <Button
+                  onClick={() => document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth' })}
+                  className="px-[2.2vw] py-[1.2vh] text-xs md:text-sm"
+                >
                   Vezi Toată Colecția
                 </Button>
                 <Link to="/about">
-                  <Button variant="outline">Misiunea Noastră</Button>
+                  <Button variant="outline" className="px-[2.2vw] py-[1.2vh] text-xs md:text-sm">
+                    Misiunea Noastră
+                  </Button>
                 </Link>
+              </div>
+            </div>
+
+            {/* 3D COLUMN */}
+            <div className="w-full md:w-1/2 relative z-10">
+              {/* Pe PC: mult mai mare. Pe mobile: mai “safe” ca dimensiune */}
+              <div className="relative w-full h-[42vh] md:h-[72vh]">
+                {/* Daca vrei ca textul sa treaca un pic peste model: */}
+                <div className="absolute inset-0 md:-translate-x-[2vw]">
+                  <Oclar3D
+                    autoRotate
+                    enableOrbit
+                    intensity={0.18}
+                    autoRotateSpeed={0.006}
+                    className="w-full h-full"
+                  />
+                </div>
+              </div>
+
+              {/* MOBILE ORDER: text -> model -> paragraf -> butoane */}
+              <div className="md:hidden mt-[2vh]">
+                <p
+                  className="text-neutral-500 max-w-lg text-lg leading-relaxed mb-[2.5vh] animate-fade-in opacity-0"
+                  style={{ animationDelay: '0.6s', animationFillMode: 'forwards' }}
+                >
+                  Ochelari premium anti-lumină albastră. O soluție simplă pentru o problemă modernă.
+                </p>
+
+                <div
+                  className="flex flex-wrap gap-[3vw] animate-fade-in opacity-0 pb-[4vh]"
+                  style={{ animationDelay: '0.8s', animationFillMode: 'forwards' }}
+                >
+                  <Button
+                    onClick={() => document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="px-[6vw] py-[1.4vh] text-sm"
+                  >
+                    Vezi Toată Colecția
+                  </Button>
+                  <Link to="/about">
+                    <Button variant="outline" className="px-[6vw] py-[1.4vh] text-sm">
+                      Misiunea Noastră
+                    </Button>
+                  </Link>
+                </div>
               </div>
             </div>
           </div>
@@ -141,7 +172,7 @@ export const Home: React.FC = () => {
 
       {/* Core Values Section */}
       <section className="py-32 px-6 md:px-12 bg-neutral-950 text-white relative">
-        <div className="absolute top-0 left-12 w-1 h-24 bg-brand-yellow shadow-[0_0_15px_#FACC15]"></div>
+        <div className="absolute top-0 left-12 w-1 h-24 bg-brand-yellow shadow-[0_0_15px_#FACC15]" />
 
         <div className="max-w-7xl mx-auto">
           <h2 className="text-4xl md:text-6xl font-black uppercase tracking-tighter mb-20 text-center md:text-left reveal-on-scroll">
@@ -193,7 +224,7 @@ export const Home: React.FC = () => {
               className="group md:col-span-2 lg:col-span-2 bg-neutral-900 p-8 border border-neutral-800 hover:border-brand-yellow transition-colors duration-500 rounded-3xl relative overflow-hidden reveal-on-scroll"
               style={{ transitionDelay: '400ms' }}
             >
-              <div className="absolute inset-0 bg-brand-yellow/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+              <div className="absolute inset-0 bg-brand-yellow/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
               <span className="text-sm font-bold text-brand-yellow uppercase tracking-widest mb-2 block relative z-10">
                 Motto-ul Nostru
               </span>
@@ -222,7 +253,7 @@ export const Home: React.FC = () => {
 
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20">
-            <div className="w-12 h-12 border-4 border-neutral-200 border-t-brand-yellow rounded-full animate-spin mb-4"></div>
+            <div className="w-12 h-12 border-4 border-neutral-200 border-t-brand-yellow rounded-full animate-spin mb-4" />
             <p className="text-xs uppercase font-bold tracking-widest text-neutral-400">Se încarcă colecția...</p>
           </div>
         ) : (
@@ -271,6 +302,7 @@ export const Home: React.FC = () => {
                         </Link>
                       </div>
 
+                      {/* Pret simplu: curent + (optional) taiat sub */}
                       <div className="text-right leading-none">
                         <div className="font-bold text-lg">{price.toFixed(0)} RON</div>
                         {hasDiscount && (
@@ -290,7 +322,7 @@ export const Home: React.FC = () => {
                             key={i}
                             className="w-3 h-3 rounded-full border border-neutral-200"
                             style={{ backgroundColor: c }}
-                          ></div>
+                          />
                         ))}
                       </div>
                     )}
@@ -315,9 +347,11 @@ export const Home: React.FC = () => {
           <div className="w-full md:w-1/2">
             <h3 className="text-4xl font-black uppercase tracking-tighter mb-6">Investiție în tine.</h3>
             <p className="text-lg text-neutral-600 mb-8 leading-relaxed">
-              Expunerea prelungită la lumina albastră suprimă melatonina și provoacă oboseală digitală. Ochelarii Oclarnu sunt doar un accesoriu, ci o unealtă de productivitate și sănătate.
+              Expunerea prelungită la lumina albastră suprimă melatonina și provoacă oboseală digitală. Ochelarii Oclar
+              nu sunt doar un accesoriu, ci o unealtă de productivitate și sănătate.
             </p>
           </div>
+
           <div className="w-full md:w-1/2 aspect-video bg-neutral-200 relative overflow-hidden group rounded-3xl shadow-2xl">
             <img
               src="https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&q=80&w=1000"
