@@ -51,7 +51,6 @@ function Model({
 }: ModelProps) {
   const group = useRef<THREE.Group>(null);
   const { scene } = useGLTF(url);
-  const orbitRef = useRef<any>(null);
 
   const cloned = useMemo(() => scene.clone(true), [scene]);
 
@@ -69,31 +68,23 @@ function Model({
     });
   }, [cloned]);
 
-  // Disable/enable OrbitControls based on touch mode
-  useEffect(() => {
-    if (orbitRef.current) {
-      orbitRef.current.enabled = allowTouchOrbit;
-    }
-  }, [allowTouchOrbit]);
-
   useFrame(({ mouse, clock }) => {
     if (!group.current) return;
 
-    // Floating animation - smooth and consistent
     const t = clock.getElapsedTime();
-    const targetFloatY = Math.sin(t * floatSpeed) * floatIntensity;
-    group.current.position.y = THREE.MathUtils.lerp(group.current.position.y, targetFloatY, 0.05);
+    const floatY = Math.sin(t * floatSpeed) * floatIntensity;
+    group.current.position.y = THREE.MathUtils.lerp(group.current.position.y, floatY, 0.08);
 
-    // Mouse reactive rotation (desktop only) - very subtle
-    if (!('ontouchstart' in window)) {
-      const targetX = mouse.y * intensity * 0.5;
-      group.current.rotation.x = THREE.MathUtils.lerp(group.current.rotation.x, targetX, 0.04);
-    }
+    const targetX = mouse.y * intensity;
+    const targetY = mouse.x * intensity;
 
-    // Auto rotate - smooth and consistent
+    group.current.rotation.x = THREE.MathUtils.lerp(group.current.rotation.x, targetX, 0.06);
+
     if (autoRotate) {
       group.current.rotation.y += autoRotateSpeed;
     }
+
+    group.current.rotation.y = THREE.MathUtils.lerp(group.current.rotation.y, group.current.rotation.y + targetY * 0.0, 0.0);
   });
 
   return (
@@ -101,15 +92,13 @@ function Model({
       <primitive object={cloned} />
       <FitCameraToObject target={cloned} />
 
-      {enableOrbit && (
+      {enableOrbit && allowTouchOrbit && (
         <OrbitControls
-          ref={orbitRef}
           enablePan={false}
           enableZoom={false}
-          rotateSpeed={0.5}
-          dampingFactor={0.1}
+          rotateSpeed={0.7}
+          dampingFactor={0.08}
           enableDamping
-          enabled={allowTouchOrbit}
         />
       )}
     </group>
@@ -120,7 +109,7 @@ function Loader() {
   return (
     <Html center>
       <div className="flex items-center gap-3">
-        <div className="w-6 h-6 border-4 border-neutral-200 border-t-brand-yellow rounded-full animate-spin" />
+        <div className="w-6 h-6 border-4 border-neutral-200 border-t-black rounded-full animate-spin" />
         <span className="text-xs font-bold uppercase tracking-widest text-neutral-400">Loading 3D...</span>
       </div>
     </Html>
@@ -128,111 +117,66 @@ function Loader() {
 }
 
 /**
- * Enhanced touch direction lock:
- * - Vertical scroll (up/down) => page scroll (disable orbit)
- * - Horizontal swipe (left/right) => 3D model interaction (enable orbit, prevent scroll)
+ * SIMPLIFIED: Only activate orbit on strong horizontal swipe (3x ratio)
+ * Never block vertical scroll
  */
 function useTouchDirectionLock(containerRef: React.RefObject<HTMLDivElement>) {
   const [allowTouchOrbit, setAllowTouchOrbit] = useState(false);
   
-  const state = useRef<{
-    tracking: boolean;
-    decided: boolean;
-    mode: 'scroll' | 'orbit' | null;
-    x0: number;
-    y0: number;
-    pointerId: number | null;
-  }>({
-    tracking: false,
+  const stateRef = useRef({
+    startX: 0,
+    startY: 0,
     decided: false,
-    mode: null,
-    x0: 0,
-    y0: 0,
-    pointerId: null,
   });
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
 
-    const onPointerDown = (e: PointerEvent) => {
-      // Only for touch/pen
-      if (e.pointerType !== 'touch' && e.pointerType !== 'pen') {
-        setAllowTouchOrbit(false);
-        return;
-      }
-
-      state.current = {
-        tracking: true,
+    const onTouchStart = (e: TouchEvent) => {
+      const touch = e.touches[0];
+      stateRef.current = {
+        startX: touch.clientX,
+        startY: touch.clientY,
         decided: false,
-        mode: null,
-        x0: e.clientX,
-        y0: e.clientY,
-        pointerId: e.pointerId,
       };
-
-      // Default: assume vertical scroll until proven otherwise
       setAllowTouchOrbit(false);
     };
 
-    const onPointerMove = (e: PointerEvent) => {
-      if (!state.current.tracking || state.current.pointerId !== e.pointerId) return;
+    const onTouchMove = (e: TouchEvent) => {
+      if (stateRef.current.decided) return;
+      
+      const touch = e.touches[0];
+      const dx = Math.abs(touch.clientX - stateRef.current.startX);
+      const dy = Math.abs(touch.clientY - stateRef.current.startY);
 
-      const dx = e.clientX - state.current.x0;
-      const dy = e.clientY - state.current.y0;
+      // Need 20px movement to decide
+      if (dx < 20 && dy < 20) return;
 
-      if (!state.current.decided) {
-        const adx = Math.abs(dx);
-        const ady = Math.abs(dy);
-        
-        // Increased threshold for better detection - 12px minimum movement
-        const THRESHOLD = 12;
-
-        if (adx < THRESHOLD && ady < THRESHOLD) return;
-
-        // Decide direction - clear horizontal bias needed
-        state.current.decided = true;
-        
-        // Horizontal needs to be 1.5x stronger than vertical to activate orbit
-        if (adx > ady * 1.5) {
-          state.current.mode = 'orbit';
-          setAllowTouchOrbit(true);
-        } else {
-          state.current.mode = 'scroll';
-          setAllowTouchOrbit(false);
-        }
-      }
-
-      // Prevent default ONLY for horizontal orbit mode
-      if (state.current.mode === 'orbit') {
+      // Horizontal needs to be 3x stronger than vertical
+      if (dx > dy * 3) {
+        stateRef.current.decided = true;
+        setAllowTouchOrbit(true);
         e.preventDefault();
-        e.stopPropagation();
+      } else {
+        stateRef.current.decided = true;
+        // Vertical = let scroll happen naturally
       }
     };
 
-    const onPointerEnd = (e: PointerEvent) => {
-      if (state.current.pointerId !== e.pointerId) return;
-      
-      state.current.tracking = false;
-      state.current.decided = false;
-      state.current.mode = null;
-      state.current.pointerId = null;
-      
-      // Reset to scroll mode
+    const onTouchEnd = () => {
+      stateRef.current.decided = false;
       setAllowTouchOrbit(false);
     };
 
-    // Use capture phase for better control
-    el.addEventListener('pointerdown', onPointerDown, { passive: true, capture: true });
-    el.addEventListener('pointermove', onPointerMove, { passive: false, capture: true });
-    el.addEventListener('pointerup', onPointerEnd, { passive: true, capture: true });
-    el.addEventListener('pointercancel', onPointerEnd, { passive: true, capture: true });
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
 
     return () => {
-      el.removeEventListener('pointerdown', onPointerDown as any, { capture: true } as any);
-      el.removeEventListener('pointermove', onPointerMove as any, { capture: true } as any);
-      el.removeEventListener('pointerup', onPointerEnd as any, { capture: true } as any);
-      el.removeEventListener('pointercancel', onPointerEnd as any, { capture: true } as any);
+      el.removeEventListener('touchstart', onTouchStart as any);
+      el.removeEventListener('touchmove', onTouchMove as any);
+      el.removeEventListener('touchend', onTouchEnd as any);
     };
   }, []);
 
@@ -266,25 +210,14 @@ export const Oclar3D: React.FC<{
       ref={containerRef}
       className={`w-full h-full ${className}`}
       style={{
-        // Allow vertical scrolling, prevent horizontal on container
         touchAction: 'pan-y',
-        // Prevent unwanted transforms during scroll
-        WebkitOverflowScrolling: 'touch',
       }}
     >
       <Canvas
         shadows
         dpr={[1, 2]}
-        gl={{ 
-          antialias: true, 
-          alpha: true, 
-          powerPreference: 'high-performance',
-          // Prevent flickering on mobile
-          preserveDrawingBuffer: false,
-        }}
+        gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
         camera={{ fov: 35, near: 0.1, far: 2000, position: [0, 0, 5] }}
-        // Prevent canvas from interfering with scroll
-        style={{ touchAction: 'none' }}
       >
         <ambientLight intensity={0.6} />
         <directionalLight position={[5, 8, 5]} intensity={1.1} castShadow />

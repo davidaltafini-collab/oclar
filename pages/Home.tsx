@@ -67,9 +67,8 @@ export const Home: React.FC = () => {
 
   return (
     <main className="bg-white overflow-hidden">
-      {/* HERO */}
-      <section className="relative min-h-screen flex flex-col justify-center px-[4vw] bg-white pb-16 md:pb-20">
-        {/* Background effects */}
+      {/* HERO - Added padding bottom */}
+      <section className="relative min-h-screen flex flex-col justify-center px-[4vw] border-b border-neutral-100 bg-white pb-20 md:pb-24">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[65vh] h-[65vh] bg-brand-yellow/10 rounded-full blur-[120px] pointer-events-none animate-pulse-glow will-change-transform" />
         <div className="absolute top-0 right-0 w-[40vw] h-full bg-neutral-50 -z-10 skew-x-12 translate-x-[10vw] hidden md:block" />
 
@@ -92,57 +91,29 @@ export const Home: React.FC = () => {
                 Capăt.
               </h1>
 
-              {/* Desktop paragraph */}
               <p
-                className="hidden md:block text-neutral-500 max-w-lg text-lg md:text-xl leading-relaxed mb-[4vh] animate-fade-in opacity-0"
+                className="hidden md:block text-neutral-500 max-w-lg text-lg md:text-xl leading-relaxed mb-[3vh] animate-fade-in opacity-0"
                 style={{ animationDelay: '0.6s', animationFillMode: 'forwards' }}
               >
                 Ochelari premium anti-lumină albastră. O soluție simplă pentru o problemă modernă.
               </p>
 
-              {/* REDESIGNED BUTTONS - Desktop */}
+              {/* FIXED BUTTONS - Desktop - smaller, tighter */}
               <div
-                className="hidden md:flex flex-col sm:flex-row gap-4 animate-fade-in opacity-0"
+                className="hidden md:flex flex-wrap gap-3 animate-fade-in opacity-0"
                 style={{ animationDelay: '0.8s', animationFillMode: 'forwards' }}
               >
                 <button
                   onClick={() => document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth' })}
-                  className="group relative px-8 py-4 bg-black text-white font-bold uppercase text-sm tracking-widest overflow-hidden transition-all duration-300 hover:scale-105 active:scale-95 rounded-xl shadow-lg hover:shadow-2xl hover:shadow-brand-yellow/50"
+                  className="group relative px-5 py-2.5 bg-black text-white font-bold uppercase text-xs tracking-widest overflow-hidden transition-all duration-300 hover:shadow-lg hover:shadow-brand-yellow/30 rounded-lg"
                 >
-                  {/* Yellow glow on hover */}
-                  <div className="absolute inset-0 bg-brand-yellow opacity-0 group-hover:opacity-20 transition-opacity duration-300" />
-                  <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-brand-yellow/30 to-transparent animate-shimmer" />
-                  </div>
-                  
-                  <span className="relative z-10 flex items-center justify-center gap-2">
-                    Vezi Toată Colecția
-                    <svg 
-                      className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" 
-                      fill="none" 
-                      stroke="currentColor" 
-                      viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </span>
+                  <div className="absolute inset-0 bg-brand-yellow/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                  <span className="relative z-10">Vezi Toată Colecția</span>
                 </button>
-
+                
                 <Link to="/about">
-                  <button className="group relative px-8 py-4 bg-white text-black font-bold uppercase text-sm tracking-widest border-2 border-black overflow-hidden transition-all duration-300 hover:scale-105 active:scale-95 rounded-xl hover:border-brand-yellow hover:text-brand-yellow shadow-md hover:shadow-xl">
-                    <div className="absolute inset-0 bg-brand-yellow/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                    
-                    <span className="relative z-10 flex items-center justify-center gap-2">
-                      Misiunea Noastră
-                      <svg 
-                        className="w-4 h-4 transform group-hover:rotate-12 transition-transform" 
-                        fill="none" 
-                        stroke="currentColor" 
-                        viewBox="0 0 24 24"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                      </svg>
-                    </span>
+                  <button className="px-5 py-2.5 bg-white text-black font-bold uppercase text-xs tracking-widest border-2 border-black transition-all duration-300 hover:border-brand-yellow hover:text-brand-yellow rounded-lg">
+                    Misiunea Noastră
                   </button>
                 </Link>
               </div>
@@ -162,44 +133,30 @@ export const Home: React.FC = () => {
                 </div>
               </div>
 
-              {/* MOBILE: paragraph + buttons below model */}
-              <div className="md:hidden mt-[3vh]">
+              {/* MOBILE ORDER: text -> model -> paragraf -> butoane */}
+              <div className="md:hidden mt-[2vh]">
                 <p
-                  className="text-neutral-500 max-w-lg text-base leading-relaxed mb-[3vh] animate-fade-in opacity-0"
+                  className="text-neutral-500 max-w-lg text-lg leading-relaxed mb-[2.5vh] animate-fade-in opacity-0"
                   style={{ animationDelay: '0.6s', animationFillMode: 'forwards' }}
                 >
                   Ochelari premium anti-lumină albastră. O soluție simplă pentru o problemă modernă.
                 </p>
 
-                {/* REDESIGNED BUTTONS - Mobile */}
+                {/* FIXED BUTTONS - Mobile - smaller, tighter */}
                 <div
-                  className="flex flex-col gap-3 animate-fade-in opacity-0 w-full"
+                  className="flex flex-col gap-2.5 animate-fade-in opacity-0"
                   style={{ animationDelay: '0.8s', animationFillMode: 'forwards' }}
                 >
                   <button
                     onClick={() => document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth' })}
-                    className="group relative w-full px-6 py-3.5 bg-black text-white font-bold uppercase text-xs tracking-widest overflow-hidden transition-all duration-300 active:scale-95 rounded-xl shadow-lg"
+                    className="w-full px-5 py-2.5 bg-black text-white font-bold uppercase text-xs tracking-widest rounded-lg active:scale-95 transition-transform"
                   >
-                    <div className="absolute inset-0 bg-brand-yellow opacity-0 group-active:opacity-20 transition-opacity duration-150" />
-                    
-                    <span className="relative z-10 flex items-center justify-center gap-2">
-                      Vezi Toată Colecția
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </span>
+                    Vezi Toată Colecția
                   </button>
-
+                  
                   <Link to="/about" className="w-full">
-                    <button className="group relative w-full px-6 py-3.5 bg-white text-black font-bold uppercase text-xs tracking-widest border-2 border-black overflow-hidden transition-all duration-300 active:scale-95 rounded-xl shadow-md">
-                      <div className="absolute inset-0 bg-brand-yellow/5 opacity-0 group-active:opacity-100 transition-opacity duration-150" />
-                      
-                      <span className="relative z-10 flex items-center justify-center gap-2">
-                        Misiunea Noastră
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                        </svg>
-                      </span>
+                    <button className="w-full px-5 py-2.5 bg-white text-black font-bold uppercase text-xs tracking-widest border-2 border-black rounded-lg active:scale-95 transition-transform">
+                      Misiunea Noastră
                     </button>
                   </Link>
                 </div>
