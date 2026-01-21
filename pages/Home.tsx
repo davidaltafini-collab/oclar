@@ -82,14 +82,14 @@ export const Home: React.FC = () => {
               </span>
             </div>
 
-            <h1 className="text-7xl lg:text-8xl font-black uppercase tracking-tighter mb-6 leading-[0.85] text-neutral-950 animate-slide-up-delay">
-              Vezi <br />
+            <h1 className="text-7xl lg:text-8xl font-black uppercase tracking-tighter mb-6 leading-[0.65] text-neutral-950 animate-slide-up-delay">
+              Totul <br />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-neutral-800 to-neutral-500">
-                Până
+                Pentru
               </span>{' '}
               <br />
-              la <br />
-              Capăt.
+              Ochii <br />
+              Tăi.
             </h1>
 
             <p
