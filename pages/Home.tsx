@@ -13,7 +13,6 @@ export const Home: React.FC = () => {
 
   const observerRef = useRef<IntersectionObserver | null>(null);
 
-  // helper sigur pentru toFixed
   const toNumber = (v: unknown): number => {
     if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
     if (typeof v === 'string') {
@@ -40,7 +39,6 @@ export const Home: React.FC = () => {
     fetchProducts();
   }, []);
 
-  // OPTIMIZARE SCROLL: Observer logic corectat
   useEffect(() => {
     if (loading) return;
 
@@ -70,12 +68,11 @@ export const Home: React.FC = () => {
   return (
     <main className="bg-white overflow-hidden">
       {/* HERO */}
-      <section className="relative min-h-screen flex flex-col justify-center px-[4vw] border-b border-neutral-100 bg-white">
-        {/* glow + background shape (ca original) */}
+      <section className="relative min-h-screen flex flex-col justify-center px-[4vw] bg-white pb-16 md:pb-20">
+        {/* Background effects */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[65vh] h-[65vh] bg-brand-yellow/10 rounded-full blur-[120px] pointer-events-none animate-pulse-glow will-change-transform" />
         <div className="absolute top-0 right-0 w-[40vw] h-full bg-neutral-50 -z-10 skew-x-12 translate-x-[10vw] hidden md:block" />
 
-        {/* IMPORTANT: centrare corecta */}
         <div className="w-full max-w-6xl mx-auto z-10 pt-[10vh] md:pt-[12vh] relative">
           <div className="relative flex flex-col md:flex-row items-center md:items-start gap-[4vh] md:gap-[3vw]">
             {/* TEXT COLUMN */}
@@ -86,7 +83,6 @@ export const Home: React.FC = () => {
                 </span>
               </div>
 
-              {/* Pastreaza stilul/structura ta (tu schimbi textul daca vrei) */}
               <h1 className="text-7xl sm:text-8xl md:text-[10rem] font-black uppercase tracking-tighter mb-[3vh] leading-[0.85] text-neutral-950 animate-slide-up-delay drop-shadow-xl">
                 Vezi <br />
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-neutral-800 to-neutral-500 hover:text-brand-yellow transition-colors duration-700 cursor-default">
@@ -96,38 +92,65 @@ export const Home: React.FC = () => {
                 Capăt.
               </h1>
 
-              {/* MOBILE: paragraful se muta SUB model (cerinta ta) */}
+              {/* Desktop paragraph */}
               <p
-                className="hidden md:block text-neutral-500 max-w-lg text-lg md:text-xl leading-relaxed mb-[3vh] animate-fade-in opacity-0"
+                className="hidden md:block text-neutral-500 max-w-lg text-lg md:text-xl leading-relaxed mb-[4vh] animate-fade-in opacity-0"
                 style={{ animationDelay: '0.6s', animationFillMode: 'forwards' }}
               >
                 Ochelari premium anti-lumină albastră. O soluție simplă pentru o problemă modernă.
               </p>
 
-              {/* Buttons (mai “tight”, spacing corect) */}
+              {/* REDESIGNED BUTTONS - Desktop */}
               <div
-                className="hidden md:flex flex-wrap gap-[1.2vw] animate-fade-in opacity-0 pb-[2vh]"
+                className="hidden md:flex flex-col sm:flex-row gap-4 animate-fade-in opacity-0"
                 style={{ animationDelay: '0.8s', animationFillMode: 'forwards' }}
               >
-                <Button
+                <button
                   onClick={() => document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth' })}
-                  className="px-[2.2vw] py-[1.2vh] text-xs md:text-sm"
+                  className="group relative px-8 py-4 bg-black text-white font-bold uppercase text-sm tracking-widest overflow-hidden transition-all duration-300 hover:scale-105 active:scale-95 rounded-xl shadow-lg hover:shadow-2xl hover:shadow-brand-yellow/50"
                 >
-                  Vezi Toată Colecția
-                </Button>
+                  {/* Yellow glow on hover */}
+                  <div className="absolute inset-0 bg-brand-yellow opacity-0 group-hover:opacity-20 transition-opacity duration-300" />
+                  <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-brand-yellow/30 to-transparent animate-shimmer" />
+                  </div>
+                  
+                  <span className="relative z-10 flex items-center justify-center gap-2">
+                    Vezi Toată Colecția
+                    <svg 
+                      className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </span>
+                </button>
+
                 <Link to="/about">
-                  <Button variant="outline" className="px-[2.2vw] py-[1.2vh] text-xs md:text-sm">
-                    Misiunea Noastră
-                  </Button>
+                  <button className="group relative px-8 py-4 bg-white text-black font-bold uppercase text-sm tracking-widest border-2 border-black overflow-hidden transition-all duration-300 hover:scale-105 active:scale-95 rounded-xl hover:border-brand-yellow hover:text-brand-yellow shadow-md hover:shadow-xl">
+                    <div className="absolute inset-0 bg-brand-yellow/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                    
+                    <span className="relative z-10 flex items-center justify-center gap-2">
+                      Misiunea Noastră
+                      <svg 
+                        className="w-4 h-4 transform group-hover:rotate-12 transition-transform" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                      </svg>
+                    </span>
+                  </button>
                 </Link>
               </div>
             </div>
 
             {/* 3D COLUMN */}
             <div className="w-full md:w-1/2 relative z-10">
-              {/* Pe PC: mult mai mare. Pe mobile: mai “safe” ca dimensiune */}
               <div className="relative w-full h-[42vh] md:h-[72vh]">
-                {/* Daca vrei ca textul sa treaca un pic peste model: */}
                 <div className="absolute inset-0 md:-translate-x-[2vw]">
                   <Oclar3D
                     autoRotate
@@ -139,29 +162,45 @@ export const Home: React.FC = () => {
                 </div>
               </div>
 
-              {/* MOBILE ORDER: text -> model -> paragraf -> butoane */}
-              <div className="md:hidden mt-[2vh]">
+              {/* MOBILE: paragraph + buttons below model */}
+              <div className="md:hidden mt-[3vh]">
                 <p
-                  className="text-neutral-500 max-w-lg text-lg leading-relaxed mb-[2.5vh] animate-fade-in opacity-0"
+                  className="text-neutral-500 max-w-lg text-base leading-relaxed mb-[3vh] animate-fade-in opacity-0"
                   style={{ animationDelay: '0.6s', animationFillMode: 'forwards' }}
                 >
                   Ochelari premium anti-lumină albastră. O soluție simplă pentru o problemă modernă.
                 </p>
 
+                {/* REDESIGNED BUTTONS - Mobile */}
                 <div
-                  className="flex flex-wrap gap-[3vw] animate-fade-in opacity-0 pb-[4vh]"
+                  className="flex flex-col gap-3 animate-fade-in opacity-0 w-full"
                   style={{ animationDelay: '0.8s', animationFillMode: 'forwards' }}
                 >
-                  <Button
+                  <button
                     onClick={() => document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth' })}
-                    className="px-[6vw] py-[1.4vh] text-sm"
+                    className="group relative w-full px-6 py-3.5 bg-black text-white font-bold uppercase text-xs tracking-widest overflow-hidden transition-all duration-300 active:scale-95 rounded-xl shadow-lg"
                   >
-                    Vezi Toată Colecția
-                  </Button>
-                  <Link to="/about">
-                    <Button variant="outline" className="px-[6vw] py-[1.4vh] text-sm">
-                      Misiunea Noastră
-                    </Button>
+                    <div className="absolute inset-0 bg-brand-yellow opacity-0 group-active:opacity-20 transition-opacity duration-150" />
+                    
+                    <span className="relative z-10 flex items-center justify-center gap-2">
+                      Vezi Toată Colecția
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </span>
+                  </button>
+
+                  <Link to="/about" className="w-full">
+                    <button className="group relative w-full px-6 py-3.5 bg-white text-black font-bold uppercase text-xs tracking-widest border-2 border-black overflow-hidden transition-all duration-300 active:scale-95 rounded-xl shadow-md">
+                      <div className="absolute inset-0 bg-brand-yellow/5 opacity-0 group-active:opacity-100 transition-opacity duration-150" />
+                      
+                      <span className="relative z-10 flex items-center justify-center gap-2">
+                        Misiunea Noastră
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                        </svg>
+                      </span>
+                    </button>
                   </Link>
                 </div>
               </div>
@@ -302,7 +341,6 @@ export const Home: React.FC = () => {
                         </Link>
                       </div>
 
-                      {/* Pret simplu: curent + (optional) taiat sub */}
                       <div className="text-right leading-none">
                         <div className="font-bold text-lg">{price.toFixed(0)} RON</div>
                         {hasDiscount && (
