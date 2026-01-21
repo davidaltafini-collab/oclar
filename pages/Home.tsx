@@ -78,7 +78,7 @@ export const Home: React.FC = () => {
                </span>
             </div>
             
-            <h1 className="text-[10rem] lg:text-[8rem] xl:text-[10rem] font-black uppercase tracking-tighter mb-8 leading-[0.70] text-neutral-950 animate-slide-up-delay drop-shadow-xl pointer-events-auto select-none">
+            <h1 className="text-[10rem] lg:text-[8rem] xl:text-[10rem] font-black uppercase tracking-tighter mb-8 leading-[1.20] text-neutral-950 animate-slide-up-delay drop-shadow-xl pointer-events-auto select-none">
               Vezi <br/>
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-neutral-800 to-neutral-500 hover:text-brand-yellow transition-colors duration-700 cursor-default">
                 Până la
@@ -118,10 +118,10 @@ export const Home: React.FC = () => {
            
            {/* 1. TITLU - SUS (COMPACT) */}
            <div className="relative z-20 px-5 pt-16 pb-2 pointer-events-none">
-              <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-[10px] block mb-1 animate-slide-up">
+              <span className="text-brand-yellow font-bold uppercase tracking-[2em] text-[10px] block mb-1 animate-slide-up">
                   Eyewear for the Digital Age
               </span>
-              <h1 className="text-[5.5rem] leading-[0.9] font-black uppercase tracking-tighter text-neutral-950 animate-slide-up-delay drop-shadow-lg">
+              <h1 className="text-[4.7rem] leading-[0.9] font-black uppercase tracking-tighter text-neutral-950 animate-slide-up-delay drop-shadow-lg">
                 Vezi <br/>
                 <span className="text-yellow-400">Până La</span><br/>
                 Capăt.
