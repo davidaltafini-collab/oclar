@@ -33,15 +33,34 @@ interface Order {
   items: string;
   oblio_invoice_number?: string;
   awb_number?: string;
+  // Câmpuri necesare pentru editare
+  county?: string;
+  city?: string;
+  address_line?: string;
+}
+
+interface DiscountCode {
+  id: number;
+  code: string;
+  discount_type: 'percentage' | 'fixed';
+  discount_value: number;
+  min_order_amount: number;
+  max_uses: number | null;
+  used_count: number;
+  valid_from: string;
+  valid_until: string | null;
+  is_active: boolean;
 }
 
 export const Admin: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [secret, setSecret] = useState('');
-  const [activeTab, setActiveTab] = useState<'orders' | 'products'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'products' | 'discounts'>('orders');
   
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<AdminProduct[]>([]);
+  const [discounts, setDiscounts] = useState<DiscountCode[]>([]);
+  
   const [loading, setLoading] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
 
@@ -53,7 +72,14 @@ export const Admin: React.FC = () => {
 
   // Formular Produs
   const [editingProduct, setEditingProduct] = useState<AdminProduct | null>(null);
-  const [showForm, setShowForm] = useState(false);
+  const [showProductForm, setShowProductForm] = useState(false);
+
+  // Formular Comandă (Editare)
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+
+  // Formular Reduceri
+  const [editingDiscount, setEditingDiscount] = useState<Partial<DiscountCode> | null>(null);
+  const [showDiscountForm, setShowDiscountForm] = useState(false);
 
   const handleLogin = async (e?: React.FormEvent) => {
     if(e) e.preventDefault();
@@ -86,7 +112,7 @@ export const Admin: React.FC = () => {
       }
   }, []);
 
-  const fetchData = async (type: 'orders' | 'products') => {
+  const fetchData = async (type: 'orders' | 'products' | 'discounts') => {
     setLoading(true);
     try {
       let url = `${API_URL}/admin?type=${type}`;
@@ -112,6 +138,7 @@ export const Admin: React.FC = () => {
         setSelectedOrders([]);
       }
       if (type === 'products') setProducts(data);
+      if (type === 'discounts') setDiscounts(data);
     } catch (err) {
       console.error(err);
     } finally {
@@ -125,6 +152,7 @@ export const Admin: React.FC = () => {
     }
   }, [activeTab, isAuthenticated]);
 
+  // --- HANDLERS PRODUSE ---
   const handleImageFile = (e: React.ChangeEvent<HTMLInputElement>, isGallery: boolean = false) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -173,7 +201,7 @@ export const Admin: React.FC = () => {
         
         if (res.ok) {
             alert('Produs salvat cu succes!');
-            setShowForm(false);
+            setShowProductForm(false);
             setEditingProduct(null);
             fetchData('products');
         } else {
@@ -195,7 +223,7 @@ export const Admin: React.FC = () => {
     } catch (err) { console.error(err); }
   };
 
-  // FUNCȚII NOI - COMENZI
+  // --- HANDLERS COMENZI ---
   const toggleOrderSelection = (orderId: number) => {
     setSelectedOrders(prev => 
       prev.includes(orderId) 
@@ -234,6 +262,41 @@ export const Admin: React.FC = () => {
 
     setStartDate(start);
     setEndDate(end);
+  };
+
+  const handleUpdateOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingOrder) return;
+
+    try {
+        const res = await fetch(`${API_URL}/admin`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-admin-secret': secret
+            },
+            body: JSON.stringify({
+                orderId: editingOrder.id,
+                customer_name: editingOrder.customer_name,
+                customer_phone: editingOrder.customer_phone,
+                customer_email: editingOrder.customer_email,
+                status: editingOrder.status,
+                county: editingOrder.county,
+                city: editingOrder.city,
+                address_line: editingOrder.address_line
+            })
+        });
+
+        if (res.ok) {
+            alert('Comandă actualizată cu succes!');
+            setEditingOrder(null);
+            fetchData('orders');
+        } else {
+            alert('Eroare la actualizare comandă.');
+        }
+    } catch (err) {
+        alert('Eroare server.');
+    }
   };
 
   const handleSendInvoices = async () => {
@@ -341,6 +404,48 @@ export const Admin: React.FC = () => {
     }
   };
 
+  // --- HANDLERS REDUCERI (NOU) ---
+  const handleDiscountSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingDiscount) return;
+
+    // Determinăm dacă e creare sau update
+    const method = editingDiscount.id ? 'PUT' : 'POST';
+
+    try {
+        const res = await fetch(`${API_URL}/admin/discount-codes`, {
+            method: method,
+            headers: { 
+                'Content-Type': 'application/json',
+                'x-admin-secret': secret 
+            },
+            body: JSON.stringify(editingDiscount)
+        });
+        
+        if (res.ok) {
+            alert('Cod salvat cu succes!');
+            setShowDiscountForm(false);
+            setEditingDiscount(null);
+            fetchData('discounts');
+        } else {
+            alert('Eroare la salvare cod.');
+        }
+    } catch (err) {
+        alert('Eroare rețea.');
+    }
+  };
+
+  const handleDeleteDiscount = async (id: number) => {
+    if (!confirm('Ești sigur că vrei să ștergi acest cod?')) return;
+    try {
+        await fetch(`${API_URL}/admin/discount-codes?id=${id}`, {
+            method: 'DELETE',
+            headers: { 'x-admin-secret': secret }
+        });
+        fetchData('discounts');
+    } catch (err) { console.error(err); }
+  };
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-neutral-100 p-4">
@@ -370,7 +475,7 @@ export const Admin: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-50 pt-24 px-4 pb-12 animate-fade-in">
+    <div className="min-h-screen bg-neutral-50 pt-24 px-4 pb-12 animate-fade-in relative">
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
             <div>
@@ -378,18 +483,24 @@ export const Admin: React.FC = () => {
                 <p className="text-neutral-500 text-sm">Gestionează magazinul Oclar</p>
             </div>
             
-            <div className="flex bg-white p-1 rounded-xl shadow-sm border border-neutral-200">
+            <div className="flex bg-white p-1 rounded-xl shadow-sm border border-neutral-200 overflow-x-auto">
                 <button 
                     onClick={() => setActiveTab('orders')}
-                    className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${activeTab === 'orders' ? 'bg-black text-white shadow-lg' : 'text-neutral-500 hover:bg-neutral-50'}`}
+                    className={`px-4 md:px-6 py-2 rounded-lg font-bold text-sm transition-all whitespace-nowrap ${activeTab === 'orders' ? 'bg-black text-white shadow-lg' : 'text-neutral-500 hover:bg-neutral-50'}`}
                 >
-                    Comenzi ({orders.length})
+                    Comenzi
                 </button>
                 <button 
                     onClick={() => setActiveTab('products')}
-                    className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${activeTab === 'products' ? 'bg-black text-white shadow-lg' : 'text-neutral-500 hover:bg-neutral-50'}`}
+                    className={`px-4 md:px-6 py-2 rounded-lg font-bold text-sm transition-all whitespace-nowrap ${activeTab === 'products' ? 'bg-black text-white shadow-lg' : 'text-neutral-500 hover:bg-neutral-50'}`}
                 >
                     Produse
+                </button>
+                <button 
+                    onClick={() => setActiveTab('discounts')}
+                    className={`px-4 md:px-6 py-2 rounded-lg font-bold text-sm transition-all whitespace-nowrap ${activeTab === 'discounts' ? 'bg-black text-white shadow-lg' : 'text-neutral-500 hover:bg-neutral-50'}`}
+                >
+                    Reduceri
                 </button>
                 <button
                     onClick={() => { setIsAuthenticated(false); sessionStorage.removeItem('admin_secret'); }}
@@ -509,6 +620,7 @@ export const Admin: React.FC = () => {
                                 <th className="px-6 py-4">Status</th>
                                 <th className="px-6 py-4">Livrare</th>
                                 <th className="px-6 py-4">Facturi/AWB</th>
+                                <th className="px-6 py-4">Acțiuni</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-neutral-100">
@@ -530,7 +642,7 @@ export const Admin: React.FC = () => {
                                     </td>
                                     <td className="px-6 py-4">
                                         <div className="text-xs space-y-1">
-                                          <div>Subtotal: {parseFloat(order.subtotal || '0').toFixed(2)} RON</div>
+                                          <div>Subtotal: {parseFloat(order.subtotal?.toString() || '0').toFixed(2)} RON</div>
                                           {order.discount_amount > 0 && (
                                             <div className="text-green-600">Reducere: -{parseFloat(order.discount_amount.toString()).toFixed(2)} RON</div>
                                           )}
@@ -550,7 +662,7 @@ export const Admin: React.FC = () => {
                                     </td>
                                     <td className="px-6 py-4 text-xs">
                                       <div>{order.shipping_method === 'easybox' ? '📦 Easy Box' : '🚚 Curier'}</div>
-                                      <div className="text-neutral-400">{parseFloat(order.shipping_cost?.toString() || '0').toFixed(2)} RON</div>
+                                      <div className="text-neutral-400 font-bold">{parseFloat(order.shipping_cost?.toString() || '0').toFixed(2)} RON</div>
                                     </td>
                                     <td className="px-6 py-4 text-xs">
                                       {order.oblio_invoice_number ? (
@@ -562,6 +674,14 @@ export const Admin: React.FC = () => {
                                         <div className="text-blue-600 mt-1">📦 {order.awb_number}</div>
                                       )}
                                     </td>
+                                    <td className="px-6 py-4">
+                                        <button 
+                                            onClick={() => setEditingOrder(order)}
+                                            className="text-neutral-500 hover:text-black transition-colors font-bold text-xs border border-neutral-200 px-2 py-1 rounded bg-white shadow-sm"
+                                        >
+                                            ✏️ Modifică
+                                        </button>
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>
@@ -569,7 +689,285 @@ export const Admin: React.FC = () => {
                 </div>
                 {orders.length === 0 && !loading && <div className="p-12 text-center text-neutral-400">Nu există comenzi.</div>}
               </div>
+
+              {/* MODAL EDITARE COMANDĂ */}
+              {editingOrder && (
+                  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-fade-in">
+                      <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                          <h2 className="text-xl font-black uppercase mb-6 flex justify-between items-center">
+                              <span>Editare Comandă #{editingOrder.id}</span>
+                              <button onClick={() => setEditingOrder(null)} className="text-neutral-400 hover:text-black">✕</button>
+                          </h2>
+                          
+                          <form onSubmit={handleUpdateOrder} className="space-y-4">
+                              <div>
+                                  <label className="label-admin">Status Comandă</label>
+                                  <select 
+                                      className="input-admin"
+                                      value={editingOrder.status}
+                                      onChange={e => setEditingOrder({...editingOrder, status: e.target.value})}
+                                  >
+                                      <option value="pending">Pending (În așteptare)</option>
+                                      <option value="paid">Paid (Plătit)</option>
+                                      <option value="shipped">Shipped (Livrat)</option>
+                                      <option value="completed">Completed (Finalizat)</option>
+                                      <option value="cancelled">Cancelled (Anulat)</option>
+                                      <option value="returned">Returned (Returnat)</option>
+                                  </select>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                      <label className="label-admin">Nume Client</label>
+                                      <input 
+                                          className="input-admin"
+                                          value={editingOrder.customer_name}
+                                          onChange={e => setEditingOrder({...editingOrder, customer_name: e.target.value})}
+                                      />
+                                  </div>
+                                  <div>
+                                      <label className="label-admin">Telefon</label>
+                                      <input 
+                                          className="input-admin"
+                                          value={editingOrder.customer_phone}
+                                          onChange={e => setEditingOrder({...editingOrder, customer_phone: e.target.value})}
+                                      />
+                                  </div>
+                              </div>
+
+                              <div>
+                                  <label className="label-admin">Email</label>
+                                  <input 
+                                      className="input-admin"
+                                      value={editingOrder.customer_email}
+                                      onChange={e => setEditingOrder({...editingOrder, customer_email: e.target.value})}
+                                  />
+                              </div>
+
+                              <div className="border-t border-neutral-100 pt-4 mt-2">
+                                   <p className="text-xs font-bold uppercase text-neutral-400 mb-3">Adresă Livrare</p>
+                                   <div className="grid grid-cols-2 gap-4 mb-2">
+                                      <div>
+                                          <label className="label-admin">Județ</label>
+                                          <input 
+                                              className="input-admin"
+                                              value={editingOrder.county || ''}
+                                              onChange={e => setEditingOrder({...editingOrder, county: e.target.value})}
+                                          />
+                                      </div>
+                                      <div>
+                                          <label className="label-admin">Oraș</label>
+                                          <input 
+                                              className="input-admin"
+                                              value={editingOrder.city || ''}
+                                              onChange={e => setEditingOrder({...editingOrder, city: e.target.value})}
+                                          />
+                                      </div>
+                                   </div>
+                                   <div>
+                                      <label className="label-admin">Adresă / Stradă</label>
+                                      <input 
+                                          className="input-admin"
+                                          value={editingOrder.address_line || ''}
+                                          onChange={e => setEditingOrder({...editingOrder, address_line: e.target.value})}
+                                      />
+                                   </div>
+                              </div>
+
+                              <div className="flex gap-3 pt-6">
+                                  <Button fullWidth type="submit">Salvează Modificările</Button>
+                                  <Button fullWidth variant="outline" type="button" onClick={() => setEditingOrder(null)}>Anulează</Button>
+                              </div>
+                          </form>
+                      </div>
+                  </div>
+              )}
             </>
+        )}
+
+        {activeTab === 'discounts' && (
+            <div>
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-xl font-bold">Coduri de Reducere</h2>
+                    <Button onClick={() => {
+                        setEditingDiscount({
+                            code: '', 
+                            discount_type: 'percentage', 
+                            discount_value: 10, 
+                            min_order_amount: 0, 
+                            max_uses: null,
+                            used_count: 0,
+                            valid_from: new Date().toISOString().split('T')[0],
+                            valid_until: null,
+                            is_active: true
+                        });
+                        setShowDiscountForm(true);
+                    }}>+ Adaugă Cod Reducere</Button>
+                </div>
+
+                {showDiscountForm && editingDiscount && (
+                    <div className="bg-white p-6 rounded-2xl shadow-xl mb-8 border border-neutral-200 animate-fade-in">
+                         <h3 className="text-lg font-bold mb-4 border-b border-neutral-100 pb-2">
+                             {editingDiscount.id ? '✏️ Editează Cod' : '✨ Cod Nou'}
+                         </h3>
+                         <form onSubmit={handleDiscountSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label className="label-admin">Cod Reducere (Ex: VARA20)</label>
+                                <input 
+                                    className="input-admin uppercase font-mono font-bold text-lg" 
+                                    required 
+                                    value={editingDiscount.code} 
+                                    onChange={e => setEditingDiscount({...editingDiscount, code: e.target.value.toUpperCase()})} 
+                                    placeholder="COD-PROMO"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="label-admin">Tip Reducere</label>
+                                    <select 
+                                        className="input-admin" 
+                                        value={editingDiscount.discount_type} 
+                                        onChange={e => setEditingDiscount({...editingDiscount, discount_type: e.target.value as any})}
+                                    >
+                                        <option value="percentage">Procent (%)</option>
+                                        <option value="fixed">Sumă Fixă (RON)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="label-admin">Valoare</label>
+                                    <input 
+                                        type="number" step="0.01" 
+                                        className="input-admin font-bold" 
+                                        required 
+                                        value={editingDiscount.discount_value} 
+                                        onChange={e => setEditingDiscount({...editingDiscount, discount_value: parseFloat(e.target.value)})} 
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="label-admin">Comanda Minimă (RON)</label>
+                                    <input 
+                                        type="number" 
+                                        className="input-admin" 
+                                        value={editingDiscount.min_order_amount} 
+                                        onChange={e => setEditingDiscount({...editingDiscount, min_order_amount: parseFloat(e.target.value)})} 
+                                    />
+                                </div>
+                                <div>
+                                    <label className="label-admin">Nr. Maxim Utilizări</label>
+                                    <input 
+                                        type="number" 
+                                        className="input-admin" 
+                                        placeholder="Nelimitat" 
+                                        value={editingDiscount.max_uses || ''} 
+                                        onChange={e => setEditingDiscount({...editingDiscount, max_uses: e.target.value ? parseInt(e.target.value) : null})} 
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="label-admin">Valabil De La</label>
+                                    <input 
+                                        type="datetime-local" 
+                                        className="input-admin" 
+                                        required 
+                                        value={editingDiscount.valid_from ? new Date(editingDiscount.valid_from).toISOString().slice(0, 16) : ''} 
+                                        onChange={e => setEditingDiscount({...editingDiscount, valid_from: e.target.value})} 
+                                    />
+                                </div>
+                                <div>
+                                    <label className="label-admin">Expiră La (Opțional)</label>
+                                    <input 
+                                        type="datetime-local" 
+                                        className="input-admin" 
+                                        value={editingDiscount.valid_until ? new Date(editingDiscount.valid_until).toISOString().slice(0, 16) : ''} 
+                                        onChange={e => setEditingDiscount({...editingDiscount, valid_until: e.target.value || null})} 
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 bg-neutral-50 p-3 rounded-lg border border-neutral-100">
+                                <input 
+                                    type="checkbox" 
+                                    id="active" 
+                                    className="w-5 h-5 accent-black" 
+                                    checked={editingDiscount.is_active} 
+                                    onChange={e => setEditingDiscount({...editingDiscount, is_active: e.target.checked})} 
+                                />
+                                <label htmlFor="active" className="font-bold text-sm cursor-pointer select-none">Activează acest cod de reducere</label>
+                            </div>
+
+                            <div className="md:col-span-2 flex gap-4 mt-2">
+                                <Button type="submit">Salvează Codul</Button>
+                                <Button variant="outline" type="button" onClick={() => setShowDiscountForm(false)}>Anulează</Button>
+                            </div>
+                         </form>
+                    </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {discounts.map(d => (
+                        <div key={d.id} className={`p-5 rounded-xl border transition-all ${d.is_active ? 'bg-white border-neutral-200 shadow-sm hover:shadow-md' : 'bg-neutral-50 border-neutral-100 opacity-60 grayscale'}`}>
+                            <div className="flex justify-between items-start mb-2">
+                                <div className="font-mono font-black text-xl uppercase tracking-wider text-brand-yellow-darker bg-yellow-50 px-2 py-1 rounded">
+                                    {d.code}
+                                </div>
+                                <div className="flex gap-2">
+                                    <button 
+                                        onClick={() => { setEditingDiscount(d); setShowDiscountForm(true); window.scrollTo({top: 0, behavior: 'smooth'}); }} 
+                                        className="text-xs bg-black text-white px-2 py-1 rounded font-bold hover:bg-neutral-800"
+                                    >
+                                        Edit
+                                    </button>
+                                    <button 
+                                        onClick={() => handleDeleteDiscount(d.id)} 
+                                        className="text-xs text-red-500 hover:bg-red-50 px-2 py-1 rounded border border-red-100 font-bold"
+                                    >
+                                        Șterge
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div className="text-2xl font-black mb-3">
+                                -{d.discount_value}{d.discount_type === 'percentage' ? '%' : <span className="text-sm font-normal text-neutral-500"> RON</span>}
+                            </div>
+                            
+                            <div className="space-y-1 text-xs text-neutral-500 border-t border-neutral-100 pt-3">
+                                <div className="flex justify-between">
+                                    <span>Utilizări:</span>
+                                    <span className="font-bold text-black">{d.used_count} {d.max_uses ? `/ ${d.max_uses}` : '(Nelimitat)'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span>Comandă Minimă:</span>
+                                    <span className="font-bold text-black">{d.min_order_amount} RON</span>
+                                </div>
+                                {d.valid_until && (
+                                    <div className="flex justify-between text-orange-600">
+                                        <span>Expiră:</span>
+                                        <span className="font-bold">{new Date(d.valid_until).toLocaleDateString()}</span>
+                                    </div>
+                                )}
+                                <div className="flex justify-between">
+                                    <span>Status:</span>
+                                    <span className={`font-bold ${d.is_active ? 'text-green-600' : 'text-red-600'}`}>
+                                        {d.is_active ? 'ACTIV' : 'INACTIV'}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                    
+                    {discounts.length === 0 && (
+                        <div className="col-span-full py-12 text-center text-neutral-400 border-2 border-dashed border-neutral-200 rounded-xl">
+                            Nu există coduri de reducere create.
+                        </div>
+                    )}
+                </div>
+            </div>
         )}
 
         {activeTab === 'products' && (
@@ -580,11 +978,11 @@ export const Admin: React.FC = () => {
                             name: '', price: 0, original_price: null, stock_quantity: 10, description: '', 
                             category: 'Ochelari', imageUrl: '', gallery: [], colors: [], details: []
                         });
-                        setShowForm(true);
+                        setShowProductForm(true);
                     }}>+ Adaugă Produs Nou</Button>
                 </div>
 
-                {showForm && editingProduct && (
+                {showProductForm && editingProduct && (
                     <div className="bg-white p-8 rounded-2xl shadow-xl mb-8 border border-neutral-200 animate-fade-in relative scroll-mt-24" id="productForm">
                         <h3 className="text-xl font-bold mb-6 flex items-center gap-2 border-b border-neutral-100 pb-4">
                              {editingProduct.id ? '✏️ Editează Produs' : '✨ Produs Nou'}
@@ -749,7 +1147,7 @@ export const Admin: React.FC = () => {
 
                             <div className="md:col-span-2 flex gap-4 mt-4 border-t border-neutral-100 pt-6">
                                 <Button type="submit">Salvează Modificările</Button>
-                                <Button variant="outline" onClick={() => setShowForm(false)} type="button">Anulează</Button>
+                                <Button variant="outline" onClick={() => setShowProductForm(false)} type="button">Anulează</Button>
                             </div>
                         </form>
                     </div>
@@ -785,7 +1183,7 @@ export const Admin: React.FC = () => {
                                 <button 
                                     onClick={() => { 
                                         setEditingProduct(p); 
-                                        setShowForm(true); 
+                                        setShowProductForm(true); 
                                         setTimeout(() => document.getElementById('productForm')?.scrollIntoView({behavior: 'smooth'}), 100);
                                     }}
                                     className="flex-1 bg-neutral-50 hover:bg-neutral-100 text-neutral-900 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors"
