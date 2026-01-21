@@ -10,7 +10,7 @@ export const Home: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const { addToCart } = useCart();
-   
+    
   const observerRef = useRef<IntersectionObserver | null>(null);
 
   useEffect(() => {
@@ -30,7 +30,7 @@ export const Home: React.FC = () => {
     fetchProducts();
   }, []);
 
-  // OPTIMIZARE SCROLL
+  // OPTIMIZARE SCROLL ANIMATIONS
   useEffect(() => {
     if (loading) return;
 
@@ -65,7 +65,7 @@ export const Home: React.FC = () => {
         {/* ---------------- DESKTOP LAYOUT (>768px) ---------------- */}
         <div className="hidden md:flex w-full h-screen items-center relative max-w-[1920px] mx-auto px-12">
           
-          {/* COLOANA TEXT - Designul tău */}
+          {/* COLOANA TEXT DESKTOP */}
           <div className="w-[55%] relative z-20 pt-10 pointer-events-none">
             <div className="overflow-hidden mb-6 pointer-events-auto">
                <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-xs md:text-sm block animate-slide-up">
@@ -95,9 +95,8 @@ export const Home: React.FC = () => {
             </div>
           </div>
 
-          {/* COLOANA 3D - Dreapta + LUMINA ÎN SPATE */}
+          {/* COLOANA 3D DESKTOP */}
           <div className="absolute right-0 top-0 w-[55%] h-full z-10 flex items-center justify-center">
-             {/* Lumina Galbenă Difuză - Doar în spatele ochelarilor */}
              <div className="absolute w-[600px] h-[600px] bg-brand-yellow/20 rounded-full blur-[100px] pointer-events-none animate-pulse-glow"></div>
              
              <Oclar3D
@@ -111,65 +110,63 @@ export const Home: React.FC = () => {
         </div>
 
         {/* ---------------- MOBILE LAYOUT (<768px) ---------------- */}
-        <div className="md:hidden flex flex-col min-h-screen relative pt-20 pb-10">
+        {/* Folosim h-[100svh] pentru a umple exact ecranul vizibil pe mobil */}
+        <div className="md:hidden flex flex-col h-[100svh] relative pt-20 pb-6 justify-between overflow-hidden">
+           
+           {/* 1. TEXT GIANT - SUS */}
+           <div className="px-5 flex-none relative z-20 pointer-events-none">
+              <div className="overflow-hidden mb-2">
+                <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-[10px] block animate-slide-up">
+                  Eyewear for the Digital Age
+                </span>
+              </div>
+              
+              <h1 className="text-[5.5rem] leading-[0.85] font-black uppercase tracking-tighter text-neutral-950 animate-slide-up-delay drop-shadow-xl relative left-[-3px]">
+                Totul <br/>
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-neutral-800 to-neutral-500">
+                  Pentru
+                </span> <br/>
+                Ochii Tăi.
+              </h1>
+           </div>
 
-          {/* 1. SECȚIUNEA DE SUS: TITLU */}
-          <div className="px-6 flex-none relative z-20">
-            <div className="overflow-hidden mb-4">
-              <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-xs block animate-slide-up">
-                Eyewear for the Digital Age
-              </span>
-            </div>
+           {/* 2. 3D MODEL - ABSOLUT & CENTRAT */}
+           {/* Este scos din fluxul normal (absolute) pentru a se suprapune elegant */}
+           <div className="absolute top-[50%] left-1/2 -translate-x-1/2 -translate-y-[55%] w-full h-[65vh] z-10 pointer-events-auto">
+              {/* Lumina Galbenă */}
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[280px] h-[280px] bg-brand-yellow/25 rounded-full blur-[60px] pointer-events-none"></div>
+              
+              <Oclar3D
+                autoRotate
+                intensity={0.5}
+                autoRotateSpeed={0.004}
+                dragSensitivity={0.02}
+                className="w-full h-full"
+              />
+           </div>
 
-            <h1 className="text-6xl sm:text-7xl font-black uppercase tracking-tighter leading-[0.9] text-neutral-950 animate-slide-up-delay drop-shadow-xl">
-              Totul <br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-neutral-800 to-neutral-500">
-                Pentru Ochii
-              </span> <br />
-              Tăi.
-            </h1>
-          </div>
+           {/* 3. DESCRIERE & BUTOANE - JOS */}
+           <div className="px-5 flex-none relative z-20 pt-12">
+              {/* Gradient subtil ca să citim textul dacă ochelarii ajung jos */}
+              <div className="absolute inset-0 bg-gradient-to-t from-white via-white/80 to-transparent -z-10 pointer-events-none h-[150%] bottom-0"></div>
 
-          {/* 2. SECȚIUNEA MIJLOC: 3D MODEL 
-               Acesta va ocupa spațiul rămas, dar cu o înălțime minimă garantată.
-               Poziționat natural între text și butoane.
-           */}
-          <div className="flex-1 w-full relative z-10 min-h-[350px] -my-4">
-            {/* Lumina Galbenă Mobile */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[250px] h-[250px] bg-brand-yellow/30 rounded-full blur-[60px] pointer-events-none"></div>
-
-            {/* Aici Oclar3D va lua 100% din acest container flex */}
-            <Oclar3D
-              autoRotate
-              intensity={0.3}
-              autoRotateSpeed={0.004}
-              dragSensitivity={0.015} // Sensibilitate mai mare pe mobil
-              className="w-full h-full"
-            />
-          </div>
-
-          {/* 3. SECȚIUNEA JOS: DESCRIERE ȘI BUTOANE */}
-          <div className="px-6 flex-none relative z-20 bg-white/60 backdrop-blur-sm rounded-t-2xl pt-4 pb- safe-bottom">
-            <p className="text-neutral-600 font-medium mb-6 text-center animate-fade-in opacity-0 leading-tight" style={{ animationDelay: '0.6s', animationFillMode: 'forwards' }}>
-              Ochelari premium anti-lumină albastră. <br /> Soluție modernă pentru ochii tăi.
-            </p>
-
-            <div className="flex flex-col gap-3 animate-fade-in opacity-0" style={{ animationDelay: '0.8s', animationFillMode: 'forwards' }}>
-              <Button fullWidth onClick={() => document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth' })}>
-                Vezi Colecția
-              </Button>
-              <Link to="/about">
-                <Button fullWidth variant="outline">Misiunea Noastră</Button>
-              </Link>
-            </div>
-          </div>
+              <p className="text-neutral-600 text-sm font-medium mb-4 text-center animate-fade-in opacity-0 leading-tight" style={{animationDelay: '0.6s', animationFillMode: 'forwards'}}>
+                  Ochelari premium anti-lumină albastră.
+              </p>
+              
+              <div className="flex flex-col gap-3 animate-fade-in opacity-0" style={{animationDelay: '0.8s', animationFillMode: 'forwards'}}>
+                 <Button fullWidth onClick={() => document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth' })}>
+                   Vezi Colecția
+                 </Button>
+                 <Link to="/about">
+                   <Button fullWidth variant="outline" className="bg-white/40 backdrop-blur-sm border-neutral-300">Misiunea Noastră</Button>
+                 </Link>
+              </div>
+           </div>
         </div>
       </section>
 
-      {/* ================= RESTUL CODULUI RĂMÂNE LA FEL (Core Values, Shop, etc.) ================= */}
-      {/* ... (Copy-paste la restul secțiunilor din codul tău anterior) ... */}
-      
-      {/* Core Values Section */}
+      {/* ================= CORE VALUES (Restul paginii) ================= */}
       <section className="py-32 px-6 md:px-12 bg-neutral-950 text-white relative">
         <div className="absolute top-0 left-12 w-1 h-24 bg-brand-yellow shadow-[0_0_15px_#FACC15]"></div>
         
@@ -225,7 +222,7 @@ export const Home: React.FC = () => {
         </div>
       </section>
 
-      {/* Product Grid */}
+      {/* ================= SHOP SECTION ================= */}
       <section id="shop" className="py-32 px-4 md:px-12 max-w-screen-2xl mx-auto bg-white min-h-[600px]">
         <div className="flex flex-col md:flex-row justify-between items-end mb-16 border-b-2 border-black pb-6 reveal-on-scroll">
           <h3 className="text-5xl font-black uppercase tracking-tighter">Colecția</h3>

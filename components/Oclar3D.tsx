@@ -11,25 +11,10 @@ type ModelProps = {
   floatIntensity?: number;
   floatSpeed?: number;
   dragSensitivity?: number;
-  // Adăugat prop pentru a opri rotația când nu e nevoie
+  // Refs primite de la părinte pentru control
   isDraggingRef: React.MutableRefObject<boolean>;
+  externalRotationY: React.MutableRefObject<number>;
 };
-
-function FitCameraToObject({ target }: { target: THREE.Object3D }) {
-  const { camera, size } = useThree();
-  useEffect(() => {
-    const box = new THREE.Box3().setFromObject(target);
-    const center = box.getCenter(new THREE.Vector3());
-    const sphere = box.getBoundingSphere(new THREE.Sphere());
-    if (!sphere) return;
-    const cam = camera as THREE.PerspectiveCamera;
-    const fov = cam.fov * (Math.PI / 180);
-    const distance = sphere.radius / Math.sin(fov / 2);
-    cam.position.set(center.x, center.y, center.z + distance * 1.15);
-    cam.lookAt(center);
-  }, [camera, size, target]);
-  return null;
-}
 
 function Model({
   url,
@@ -39,16 +24,17 @@ function Model({
   floatIntensity = 0.08,
   floatSpeed = 0.8,
   dragSensitivity = 0.005,
-  isDraggingRef
+  isDraggingRef,
+  externalRotationY
 }: ModelProps) {
   const group = useRef<THREE.Group>(null);
   const { scene } = useGLTF(url);
   const cloned = useMemo(() => scene.clone(true), [scene]);
   
-  // Stare internă pentru rotație
-  const rotationRef = useRef({ x: 0, y: 0 });
+  // Stare internă pentru tilt (înclinare pe X)
+  const tiltRef = useRef(0);
 
-  // Material setup
+  // Setup Materiale
   useEffect(() => {
     cloned.traverse((obj: any) => {
       if (obj?.isMesh) {
@@ -62,42 +48,43 @@ function Model({
   useFrame(({ mouse, clock }) => {
     if (!group.current) return;
 
-    // 1. Floating Effect
+    // 1. Floating Effect (Plutire sus-jos)
     const t = clock.getElapsedTime();
     const floatY = Math.sin(t * floatSpeed) * floatIntensity;
     group.current.position.y = THREE.MathUtils.lerp(group.current.position.y, floatY, 0.08);
 
-    // 2. Mouse Tilt (doar pe desktop, când nu faci drag)
+    // 2. Mouse Tilt (doar când nu faci drag)
     if (!isDraggingRef.current) {
+      // Pe mobil mouse.y e 0 de obicei, pe desktop face tilt fin
       const targetX = mouse.y * intensity;
       group.current.rotation.x = THREE.MathUtils.lerp(
         group.current.rotation.x, 
-        rotationRef.current.x + targetX, 
+        targetX, 
         0.06
       );
     } else {
-       // Reset tilt la drag
-       group.current.rotation.x = THREE.MathUtils.lerp(group.current.rotation.x, rotationRef.current.x, 0.2);
+       // Reset tilt la 0 când tragi, pentru stabilitate
+       group.current.rotation.x = THREE.MathUtils.lerp(group.current.rotation.x, 0, 0.2);
     }
 
-    // 3. Auto Rotate (doar dacă nu faci drag)
+    // 3. Rotație (Auto + Manual)
+    // Dacă nu tragem, adăugăm viteza automată la valoarea noastră de referință
     if (autoRotate && !isDraggingRef.current) {
-      rotationRef.current.y += autoRotateSpeed;
+      externalRotationY.current += autoRotateSpeed;
     }
     
-    // Aplicarea rotației calculate din drag (din componenta părinte)
-    // Nota: Aici citim rotația direct din group.current.rotation.y care e modificată de evenimentele de pe Canvas
-    // DAR, pentru simplitate, în varianta asta, evenimentele de drag vor modifica direct rotația grupului în părinte sau aici.
-    
-    // Corecție: Logică de drag e gestionată extern sau prin events pe mesh. 
-    // Voi simplifica: vom lăsa Canvas-ul să gestioneze rotația prin props, dar pentru a păstra codul tău de fizică,
-    // vom citi rotația "target" setată de drag handlers.
+    // Aplicăm rotația calculată (fie de auto, fie de drag din părinte)
+    // Folosim lerp pentru o oprire fină
+    group.current.rotation.y = THREE.MathUtils.lerp(
+        group.current.rotation.y, 
+        externalRotationY.current, 
+        0.15 // Factor de smoothing
+    );
   });
 
   return (
     <group ref={group}>
       <primitive object={cloned} />
-      <FitCameraToObject target={cloned} />
     </group>
   );
 }
@@ -131,28 +118,27 @@ export const Oclar3D: React.FC<{
   floatSpeed = 0.8,
   dragSensitivity = 0.005,
 }) => {
+  // Aceste refs trăiesc în afara canvas-ului pentru a păstra starea între randări
   const isDraggingRef = useRef(false);
-  const lastPosRef = useRef({ x: 0, y: 0 });
-  const modelGroupRef = useRef<THREE.Group>(null); // Referință la grupul modelului pentru rotație directă
+  const lastPosRef = useRef({ x: 0 });
+  const externalRotationY = useRef(0); // Ținem minte rotația totală aici
 
-  // Handlers atașați direct pe DIV-ul container, nu pe window global
   const handlePointerDown = (e: React.PointerEvent) => {
-    // Permitem scroll-ul paginii, dar capturăm intenția de interacțiune
     isDraggingRef.current = true;
-    lastPosRef.current = { x: e.clientX, y: e.clientY };
+    lastPosRef.current = { x: e.clientX };
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    // NU resetăm rotația. Continuăm de unde a rămas auto-rotate-ul.
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
-    if (!isDraggingRef.current || !modelGroupRef.current) return;
+    if (!isDraggingRef.current) return;
     
     const deltaX = e.clientX - lastPosRef.current.x;
-    // const deltaY = e.clientY - lastPosRef.current.y; // Opțional: rotație pe X
-
-    // Rotim modelul direct
-    modelGroupRef.current.rotation.y += deltaX * dragSensitivity;
     
-    lastPosRef.current = { x: e.clientX, y: e.clientY };
+    // Adăugăm diferența de mișcare la rotația totală
+    externalRotationY.current += deltaX * (dragSensitivity || 0.005);
+    
+    lastPosRef.current = { x: e.clientX };
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
@@ -160,43 +146,11 @@ export const Oclar3D: React.FC<{
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
   };
 
-  // Wrapper component to access the scene inside Canvas
-  const ModelWrapper = () => {
-    const { scene } = useThree();
-    // Găsim grupul modelului în scenă pentru a-l roti manual din eventurile de mai sus
-    // O abordare mai curată e să folosim o referință externă, dar fiind în Canvas separat...
-    
-    // TRUC: Pentru a conecta eventurile HTML de logica ThreeJS fără ref global complex:
-    // Folosim o componentă internă care ascultă mișcările mouse-ului doar pe canvas
-    
-    useFrame(() => {
-        // Logică de rotație automată aplicată direct aici
-        if (modelGroupRef.current && !isDraggingRef.current && autoRotate) {
-             modelGroupRef.current.rotation.y += autoRotateSpeed;
-        }
-    });
-
-    return (
-        <group ref={modelGroupRef}>
-             <Model 
-                url={url} 
-                autoRotate={false} // Gestionăm rotația aici sus
-                intensity={intensity}
-                floatIntensity={floatIntensity}
-                floatSpeed={floatSpeed}
-                dragSensitivity={dragSensitivity}
-                isDraggingRef={isDraggingRef} // Pasăm ref-ul jos
-             />
-        </group>
-    )
-  }
-
   return (
     <div
       className={`relative ${className}`}
-      // Important: Eliminăm height fix calculat. Lăsăm părintele să decidă.
       style={{
-        touchAction: 'pan-y', // Permite scroll vertical, blochează orizontal pentru interacțiune
+        touchAction: 'pan-y', // ESENȚIAL: Permite scroll vertical, blochează orizontal pt drag
         cursor: 'grab',
       }}
       onPointerDown={handlePointerDown}
@@ -208,15 +162,26 @@ export const Oclar3D: React.FC<{
         shadows
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
-        camera={{ fov: 35, near: 0.1, far: 2000, position: [0, 0, 5] }}
+        // Am pus camera mai aproape (Z=3.5) ca să se vadă mare
+        camera={{ fov: 45, near: 0.1, far: 2000, position: [0, 0, 3.5] }}
       >
-        <ambientLight intensity={0.6} />
-        <directionalLight position={[5, 8, 5]} intensity={1.1} castShadow />
-        <directionalLight position={[-6, 3, -2]} intensity={0.55} />
+        <ambientLight intensity={0.8} />
+        <directionalLight position={[5, 8, 5]} intensity={1.5} castShadow />
+        <directionalLight position={[-6, 3, -2]} intensity={0.8} />
 
         <Suspense fallback={<Loader />}>
           <Environment preset="city" />
-          <ModelWrapper />
+          <Model
+            url={url}
+            autoRotate={autoRotate}
+            autoRotateSpeed={autoRotateSpeed}
+            intensity={intensity}
+            floatIntensity={floatIntensity}
+            floatSpeed={floatSpeed}
+            dragSensitivity={dragSensitivity}
+            isDraggingRef={isDraggingRef}
+            externalRotationY={externalRotationY}
+          />
         </Suspense>
       </Canvas>
     </div>
