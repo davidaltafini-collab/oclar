@@ -1,5 +1,5 @@
 import React from 'react';
-import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'; // <--- Am schimbat aici
 import { CartProvider } from './context/CartContext';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
@@ -11,7 +11,7 @@ import { Success } from './pages/Success';
 import { About } from './pages/About';
 import { Terms } from './pages/Terms';
 import { Privacy } from './pages/Privacy';
-import { Diagnostics } from './pages/Diagnostics'; // <--- Importă componenta
+import { Diagnostics } from './pages/Diagnostics';
 import { Admin } from './pages/Admin';
 
 // Scroll to top on route change
@@ -26,7 +26,8 @@ const ScrollToTop = () => {
 const App: React.FC = () => {
   return (
     <CartProvider>
-      <HashRouter>
+      {/* Am inlocuit HashRouter cu BrowserRouter */}
+      <BrowserRouter>
         <ScrollToTop />
         <div className="flex flex-col min-h-screen bg-white text-neutral-900 selection:bg-brand-yellow selection:text-black">
           <CookieConsent />
@@ -50,7 +51,7 @@ const App: React.FC = () => {
           </div>
           <Footer />
         </div>
-      </HashRouter>
+      </BrowserRouter>
     </CartProvider>
   );
 };
