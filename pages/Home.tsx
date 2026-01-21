@@ -118,7 +118,7 @@ export const Home: React.FC = () => {
            
            {/* 1. TITLU - SUS (COMPACT) */}
            <div className="relative z-20 px-5 pt-16 pb-2 pointer-events-none">
-              <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-[30px] block mb-1 animate-slide-up">
+              <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-[15px] block mb-1 animate-slide-up">
                   Eyewear for the Digital Age
               </span>
               <h1 className="text-[4.7rem] leading-[1] font-black uppercase tracking-tighter text-neutral-950 animate-slide-up-delay drop-shadow-lg">

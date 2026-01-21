@@ -48,7 +48,7 @@ export const About: React.FC = () => {
             <h1 className="text-[15vw] md:text-[10rem] leading-[0.8] font-black uppercase tracking-tighter text-neutral-950 animate-slide-up-delay drop-shadow-sm mix-blend-multiply">
               Viziune <br/>
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-yellow to-neutral-400">
-                Clarș.
+                Clară.
               </span>
             </h1>
         </div>
