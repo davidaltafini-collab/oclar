@@ -184,7 +184,7 @@ export const CartDrawer: React.FC = () => {
 
         if (result?.success) {
           toggleCart();
-          window.location.href = '/#/success';
+          window.location.href = '/success';
         } else {
           throw new Error('Order creation failed');
         }
