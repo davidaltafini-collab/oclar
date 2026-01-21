@@ -1,206 +1,155 @@
 import React, { useState, useEffect } from 'react';
-import { API_URL } from '../constants';
-import { Button } from '../components/Button';
 
-interface AdminProduct {
-  id?: number;
-  name: string;
-  price: number;
-  original_price?: number | null;
-  stock_quantity: number;
-  description: string;
-  category: string;
-  imageUrl: string;
-  gallery: string[];
-  colors: string[];
-  details: string[];
-}
+const ADMIN_SECRET = import.meta.env.VITE_ADMIN_SECRET || '';
+const API_BASE = import.meta.env.VITE_API_BASE || 'https://oclar.ro';
 
 interface Order {
   id: number;
   customer_name: string;
   customer_email: string;
   customer_phone: string;
-  total_amount: number;
-  subtotal: number;
-  shipping_cost: number;
-  shipping_method: string;
-  discount_code?: string;
-  discount_amount: number;
-  status: string;
-  payment_method: string;
-  created_at: string;
+  county: string;
+  city: string;
+  address_line: string;
   items: string;
-  oblio_invoice_number?: string;
-  awb_number?: string;
+  subtotal: number;
+  shipping_method: 'easybox' | 'courier';
+  shipping_cost: number;
+  discount_code: string | null;
+  discount_amount: number;
+  total_amount: number;
+  payment_method: string;
+  status: string;
+  oblio_invoice_id: string | null;
+  oblio_invoice_number: string | null;
+  awb_number: string | null;
+  awb_courier: string | null;
+  created_at: string;
 }
 
-export const Admin: React.FC = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [secret, setSecret] = useState('');
-  const [activeTab, setActiveTab] = useState<'orders' | 'products'>('orders');
-  
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [products, setProducts] = useState<AdminProduct[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [loginLoading, setLoginLoading] = useState(false);
+interface Product {
+  id?: number;
+  name: string;
+  description: string;
+  price: number;
+  original_price: number | null;
+  stock_quantity: number;
+  category: string;
+  imageUrl: string;
+  gallery: string[];
+  colors: string[];
+  details: Array<{ label: string; value: string }>;
+  status: string;
+}
 
-  // Filtre comenzi
+interface DiscountCode {
+  id: number;
+  code: string;
+  discount_type: 'percentage' | 'fixed';
+  discount_value: number;
+  min_order_amount: number;
+  max_uses: number | null;
+  used_count: number;
+  valid_from: string;
+  valid_until: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export default function Admin() {
+  const [activeTab, setActiveTab] = useState<'orders' | 'products' | 'discounts'>('orders');
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [discounts, setDiscounts] = useState<DiscountCode[]>([]);
   const [selectedOrders, setSelectedOrders] = useState<number[]>([]);
+  
+  // Filtre comenzi
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('');
-
-  // Formular Produs
-  const [editingProduct, setEditingProduct] = useState<AdminProduct | null>(null);
-  const [showForm, setShowForm] = useState(false);
-
-  const handleLogin = async (e?: React.FormEvent) => {
-    if(e) e.preventDefault();
-    if(!secret) return;
-
-    setLoginLoading(true);
-    try {
-        const res = await fetch(`${API_URL}/admin?type=orders`, {
-            headers: { 'x-admin-secret': secret }
-        });
-        
-        if (res.ok) {
-            setIsAuthenticated(true);
-            sessionStorage.setItem('admin_secret', secret);
-        } else {
-            alert('Cheie de securitate incorectă!');
-        }
-    } catch (err) {
-        alert('Eroare de conexiune la server.');
-    } finally {
-        setLoginLoading(false);
-    }
-  };
+  const [statusFilter, setStatusFilter] = useState('all');
   
+  // Edit forms
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [editingDiscount, setEditingDiscount] = useState<DiscountCode | null>(null);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+
   useEffect(() => {
-      const savedSecret = sessionStorage.getItem('admin_secret');
-      if(savedSecret) {
-          setSecret(savedSecret);
-          setIsAuthenticated(true);
-      }
-  }, []);
+    if (activeTab === 'orders') fetchOrders();
+    if (activeTab === 'products') fetchProducts();
+    if (activeTab === 'discounts') fetchDiscounts();
+  }, [activeTab]);
 
-  const fetchData = async (type: 'orders' | 'products') => {
-    setLoading(true);
+  const fetchOrders = async (filters = {}) => {
     try {
-      let url = `${API_URL}/admin?type=${type}`;
-      
-      if (type === 'orders') {
-        if (startDate) url += `&startDate=${startDate}`;
-        if (endDate) url += `&endDate=${endDate}`;
-        if (statusFilter) url += `&status=${statusFilter}`;
-      }
-
-      const res = await fetch(url, {
-        headers: { 'x-admin-secret': secret }
+      const params = new URLSearchParams(filters as any);
+      const res = await fetch(`${API_BASE}/api/admin?type=orders&${params}`, {
+        headers: { 'x-admin-secret': ADMIN_SECRET }
       });
-      
-      if (res.status === 401) {
-        setIsAuthenticated(false);
-        sessionStorage.removeItem('admin_secret');
-        return;
-      }
       const data = await res.json();
-      if (type === 'orders') {
-        setOrders(data);
-        setSelectedOrders([]);
-      }
-      if (type === 'products') setProducts(data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
+      setOrders(data);
+    } catch (error) {
+      console.error('Error fetching orders:', error);
     }
   };
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchData(activeTab);
-    }
-  }, [activeTab, isAuthenticated]);
-
-  const handleImageFile = (e: React.ChangeEvent<HTMLInputElement>, isGallery: boolean = false) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      const reader = new FileReader();
-      
-      reader.onloadend = () => {
-        const base64String = reader.result as string;
-        if (editingProduct) {
-            if (isGallery) {
-                setEditingProduct({
-                    ...editingProduct,
-                    gallery: [...(editingProduct.gallery || []), base64String]
-                });
-            } else {
-                setEditingProduct({
-                    ...editingProduct,
-                    imageUrl: base64String
-                });
-            }
-        }
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const removeGalleryImage = (index: number) => {
-      if (!editingProduct) return;
-      const newGallery = [...editingProduct.gallery];
-      newGallery.splice(index, 1);
-      setEditingProduct({ ...editingProduct, gallery: newGallery });
-  };
-
-  const handleProductSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingProduct) return;
-
+  const fetchProducts = async () => {
     try {
-        const res = await fetch(`${API_URL}/admin`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'x-admin-secret': secret 
-            },
-            body: JSON.stringify(editingProduct)
-        });
-        
-        if (res.ok) {
-            alert('Produs salvat cu succes!');
-            setShowForm(false);
-            setEditingProduct(null);
-            fetchData('products');
-        } else {
-            alert('Eroare la salvare.');
-        }
-    } catch (err) {
-        alert('Eroare de rețea.');
+      const res = await fetch(`${API_BASE}/api/admin?type=products`, {
+        headers: { 'x-admin-secret': ADMIN_SECRET }
+      });
+      const data = await res.json();
+      setProducts(data);
+    } catch (error) {
+      console.error('Error fetching products:', error);
     }
   };
 
-  const handleDeleteProduct = async (id: number) => {
-    if (!confirm('Ești sigur? Această acțiune este ireversibilă!')) return;
+  const fetchDiscounts = async () => {
     try {
-        await fetch(`${API_URL}/admin?id=${id}`, {
-            method: 'DELETE',
-            headers: { 'x-admin-secret': secret }
-        });
-        fetchData('products');
-    } catch (err) { console.error(err); }
+      const res = await fetch(`${API_BASE}/api/admin?type=discounts`, {
+        headers: { 'x-admin-secret': ADMIN_SECRET }
+      });
+      const data = await res.json();
+      setDiscounts(data);
+    } catch (error) {
+      console.error('Error fetching discounts:', error);
+    }
   };
 
-  // FUNCȚII NOI - COMENZI
+  const handleQuickDateFilter = (range: string) => {
+    const now = new Date();
+    let start = new Date();
+    
+    switch (range) {
+      case 'today':
+        start.setHours(0, 0, 0, 0);
+        break;
+      case 'week':
+        start.setDate(now.getDate() - 7);
+        break;
+      case 'month':
+        start.setDate(now.getDate() - 30);
+        break;
+      case 'year':
+        start.setFullYear(now.getFullYear() - 1);
+        break;
+    }
+    
+    setStartDate(start.toISOString().split('T')[0]);
+    setEndDate(now.toISOString().split('T')[0]);
+  };
+
+  const handleApplyFilters = () => {
+    const filters: any = {};
+    if (startDate) filters.startDate = startDate;
+    if (endDate) filters.endDate = endDate;
+    if (statusFilter !== 'all') filters.status = statusFilter;
+    fetchOrders(filters);
+  };
+
   const toggleOrderSelection = (orderId: number) => {
-    setSelectedOrders(prev => 
-      prev.includes(orderId) 
-        ? prev.filter(id => id !== orderId)
-        : [...prev, orderId]
+    setSelectedOrders(prev =>
+      prev.includes(orderId) ? prev.filter(id => id !== orderId) : [...prev, orderId]
     );
   };
 
@@ -212,61 +161,31 @@ export const Admin: React.FC = () => {
     }
   };
 
-  const handleQuickDateFilter = (range: 'today' | 'week' | 'month' | 'year') => {
-    const now = new Date();
-    const end = now.toISOString().split('T')[0];
-    let start = '';
-
-    switch(range) {
-      case 'today':
-        start = end;
-        break;
-      case 'week':
-        start = new Date(now.setDate(now.getDate() - 7)).toISOString().split('T')[0];
-        break;
-      case 'month':
-        start = new Date(now.setMonth(now.getMonth() - 1)).toISOString().split('T')[0];
-        break;
-      case 'year':
-        start = new Date(now.setFullYear(now.getFullYear() - 1)).toISOString().split('T')[0];
-        break;
-    }
-
-    setStartDate(start);
-    setEndDate(end);
-  };
-
   const handleSendInvoices = async () => {
     if (selectedOrders.length === 0) {
       alert('Selectează cel puțin o comandă');
       return;
     }
 
-    if (!confirm(`Trimitem ${selectedOrders.length} facturi în Oblio?`)) return;
+    if (!confirm(`Trimiți ${selectedOrders.length} facturi în Oblio?`)) return;
 
-    setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/admin/send-invoices`, {
+      const res = await fetch(`${API_BASE}/api/admin/send-invoices`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-secret': secret
+          'x-admin-secret': ADMIN_SECRET
         },
         body: JSON.stringify({ orderIds: selectedOrders })
       });
 
-      const result = await response.json();
-      
-      if (result.success) {
-        alert(`Facturi trimise cu succes!\nSucces: ${result.results.filter((r: any) => r.success).length}/${result.results.length}`);
-        fetchData('orders');
-      } else {
-        alert('Eroare la trimitere facturi');
+      const data = await res.json();
+      if (data.success) {
+        alert(`Facturi trimise cu succes: ${data.results.filter((r: any) => r.success).length}/${selectedOrders.length}`);
+        fetchOrders();
       }
     } catch (error) {
-      alert('Eroare de conexiune');
-    } finally {
-      setLoading(false);
+      alert('Eroare la trimitere facturi');
     }
   };
 
@@ -276,35 +195,26 @@ export const Admin: React.FC = () => {
       return;
     }
 
-    const courier = prompt('Selectează curier:\n1. fancourier\n2. cargus\n3. gls', 'fancourier');
+    const courier = prompt('Serviciu curier (fancourier/cargus/gls):', 'fancourier');
     if (!courier) return;
 
-    setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/admin/generate-awb`, {
+      const res = await fetch(`${API_BASE}/api/admin/generate-awb`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-secret': secret
+          'x-admin-secret': ADMIN_SECRET
         },
-        body: JSON.stringify({ 
-          orderIds: selectedOrders,
-          courierService: courier
-        })
+        body: JSON.stringify({ orderIds: selectedOrders, courierService: courier })
       });
 
-      const result = await response.json();
-      
-      if (result.success) {
-        alert(`AWB generat!\nNote: ${result.results[0]?.message || 'Succes'}`);
-        fetchData('orders');
-      } else {
-        alert('Eroare la generare AWB');
+      const data = await res.json();
+      if (data.success) {
+        alert(`AWB generate: ${data.results.filter((r: any) => r.success).length}/${selectedOrders.length}`);
+        fetchOrders();
       }
     } catch (error) {
-      alert('Eroare de conexiune');
-    } finally {
-      setLoading(false);
+      alert('Eroare la generare AWB');
     }
   };
 
@@ -315,522 +225,841 @@ export const Admin: React.FC = () => {
     }
 
     try {
-      const response = await fetch(`${API_URL}/admin/export-orders`, {
+      const res = await fetch(`${API_BASE}/api/admin/export-orders`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-secret': secret
+          'x-admin-secret': ADMIN_SECRET
         },
-        body: JSON.stringify({ 
-          orderIds: selectedOrders,
-          format 
-        })
+        body: JSON.stringify({ orderIds: selectedOrders, format })
       });
 
-      const blob = await response.blob();
+      const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `orders_${Date.now()}.${format === 'xml' ? 'xml' : 'csv'}`;
-      document.body.appendChild(a);
+      a.download = `comenzi.${format === 'xml' ? 'xml' : 'csv'}`;
       a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
     } catch (error) {
       alert('Eroare la export');
     }
   };
 
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-neutral-100 p-4">
-        <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-neutral-200">
-          <div className="flex justify-center mb-6">
-             <div className="w-10 h-10 bg-brand-yellow rounded-full shadow-[0_0_15px_rgba(250,204,21,0.5)]"></div>
-          </div>
-          <h1 className="text-2xl font-black uppercase mb-2 text-center">Admin Panel</h1>
-          <p className="text-center text-neutral-500 mb-8 text-sm">Zona restricționată Oclar</p>
-          
-          <form onSubmit={handleLogin}>
-            <input 
-                type="password" 
-                placeholder="Cheia de Securitate" 
-                className="w-full p-4 border border-neutral-200 rounded-xl mb-4 focus:border-brand-yellow outline-none transition-colors text-center text-lg"
-                value={secret}
-                onChange={(e) => setSecret(e.target.value)}
-                autoFocus
-            />
-            <Button fullWidth type="submit" disabled={loginLoading}>
-                {loginLoading ? 'Se verifică...' : 'Autentificare'}
-            </Button>
-          </form>
-        </div>
-      </div>
-    );
-  }
+  const handleUpdateOrder = async () => {
+    if (!editingOrder) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/admin`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-secret': ADMIN_SECRET
+        },
+        body: JSON.stringify({
+          orderId: editingOrder.id,
+          customer_name: editingOrder.customer_name,
+          customer_email: editingOrder.customer_email,
+          customer_phone: editingOrder.customer_phone,
+          status: editingOrder.status,
+          county: editingOrder.county,
+          city: editingOrder.city,
+          address_line: editingOrder.address_line
+        })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        alert('Comandă actualizată cu succes');
+        setEditingOrder(null);
+        fetchOrders();
+      }
+    } catch (error) {
+      alert('Eroare la actualizare comandă');
+    }
+  };
+
+  const handleSaveProduct = async () => {
+    if (!editingProduct) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/admin`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-secret': ADMIN_SECRET
+        },
+        body: JSON.stringify(editingProduct)
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        alert(editingProduct.id ? 'Produs actualizat' : 'Produs creat');
+        setEditingProduct(null);
+        fetchProducts();
+      }
+    } catch (error) {
+      alert('Eroare la salvare produs');
+    }
+  };
+
+  const handleDeleteProduct = async (id: number) => {
+    if (!confirm('Ștergi acest produs?')) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/admin?id=${id}`, {
+        method: 'DELETE',
+        headers: { 'x-admin-secret': ADMIN_SECRET }
+      });
+
+      if (res.ok) {
+        alert('Produs șters');
+        fetchProducts();
+      }
+    } catch (error) {
+      alert('Eroare la ștergere');
+    }
+  };
+
+  const handleSaveDiscount = async () => {
+    if (!editingDiscount) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/discount-codes`, {
+        method: editingDiscount.id ? 'PUT' : 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-secret': ADMIN_SECRET
+        },
+        body: JSON.stringify(editingDiscount)
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        alert(editingDiscount.id ? 'Cod actualizat' : 'Cod creat');
+        setEditingDiscount(null);
+        fetchDiscounts();
+      }
+    } catch (error) {
+      alert('Eroare la salvare cod');
+    }
+  };
+
+  const handleDeleteDiscount = async (id: number) => {
+    if (!confirm('Ștergi acest cod?')) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/discount-codes?id=${id}`, {
+        method: 'DELETE',
+        headers: { 'x-admin-secret': ADMIN_SECRET }
+      });
+
+      if (res.ok) {
+        alert('Cod șters');
+        fetchDiscounts();
+      }
+    } catch (error) {
+      alert('Eroare la ștergere');
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-neutral-50 pt-24 px-4 pb-12 animate-fade-in">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
-            <div>
-                <h1 className="text-3xl font-black uppercase tracking-tight">Dashboard</h1>
-                <p className="text-neutral-500 text-sm">Gestionează magazinul Oclar</p>
-            </div>
-            
-            <div className="flex bg-white p-1 rounded-xl shadow-sm border border-neutral-200">
-                <button 
-                    onClick={() => setActiveTab('orders')}
-                    className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${activeTab === 'orders' ? 'bg-black text-white shadow-lg' : 'text-neutral-500 hover:bg-neutral-50'}`}
-                >
-                    Comenzi ({orders.length})
-                </button>
-                <button 
-                    onClick={() => setActiveTab('products')}
-                    className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${activeTab === 'products' ? 'bg-black text-white shadow-lg' : 'text-neutral-500 hover:bg-neutral-50'}`}
-                >
-                    Produse
-                </button>
-                <button
-                    onClick={() => { setIsAuthenticated(false); sessionStorage.removeItem('admin_secret'); }}
-                    className="ml-2 px-4 py-2 rounded-lg font-bold text-sm text-red-500 hover:bg-red-50 transition-colors"
-                    title="Deconectare"
-                >
-                    ✕
-                </button>
-            </div>
-        </div>
+    <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '20px' }}>
+      <h1 style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '20px' }}>Panel Admin OCLAR</h1>
 
-        {activeTab === 'orders' && (
-            <>
-              {/* FILTRE ȘI ACȚIUNI */}
-              <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 p-6 mb-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                  {/* Filtre rapide */}
-                  <div>
-                    <label className="label-admin">Perioadă Rapidă</label>
-                    <div className="flex gap-2">
-                      <button onClick={() => handleQuickDateFilter('today')} className="px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded text-xs">Azi</button>
-                      <button onClick={() => handleQuickDateFilter('week')} className="px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded text-xs">7 zile</button>
-                      <button onClick={() => handleQuickDateFilter('month')} className="px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded text-xs">30 zile</button>
-                      <button onClick={() => handleQuickDateFilter('year')} className="px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded text-xs">1 an</button>
-                    </div>
-                  </div>
-
-                  {/* Data start */}
-                  <div>
-                    <label className="label-admin">De la data</label>
-                    <input 
-                      type="date" 
-                      value={startDate} 
-                      onChange={(e) => setStartDate(e.target.value)}
-                      className="input-admin"
-                    />
-                  </div>
-
-                  {/* Data end */}
-                  <div>
-                    <label className="label-admin">Până la data</label>
-                    <input 
-                      type="date" 
-                      value={endDate} 
-                      onChange={(e) => setEndDate(e.target.value)}
-                      className="input-admin"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Status filter */}
-                  <div>
-                    <label className="label-admin">Filtrare Status</label>
-                    <select 
-                      value={statusFilter} 
-                      onChange={(e) => setStatusFilter(e.target.value)}
-                      className="input-admin"
-                    >
-                      <option value="">Toate</option>
-                      <option value="pending">Pending</option>
-                      <option value="paid">Paid</option>
-                      <option value="completed">Completed</option>
-                      <option value="cancelled">Cancelled</option>
-                    </select>
-                  </div>
-
-                  <div className="flex items-end">
-                    <Button onClick={() => fetchData('orders')} variant="outline" fullWidth>
-                      Aplică Filtre
-                    </Button>
-                  </div>
-                </div>
-
-                {/* ACȚIUNI BULK */}
-                {selectedOrders.length > 0 && (
-                  <div className="mt-6 pt-6 border-t border-neutral-200">
-                    <p className="text-sm font-bold mb-3">
-                      {selectedOrders.length} comenzi selectate
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      <Button onClick={handleSendInvoices} disabled={loading}>
-                        📄 Trimite Facturi în Oblio
-                      </Button>
-                      <Button onClick={handleGenerateAWB} disabled={loading} variant="secondary">
-                        📦 Generează AWB
-                      </Button>
-                      <Button onClick={() => handleExport('xml')} variant="outline">
-                        💾 Export XML
-                      </Button>
-                      <Button onClick={() => handleExport('excel')} variant="outline">
-                        📊 Export Excel
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* TABEL COMENZI */}
-              <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left">
-                        <thead className="bg-neutral-50 text-neutral-500 uppercase font-bold text-[10px] tracking-wider border-b border-neutral-100">
-                            <tr>
-                                <th className="px-6 py-4">
-                                  <input 
-                                    type="checkbox" 
-                                    checked={selectedOrders.length === orders.length && orders.length > 0}
-                                    onChange={selectAllOrders}
-                                    className="w-4 h-4"
-                                  />
-                                </th>
-                                <th className="px-6 py-4">ID</th>
-                                <th className="px-6 py-4">Client</th>
-                                <th className="px-6 py-4">Prețuri</th>
-                                <th className="px-6 py-4">Metodă</th>
-                                <th className="px-6 py-4">Status</th>
-                                <th className="px-6 py-4">Livrare</th>
-                                <th className="px-6 py-4">Facturi/AWB</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-neutral-100">
-                            {orders.map(order => (
-                                <tr key={order.id} className="hover:bg-neutral-50 transition-colors">
-                                    <td className="px-6 py-4">
-                                      <input 
-                                        type="checkbox"
-                                        checked={selectedOrders.includes(order.id)}
-                                        onChange={() => toggleOrderSelection(order.id)}
-                                        className="w-4 h-4"
-                                      />
-                                    </td>
-                                    <td className="px-6 py-4 font-mono text-neutral-400">#{order.id}</td>
-                                    <td className="px-6 py-4">
-                                        <div className="font-bold">{order.customer_name}</div>
-                                        <div className="text-xs text-neutral-500">{order.customer_email}</div>
-                                        <div className="text-xs text-neutral-500 font-mono">{order.customer_phone}</div>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <div className="text-xs space-y-1">
-                                          <div>Subtotal: {parseFloat(order.subtotal || '0').toFixed(2)} RON</div>
-                                          {order.discount_amount > 0 && (
-                                            <div className="text-green-600">Reducere: -{parseFloat(order.discount_amount.toString()).toFixed(2)} RON</div>
-                                          )}
-                                          <div className="font-bold text-base">Total: {parseFloat(order.total_amount.toString()).toFixed(2)} RON</div>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 uppercase text-xs font-bold text-neutral-500">
-                                        {order.payment_method === 'card' ? '💳 Card' : '💵 Ramburs'}
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border ${
-                                            order.status === 'paid' ? 'bg-green-50 text-green-600 border-green-100' : 
-                                            order.status === 'pending' ? 'bg-yellow-50 text-yellow-600 border-yellow-100' : 'bg-neutral-100 text-neutral-500'
-                                        }`}>
-                                            {order.status}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 text-xs">
-                                      <div>{order.shipping_method === 'easybox' ? '📦 Easy Box' : '🚚 Curier'}</div>
-                                      <div className="text-neutral-400">{parseFloat(order.shipping_cost?.toString() || '0').toFixed(2)} RON</div>
-                                    </td>
-                                    <td className="px-6 py-4 text-xs">
-                                      {order.oblio_invoice_number ? (
-                                        <div className="text-green-600">✓ {order.oblio_invoice_number}</div>
-                                      ) : (
-                                        <div className="text-neutral-400">-</div>
-                                      )}
-                                      {order.awb_number && (
-                                        <div className="text-blue-600 mt-1">📦 {order.awb_number}</div>
-                                      )}
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-                {orders.length === 0 && !loading && <div className="p-12 text-center text-neutral-400">Nu există comenzi.</div>}
-              </div>
-            </>
-        )}
-
-        {activeTab === 'products' && (
-            <div>
-                <div className="flex justify-end mb-6">
-                    <Button onClick={() => {
-                        setEditingProduct({
-                            name: '', price: 0, original_price: null, stock_quantity: 10, description: '', 
-                            category: 'Ochelari', imageUrl: '', gallery: [], colors: [], details: []
-                        });
-                        setShowForm(true);
-                    }}>+ Adaugă Produs Nou</Button>
-                </div>
-
-                {showForm && editingProduct && (
-                    <div className="bg-white p-8 rounded-2xl shadow-xl mb-8 border border-neutral-200 animate-fade-in relative scroll-mt-24" id="productForm">
-                        <h3 className="text-xl font-bold mb-6 flex items-center gap-2 border-b border-neutral-100 pb-4">
-                             {editingProduct.id ? '✏️ Editează Produs' : '✨ Produs Nou'}
-                        </h3>
-                        
-                        <form onSubmit={handleProductSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="label-admin">Nume Produs</label>
-                                    <input 
-                                        className="input-admin"
-                                        value={editingProduct.name}
-                                        onChange={e => setEditingProduct({...editingProduct, name: e.target.value})}
-                                        required
-                                        placeholder="ex: Oclar Pro Titanium"
-                                    />
-                                </div>
-                                
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="label-admin">Preț Actual (RON)</label>
-                                        <input 
-                                            type="number" step="0.01"
-                                            className="input-admin font-bold"
-                                            value={editingProduct.price}
-                                            onChange={e => setEditingProduct({...editingProduct, price: parseFloat(e.target.value)})}
-                                            required
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="label-admin text-red-500">Preț Vechi (Reducere)</label>
-                                        <input 
-                                            type="number" step="0.01"
-                                            className="input-admin text-red-500"
-                                            placeholder="Opțional"
-                                            value={editingProduct.original_price || ''}
-                                            onChange={e => setEditingProduct({...editingProduct, original_price: e.target.value ? parseFloat(e.target.value) : null})}
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="label-admin">Stoc</label>
-                                        <input 
-                                            type="number" 
-                                            className="input-admin"
-                                            value={editingProduct.stock_quantity}
-                                            onChange={e => setEditingProduct({...editingProduct, stock_quantity: parseInt(e.target.value)})}
-                                            required
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="label-admin">Categorie</label>
-                                        <input 
-                                            className="input-admin"
-                                            value={editingProduct.category}
-                                            onChange={e => setEditingProduct({...editingProduct, category: e.target.value})}
-                                            required
-                                            placeholder="ex: Daytime"
-                                        />
-                                    </div>
-                                </div>
-                                
-                                <div>
-                                    <label className="label-admin">Descriere</label>
-                                    <textarea 
-                                        className="input-admin h-32 resize-none"
-                                        value={editingProduct.description}
-                                        onChange={e => setEditingProduct({...editingProduct, description: e.target.value})}
-                                        required
-                                    />
-                                </div>
-
-                                <div className="bg-neutral-50 p-4 rounded-xl border border-neutral-200">
-                                    <label className="label-admin mb-2 block">Specificații Tehnice</label>
-                                    {editingProduct.details.map((spec, idx) => (
-                                        <div key={idx} className="flex gap-2 mb-2">
-                                            <input 
-                                                className="input-admin py-1 text-sm bg-white" 
-                                                value={spec} 
-                                                onChange={(e) => {
-                                                    const newSpecs = [...editingProduct.details];
-                                                    newSpecs[idx] = e.target.value;
-                                                    setEditingProduct({...editingProduct, details: newSpecs});
-                                                }}
-                                            />
-                                            <button type="button" onClick={() => {
-                                                const newSpecs = editingProduct.details.filter((_, i) => i !== idx);
-                                                setEditingProduct({...editingProduct, details: newSpecs});
-                                            }} className="text-red-500 px-2 font-bold hover:bg-red-50 rounded">×</button>
-                                        </div>
-                                    ))}
-                                    <Button 
-                                        type="button" 
-                                        variant="outline" 
-                                        className="w-full py-2 text-xs border-dashed border-neutral-300 hover:border-black" 
-                                        onClick={() => setEditingProduct({...editingProduct, details: [...editingProduct.details, "Caracteristică: Valoare"]})}
-                                    >
-                                        + Adaugă Specificație
-                                    </Button>
-                                </div>
-                            </div>
-
-                            <div className="space-y-6">
-                                <div>
-                                    <label className="label-admin">Imagine Principală (Cover)</label>
-                                    <div className="border-2 border-dashed border-neutral-300 rounded-xl p-4 text-center hover:bg-neutral-50 transition-colors cursor-pointer relative group overflow-hidden bg-neutral-50 min-h-[200px] flex items-center justify-center">
-                                        <input type="file" onChange={(e) => handleImageFile(e, false)} className="absolute inset-0 opacity-0 cursor-pointer z-10" accept="image/*" />
-                                        {editingProduct.imageUrl ? (
-                                            <img src={editingProduct.imageUrl} className="w-full h-full object-contain" alt="Cover" />
-                                        ) : (
-                                            <div className="text-neutral-400 text-sm">
-                                                <span className="block text-2xl mb-2">📷</span>
-                                                Click sau Trage o poză aici
-                                            </div>
-                                        )}
-                                        {editingProduct.imageUrl && (
-                                            <div className="absolute inset-0 bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">Schimbă Poza</div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label className="label-admin">Galerie (Mai multe poze)</label>
-                                    <div className="grid grid-cols-3 gap-2 mb-2">
-                                        {editingProduct.gallery.map((img, idx) => (
-                                            <div key={idx} className="relative group aspect-square border rounded-lg overflow-hidden bg-white shadow-sm">
-                                                <img src={img} className="w-full h-full object-cover" alt={`Gallery ${idx}`} />
-                                                <button 
-                                                    type="button" 
-                                                    onClick={() => removeGalleryImage(idx)} 
-                                                    className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-red-600"
-                                                >
-                                                    ×
-                                                </button>
-                                            </div>
-                                        ))}
-                                        <div className="border-2 border-dashed border-neutral-300 rounded-lg flex items-center justify-center aspect-square hover:bg-neutral-50 cursor-pointer relative text-neutral-300 hover:text-neutral-500 transition-colors">
-                                            <input type="file" onChange={(e) => handleImageFile(e, true)} className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" />
-                                            <span className="text-4xl font-light">+</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label className="label-admin">Culori Disponibile (HEX)</label>
-                                    <input 
-                                        className="input-admin"
-                                        placeholder="#000000, #FFFFFF" 
-                                        value={editingProduct.colors.join(', ')}
-                                        onChange={e => setEditingProduct({...editingProduct, colors: e.target.value.split(',').map(c => c.trim())})}
-                                    />
-                                    <div className="flex gap-2 mt-2 h-6 items-center">
-                                        <span className="text-xs text-neutral-400">Preview:</span>
-                                        {editingProduct.colors.filter(c => c.startsWith('#')).map((c, i) => (
-                                            <div key={i} className="w-5 h-5 rounded-full border border-neutral-200 shadow-sm" style={{backgroundColor: c}}></div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="md:col-span-2 flex gap-4 mt-4 border-t border-neutral-100 pt-6">
-                                <Button type="submit">Salvează Modificările</Button>
-                                <Button variant="outline" onClick={() => setShowForm(false)} type="button">Anulează</Button>
-                            </div>
-                        </form>
-                    </div>
-                )}
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {products.map(p => (
-                        <div key={p.id} className="bg-white p-5 rounded-2xl shadow-sm border border-neutral-100 flex flex-col group hover:shadow-md transition-shadow">
-                            <div className="flex justify-between items-start mb-4">
-                                <div className="w-20 h-20 rounded-lg overflow-hidden border border-neutral-100 bg-neutral-50 relative">
-                                    <img src={p.imageUrl} className="w-full h-full object-cover" alt={p.name} />
-                                    {p.gallery && p.gallery.length > 0 && (
-                                        <div className="absolute bottom-0 right-0 bg-black/50 text-white text-[9px] px-1">+{p.gallery.length}</div>
-                                    )}
-                                </div>
-                                <div className="text-right">
-                                    <div className="font-bold text-xl">{p.price} <span className="text-xs font-normal">RON</span></div>
-                                    {p.original_price && p.original_price > p.price && (
-                                        <div className="text-xs text-red-500 line-through font-mono">
-                                            {p.original_price} RON
-                                        </div>
-                                    )}
-                                    <div className={`mt-2 px-2 py-1 rounded text-[10px] font-bold uppercase inline-block ${p.stock_quantity > 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                                        Stoc: {p.stock_quantity}
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <h3 className="font-bold text-lg mb-1">{p.name}</h3>
-                            <p className="text-xs text-neutral-500 line-clamp-2 mb-4 flex-1">{p.description}</p>
-                            
-                            <div className="flex gap-2 border-t border-neutral-100 pt-4">
-                                <button 
-                                    onClick={() => { 
-                                        setEditingProduct(p); 
-                                        setShowForm(true); 
-                                        setTimeout(() => document.getElementById('productForm')?.scrollIntoView({behavior: 'smooth'}), 100);
-                                    }}
-                                    className="flex-1 bg-neutral-50 hover:bg-neutral-100 text-neutral-900 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors"
-                                >
-                                    Editează
-                                </button>
-                                <button 
-                                    onClick={() => p.id && handleDeleteProduct(p.id)}
-                                    className="px-3 bg-white border border-red-100 text-red-500 rounded-lg hover:bg-red-50 transition-colors"
-                                    title="Șterge Produs"
-                                >
-                                    ✕
-                                </button>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        )}
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', borderBottom: '2px solid #e5e7eb' }}>
+        <button
+          onClick={() => setActiveTab('orders')}
+          style={{
+            padding: '10px 20px',
+            background: activeTab === 'orders' ? '#000' : 'transparent',
+            color: activeTab === 'orders' ? '#fff' : '#000',
+            border: 'none',
+            cursor: 'pointer',
+            fontWeight: '600'
+          }}
+        >
+          📦 Comenzi ({orders.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('products')}
+          style={{
+            padding: '10px 20px',
+            background: activeTab === 'products' ? '#000' : 'transparent',
+            color: activeTab === 'products' ? '#fff' : '#000',
+            border: 'none',
+            cursor: 'pointer',
+            fontWeight: '600'
+          }}
+        >
+          🛍️ Produse ({products.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('discounts')}
+          style={{
+            padding: '10px 20px',
+            background: activeTab === 'discounts' ? '#000' : 'transparent',
+            color: activeTab === 'discounts' ? '#fff' : '#000',
+            border: 'none',
+            cursor: 'pointer',
+            fontWeight: '600'
+          }}
+        >
+          🎟️ Coduri Reducere ({discounts.length})
+        </button>
       </div>
-      
-      <style>{`
-        .input-admin { 
-            width: 100%; 
-            padding: 0.75rem; 
-            border: 1px solid #e5e5e5; 
-            border-radius: 0.5rem; 
-            transition: all 0.2s; 
-            outline: none; 
-            font-size: 0.875rem;
-        }
-        .input-admin:focus { 
-            border-color: black; 
-            box-shadow: 0 0 0 1px black;
-        }
-        .label-admin { 
-            display: block; 
-            font-size: 0.75rem; 
-            font-weight: 700; 
-            text-transform: uppercase; 
-            color: #737373; 
-            margin-bottom: 0.35rem; 
-            letter-spacing: 0.05em;
-        }
-      `}</style>
+
+      {/* TAB: COMENZI */}
+      {activeTab === 'orders' && (
+        <>
+          {/* Filtre și Acțiuni */}
+          <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '15px' }}>Filtre și Acțiuni</h3>
+            
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '15px', flexWrap: 'wrap' }}>
+              <button onClick={() => handleQuickDateFilter('today')} style={quickFilterButtonStyle}>Azi</button>
+              <button onClick={() => handleQuickDateFilter('week')} style={quickFilterButtonStyle}>7 zile</button>
+              <button onClick={() => handleQuickDateFilter('month')} style={quickFilterButtonStyle}>30 zile</button>
+              <button onClick={() => handleQuickDateFilter('year')} style={quickFilterButtonStyle}>1 an</button>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '15px', flexWrap: 'wrap' }}>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                style={inputStyle}
+                placeholder="De la"
+              />
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                style={inputStyle}
+                placeholder="Până la"
+              />
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={inputStyle}>
+                <option value="all">Toate statusurile</option>
+                <option value="pending">Pending</option>
+                <option value="paid">Paid</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+              <button onClick={handleApplyFilters} style={{ ...buttonStyle, background: '#3b82f6' }}>
+                🔍 Aplică Filtre
+              </button>
+            </div>
+
+            {selectedOrders.length > 0 && (
+              <div style={{ padding: '15px', background: '#f0f9ff', borderRadius: '6px', marginTop: '15px' }}>
+                <p style={{ fontWeight: '600', marginBottom: '10px' }}>
+                  {selectedOrders.length} comenzi selectate
+                </p>
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  <button onClick={handleSendInvoices} style={{ ...buttonStyle, background: '#10b981' }}>
+                    📄 Trimite Facturi în Oblio
+                  </button>
+                  <button onClick={handleGenerateAWB} style={{ ...buttonStyle, background: '#8b5cf6' }}>
+                    📦 Generează AWB
+                  </button>
+                  <button onClick={() => handleExport('xml')} style={{ ...buttonStyle, background: '#f59e0b' }}>
+                    💾 Export XML
+                  </button>
+                  <button onClick={() => handleExport('excel')} style={{ ...buttonStyle, background: '#ef4444' }}>
+                    📊 Export Excel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Tabel Comenzi */}
+          <div style={{ background: '#fff', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
+                  <th style={thStyle}>
+                    <input
+                      type="checkbox"
+                      checked={selectedOrders.length === orders.length && orders.length > 0}
+                      onChange={selectAllOrders}
+                    />
+                  </th>
+                  <th style={thStyle}>ID</th>
+                  <th style={thStyle}>Client</th>
+                  <th style={thStyle}>Prețuri</th>
+                  <th style={thStyle}>Metodă</th>
+                  <th style={thStyle}>Status</th>
+                  <th style={thStyle}>Livrare</th>
+                  <th style={thStyle}>Facturi/AWB</th>
+                  <th style={thStyle}>Acțiuni</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map((order) => (
+                  <tr key={order.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                    <td style={tdStyle}>
+                      <input
+                        type="checkbox"
+                        checked={selectedOrders.includes(order.id)}
+                        onChange={() => toggleOrderSelection(order.id)}
+                      />
+                    </td>
+                    <td style={tdStyle}>#{order.id}</td>
+                    <td style={tdStyle}>
+                      <div style={{ fontSize: '14px' }}>
+                        <strong>{order.customer_name}</strong><br />
+                        <span style={{ fontSize: '12px', color: '#6b7280' }}>{order.customer_email}</span><br />
+                        <span style={{ fontSize: '12px', color: '#6b7280' }}>{order.customer_phone}</span>
+                      </div>
+                    </td>
+                    <td style={tdStyle}>
+                      <div style={{ fontSize: '13px' }}>
+                        <div>Subtotal: {order.subtotal?.toFixed(2)} RON</div>
+                        {order.discount_amount > 0 && (
+                          <div style={{ color: '#10b981', fontWeight: '600' }}>
+                            Reducere: -{order.discount_amount.toFixed(2)} RON
+                          </div>
+                        )}
+                        <div style={{ fontWeight: '700', fontSize: '14px', marginTop: '4px' }}>
+                          Total: {order.total_amount.toFixed(2)} RON
+                        </div>
+                      </div>
+                    </td>
+                    <td style={tdStyle}>
+                      <span style={{
+                        padding: '4px 8px',
+                        borderRadius: '4px',
+                        fontSize: '12px',
+                        background: order.payment_method === 'card' ? '#dbeafe' : '#fef3c7',
+                        color: order.payment_method === 'card' ? '#1e40af' : '#92400e'
+                      }}>
+                        {order.payment_method === 'card' ? '💳 Card' : '💵 Ramburs'}
+                      </span>
+                    </td>
+                    <td style={tdStyle}>
+                      <span style={{
+                        padding: '4px 8px',
+                        borderRadius: '4px',
+                        fontSize: '12px',
+                        background: order.status === 'paid' ? '#d1fae5' : '#fef3c7',
+                        color: order.status === 'paid' ? '#065f46' : '#92400e'
+                      }}>
+                        {order.status}
+                      </span>
+                    </td>
+                    <td style={tdStyle}>
+                      <div style={{ fontSize: '13px' }}>
+                        <div>
+                          {order.shipping_method === 'easybox' ? '📦 Easy Box' : '🚚 Curier'}
+                        </div>
+                        <div style={{ color: '#6b7280' }}>
+                          {order.shipping_cost?.toFixed(2)} RON
+                        </div>
+                      </div>
+                    </td>
+                    <td style={tdStyle}>
+                      <div style={{ fontSize: '12px' }}>
+                        {order.oblio_invoice_number && (
+                          <div style={{ color: '#10b981', marginBottom: '4px' }}>
+                            ✓ {order.oblio_invoice_number}
+                          </div>
+                        )}
+                        {order.awb_number && (
+                          <div style={{ color: '#3b82f6' }}>
+                            📦 {order.awb_number}
+                          </div>
+                        )}
+                        {!order.oblio_invoice_number && !order.awb_number && (
+                          <span style={{ color: '#9ca3af' }}>-</span>
+                        )}
+                      </div>
+                    </td>
+                    <td style={tdStyle}>
+                      <button
+                        onClick={() => setEditingOrder(order)}
+                        style={{ ...actionButtonStyle, background: '#3b82f6' }}
+                      >
+                        ✏️
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Modal Edit Comandă */}
+          {editingOrder && (
+            <div style={modalOverlayStyle}>
+              <div style={modalStyle}>
+                <h3 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '20px' }}>
+                  Editează Comanda #{editingOrder.id}
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                  <input
+                    type="text"
+                    placeholder="Nume client"
+                    value={editingOrder.customer_name}
+                    onChange={(e) => setEditingOrder({ ...editingOrder, customer_name: e.target.value })}
+                    style={inputStyle}
+                  />
+                  <input
+                    type="email"
+                    placeholder="Email"
+                    value={editingOrder.customer_email}
+                    onChange={(e) => setEditingOrder({ ...editingOrder, customer_email: e.target.value })}
+                    style={inputStyle}
+                  />
+                  <input
+                    type="tel"
+                    placeholder="Telefon"
+                    value={editingOrder.customer_phone}
+                    onChange={(e) => setEditingOrder({ ...editingOrder, customer_phone: e.target.value })}
+                    style={inputStyle}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Județ"
+                    value={editingOrder.county || ''}
+                    onChange={(e) => setEditingOrder({ ...editingOrder, county: e.target.value })}
+                    style={inputStyle}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Oraș"
+                    value={editingOrder.city || ''}
+                    onChange={(e) => setEditingOrder({ ...editingOrder, city: e.target.value })}
+                    style={inputStyle}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Adresă"
+                    value={editingOrder.address_line || ''}
+                    onChange={(e) => setEditingOrder({ ...editingOrder, address_line: e.target.value })}
+                    style={inputStyle}
+                  />
+                  <select
+                    value={editingOrder.status}
+                    onChange={(e) => setEditingOrder({ ...editingOrder, status: e.target.value })}
+                    style={inputStyle}
+                  >
+                    <option value="pending">Pending</option>
+                    <option value="paid">Paid</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                    <button onClick={handleUpdateOrder} style={{ ...buttonStyle, flex: 1, background: '#10b981' }}>
+                      💾 Salvează
+                    </button>
+                    <button onClick={() => setEditingOrder(null)} style={{ ...buttonStyle, flex: 1, background: '#6b7280' }}>
+                      ❌ Anulează
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* TAB: PRODUSE */}
+      {activeTab === 'products' && (
+        <>
+          <button
+            onClick={() => setEditingProduct({
+              name: '',
+              description: '',
+              price: 0,
+              original_price: null,
+              stock_quantity: 0,
+              category: 'Ochelari de vedere',
+              imageUrl: '',
+              gallery: [],
+              colors: [],
+              details: [],
+              status: 'active'
+            })}
+            style={{ ...buttonStyle, marginBottom: '20px', background: '#10b981' }}
+          >
+            ➕ Adaugă Produs Nou
+          </button>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
+            {products.map((product) => (
+              <div key={product.id} style={{
+                background: '#fff',
+                padding: '20px',
+                borderRadius: '8px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+              }}>
+                <img src={product.imageUrl} alt={product.name} style={{ width: '100%', height: '200px', objectFit: 'cover', borderRadius: '6px', marginBottom: '15px' }} />
+                <h4 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '10px' }}>{product.name}</h4>
+                <p style={{ fontSize: '14px', color: '#6b7280', marginBottom: '10px' }}>{product.description}</p>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
+                  <span style={{ fontSize: '20px', fontWeight: '700' }}>{product.price} RON</span>
+                  {product.original_price && (
+                    <span style={{ fontSize: '16px', color: '#9ca3af', textDecoration: 'line-through' }}>
+                      {product.original_price} RON
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '15px' }}>
+                  Stoc: {product.stock_quantity} buc
+                </div>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button onClick={() => setEditingProduct(product)} style={{ ...actionButtonStyle, flex: 1, background: '#3b82f6' }}>
+                    ✏️ Editează
+                  </button>
+                  <button onClick={() => handleDeleteProduct(product.id!)} style={{ ...actionButtonStyle, flex: 1, background: '#ef4444' }}>
+                    🗑️ Șterge
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Modal Edit/Add Product */}
+          {editingProduct && (
+            <div style={modalOverlayStyle}>
+              <div style={{ ...modalStyle, maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto' }}>
+                <h3 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '20px' }}>
+                  {editingProduct.id ? 'Editează Produs' : 'Adaugă Produs Nou'}
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                  <input
+                    type="text"
+                    placeholder="Nume produs"
+                    value={editingProduct.name}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })}
+                    style={inputStyle}
+                  />
+                  <textarea
+                    placeholder="Descriere"
+                    value={editingProduct.description}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, description: e.target.value })}
+                    style={{ ...inputStyle, minHeight: '80px' }}
+                  />
+                  <input
+                    type="number"
+                    placeholder="Preț (RON)"
+                    value={editingProduct.price}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, price: parseFloat(e.target.value) })}
+                    style={inputStyle}
+                  />
+                  <input
+                    type="number"
+                    placeholder="Preț original (opțional)"
+                    value={editingProduct.original_price || ''}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, original_price: e.target.value ? parseFloat(e.target.value) : null })}
+                    style={inputStyle}
+                  />
+                  <input
+                    type="number"
+                    placeholder="Stoc"
+                    value={editingProduct.stock_quantity}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, stock_quantity: parseInt(e.target.value) })}
+                    style={inputStyle}
+                  />
+                  <select
+                    value={editingProduct.category}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })}
+                    style={inputStyle}
+                  >
+                    <option value="Ochelari de vedere">Ochelari de vedere</option>
+                    <option value="Ochelari de soare">Ochelari de soare</option>
+                    <option value="Lentile de contact">Lentile de contact</option>
+                    <option value="Accesorii">Accesorii</option>
+                  </select>
+                  <input
+                    type="url"
+                    placeholder="URL imagine principală"
+                    value={editingProduct.imageUrl}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, imageUrl: e.target.value })}
+                    style={inputStyle}
+                  />
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                    <button onClick={handleSaveProduct} style={{ ...buttonStyle, flex: 1, background: '#10b981' }}>
+                      💾 Salvează
+                    </button>
+                    <button onClick={() => setEditingProduct(null)} style={{ ...buttonStyle, flex: 1, background: '#6b7280' }}>
+                      ❌ Anulează
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* TAB: CODURI REDUCERE */}
+      {activeTab === 'discounts' && (
+        <>
+          <button
+            onClick={() => setEditingDiscount({
+              id: 0,
+              code: '',
+              discount_type: 'percentage',
+              discount_value: 0,
+              min_order_amount: 0,
+              max_uses: null,
+              used_count: 0,
+              valid_from: new Date().toISOString().split('T')[0],
+              valid_until: null,
+              is_active: true,
+              created_at: ''
+            })}
+            style={{ ...buttonStyle, marginBottom: '20px', background: '#10b981' }}
+          >
+            ➕ Adaugă Cod Nou
+          </button>
+
+          <div style={{ background: '#fff', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
+                  <th style={thStyle}>Cod</th>
+                  <th style={thStyle}>Tip</th>
+                  <th style={thStyle}>Valoare</th>
+                  <th style={thStyle}>Comandă Min</th>
+                  <th style={thStyle}>Utilizări</th>
+                  <th style={thStyle}>Valabilitate</th>
+                  <th style={thStyle}>Status</th>
+                  <th style={thStyle}>Acțiuni</th>
+                </tr>
+              </thead>
+              <tbody>
+                {discounts.map((discount) => (
+                  <tr key={discount.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                    <td style={{ ...tdStyle, fontWeight: '700', fontFamily: 'monospace' }}>
+                      {discount.code}
+                    </td>
+                    <td style={tdStyle}>
+                      <span style={{
+                        padding: '4px 8px',
+                        borderRadius: '4px',
+                        fontSize: '12px',
+                        background: discount.discount_type === 'percentage' ? '#dbeafe' : '#fef3c7',
+                        color: discount.discount_type === 'percentage' ? '#1e40af' : '#92400e'
+                      }}>
+                        {discount.discount_type === 'percentage' ? '📊 Procent' : '💵 Fix'}
+                      </span>
+                    </td>
+                    <td style={tdStyle}>
+                      {discount.discount_type === 'percentage' 
+                        ? `${discount.discount_value}%` 
+                        : `${discount.discount_value} RON`}
+                    </td>
+                    <td style={tdStyle}>
+                      {discount.min_order_amount > 0 ? `${discount.min_order_amount} RON` : '-'}
+                    </td>
+                    <td style={tdStyle}>
+                      {discount.max_uses 
+                        ? `${discount.used_count}/${discount.max_uses}` 
+                        : `${discount.used_count}/∞`}
+                    </td>
+                    <td style={tdStyle}>
+                      <div style={{ fontSize: '12px' }}>
+                        <div>De la: {new Date(discount.valid_from).toLocaleDateString('ro-RO')}</div>
+                        {discount.valid_until && (
+                          <div>Până: {new Date(discount.valid_until).toLocaleDateString('ro-RO')}</div>
+                        )}
+                      </div>
+                    </td>
+                    <td style={tdStyle}>
+                      <span style={{
+                        padding: '4px 8px',
+                        borderRadius: '4px',
+                        fontSize: '12px',
+                        background: discount.is_active ? '#d1fae5' : '#fee2e2',
+                        color: discount.is_active ? '#065f46' : '#991b1b'
+                      }}>
+                        {discount.is_active ? '✓ Activ' : '✗ Inactiv'}
+                      </span>
+                    </td>
+                    <td style={tdStyle}>
+                      <div style={{ display: 'flex', gap: '5px' }}>
+                        <button
+                          onClick={() => setEditingDiscount(discount)}
+                          style={{ ...actionButtonStyle, background: '#3b82f6' }}
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          onClick={() => handleDeleteDiscount(discount.id)}
+                          style={{ ...actionButtonStyle, background: '#ef4444' }}
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Modal Edit/Add Discount */}
+          {editingDiscount && (
+            <div style={modalOverlayStyle}>
+              <div style={modalStyle}>
+                <h3 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '20px' }}>
+                  {editingDiscount.id ? 'Editează Cod Reducere' : 'Adaugă Cod Nou'}
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                  <input
+                    type="text"
+                    placeholder="Cod (ex: SUMMER2024)"
+                    value={editingDiscount.code}
+                    onChange={(e) => setEditingDiscount({ ...editingDiscount, code: e.target.value.toUpperCase() })}
+                    style={{ ...inputStyle, fontFamily: 'monospace', fontWeight: '700' }}
+                  />
+                  <select
+                    value={editingDiscount.discount_type}
+                    onChange={(e) => setEditingDiscount({ ...editingDiscount, discount_type: e.target.value as 'percentage' | 'fixed' })}
+                    style={inputStyle}
+                  >
+                    <option value="percentage">Procent (%)</option>
+                    <option value="fixed">Sumă fixă (RON)</option>
+                  </select>
+                  <input
+                    type="number"
+                    placeholder={editingDiscount.discount_type === 'percentage' ? 'Procent (ex: 20)' : 'Sumă (RON)'}
+                    value={editingDiscount.discount_value}
+                    onChange={(e) => setEditingDiscount({ ...editingDiscount, discount_value: parseFloat(e.target.value) })}
+                    style={inputStyle}
+                  />
+                  <input
+                    type="number"
+                    placeholder="Comandă minimă (RON) - opțional"
+                    value={editingDiscount.min_order_amount}
+                    onChange={(e) => setEditingDiscount({ ...editingDiscount, min_order_amount: parseFloat(e.target.value) || 0 })}
+                    style={inputStyle}
+                  />
+                  <input
+                    type="number"
+                    placeholder="Utilizări maxime - opțional (lasă gol pentru nelimitat)"
+                    value={editingDiscount.max_uses || ''}
+                    onChange={(e) => setEditingDiscount({ ...editingDiscount, max_uses: e.target.value ? parseInt(e.target.value) : null })}
+                    style={inputStyle}
+                  />
+                  <div>
+                    <label style={{ fontSize: '14px', color: '#6b7280', marginBottom: '5px', display: 'block' }}>
+                      Valabil de la:
+                    </label>
+                    <input
+                      type="date"
+                      value={editingDiscount.valid_from.split('T')[0]}
+                      onChange={(e) => setEditingDiscount({ ...editingDiscount, valid_from: e.target.value })}
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '14px', color: '#6b7280', marginBottom: '5px', display: 'block' }}>
+                      Valabil până la (opțional):
+                    </label>
+                    <input
+                      type="date"
+                      value={editingDiscount.valid_until ? editingDiscount.valid_until.split('T')[0] : ''}
+                      onChange={(e) => setEditingDiscount({ ...editingDiscount, valid_until: e.target.value || null })}
+                      style={inputStyle}
+                    />
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={editingDiscount.is_active}
+                      onChange={(e) => setEditingDiscount({ ...editingDiscount, is_active: e.target.checked })}
+                    />
+                    <span style={{ fontSize: '14px' }}>Cod activ</span>
+                  </label>
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                    <button onClick={handleSaveDiscount} style={{ ...buttonStyle, flex: 1, background: '#10b981' }}>
+                      💾 Salvează
+                    </button>
+                    <button onClick={() => setEditingDiscount(null)} style={{ ...buttonStyle, flex: 1, background: '#6b7280' }}>
+                      ❌ Anulează
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
+}
+
+// Styles
+const buttonStyle = {
+  padding: '10px 16px',
+  border: 'none',
+  borderRadius: '6px',
+  cursor: 'pointer',
+  fontSize: '14px',
+  fontWeight: '600',
+  color: '#fff',
+  transition: 'opacity 0.2s'
+};
+
+const quickFilterButtonStyle = {
+  ...buttonStyle,
+  background: '#6b7280',
+  padding: '8px 12px',
+  fontSize: '13px'
+};
+
+const actionButtonStyle = {
+  padding: '6px 10px',
+  border: 'none',
+  borderRadius: '4px',
+  cursor: 'pointer',
+  fontSize: '14px',
+  color: '#fff',
+  fontWeight: '600'
+};
+
+const inputStyle = {
+  padding: '10px',
+  border: '1px solid #d1d5db',
+  borderRadius: '6px',
+  fontSize: '14px'
+};
+
+const thStyle = {
+  padding: '12px',
+  textAlign: 'left' as const,
+  fontSize: '13px',
+  fontWeight: '600',
+  color: '#374151'
+};
+
+const tdStyle = {
+  padding: '12px',
+  fontSize: '14px'
+};
+
+const modalOverlayStyle = {
+  position: 'fixed' as const,
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  background: 'rgba(0,0,0,0.5)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  zIndex: 1000
+};
+
+const modalStyle = {
+  background: '#fff',
+  padding: '30px',
+  borderRadius: '12px',
+  maxWidth: '500px',
+  width: '90%',
+  boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)'
 };
