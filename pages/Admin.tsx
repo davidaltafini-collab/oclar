@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { API_URL } from '../constants';
 import { Button } from '../components/Button';
 
-// Tipuri adaptate la baza ta de date actualizată
 interface AdminProduct {
   id?: number;
   name: string;
@@ -12,9 +11,28 @@ interface AdminProduct {
   description: string;
   category: string;
   imageUrl: string;
-  gallery: string[]; // Array de string-uri Base64 pentru mai multe poze
+  gallery: string[];
   colors: string[];
-  details: string[]; // Array de string-uri pentru specificații
+  details: string[];
+}
+
+interface Order {
+  id: number;
+  customer_name: string;
+  customer_email: string;
+  customer_phone: string;
+  total_amount: number;
+  subtotal: number;
+  shipping_cost: number;
+  shipping_method: string;
+  discount_code?: string;
+  discount_amount: number;
+  status: string;
+  payment_method: string;
+  created_at: string;
+  items: string;
+  oblio_invoice_number?: string;
+  awb_number?: string;
 }
 
 export const Admin: React.FC = () => {
@@ -22,16 +40,21 @@ export const Admin: React.FC = () => {
   const [secret, setSecret] = useState('');
   const [activeTab, setActiveTab] = useState<'orders' | 'products'>('orders');
   
-  const [orders, setOrders] = useState<any[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [loading, setLoading] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
+
+  // Filtre comenzi
+  const [selectedOrders, setSelectedOrders] = useState<number[]>([]);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('');
 
   // Formular Produs
   const [editingProduct, setEditingProduct] = useState<AdminProduct | null>(null);
   const [showForm, setShowForm] = useState(false);
 
-  // --- 1. LOGIN ---
   const handleLogin = async (e?: React.FormEvent) => {
     if(e) e.preventDefault();
     if(!secret) return;
@@ -66,16 +89,28 @@ export const Admin: React.FC = () => {
   const fetchData = async (type: 'orders' | 'products') => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/admin?type=${type}`, {
+      let url = `${API_URL}/admin?type=${type}`;
+      
+      if (type === 'orders') {
+        if (startDate) url += `&startDate=${startDate}`;
+        if (endDate) url += `&endDate=${endDate}`;
+        if (statusFilter) url += `&status=${statusFilter}`;
+      }
+
+      const res = await fetch(url, {
         headers: { 'x-admin-secret': secret }
       });
+      
       if (res.status === 401) {
         setIsAuthenticated(false);
         sessionStorage.removeItem('admin_secret');
         return;
       }
       const data = await res.json();
-      if (type === 'orders') setOrders(data);
+      if (type === 'orders') {
+        setOrders(data);
+        setSelectedOrders([]);
+      }
       if (type === 'products') setProducts(data);
     } catch (err) {
       console.error(err);
@@ -90,7 +125,6 @@ export const Admin: React.FC = () => {
     }
   }, [activeTab, isAuthenticated]);
 
-  // --- 2. GESTIONARE IMAGINI (BASE64) ---
   const handleImageFile = (e: React.ChangeEvent<HTMLInputElement>, isGallery: boolean = false) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -100,13 +134,11 @@ export const Admin: React.FC = () => {
         const base64String = reader.result as string;
         if (editingProduct) {
             if (isGallery) {
-                // Adăugăm la galeria existentă
                 setEditingProduct({
                     ...editingProduct,
                     gallery: [...(editingProduct.gallery || []), base64String]
                 });
             } else {
-                // Setăm imaginea principală
                 setEditingProduct({
                     ...editingProduct,
                     imageUrl: base64String
@@ -125,7 +157,6 @@ export const Admin: React.FC = () => {
       setEditingProduct({ ...editingProduct, gallery: newGallery });
   };
 
-  // --- 3. SUBMIT PRODUS ---
   const handleProductSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProduct) return;
@@ -164,7 +195,152 @@ export const Admin: React.FC = () => {
     } catch (err) { console.error(err); }
   };
 
-  // --- RENDER LOGIN ---
+  // FUNCȚII NOI - COMENZI
+  const toggleOrderSelection = (orderId: number) => {
+    setSelectedOrders(prev => 
+      prev.includes(orderId) 
+        ? prev.filter(id => id !== orderId)
+        : [...prev, orderId]
+    );
+  };
+
+  const selectAllOrders = () => {
+    if (selectedOrders.length === orders.length) {
+      setSelectedOrders([]);
+    } else {
+      setSelectedOrders(orders.map(o => o.id));
+    }
+  };
+
+  const handleQuickDateFilter = (range: 'today' | 'week' | 'month' | 'year') => {
+    const now = new Date();
+    const end = now.toISOString().split('T')[0];
+    let start = '';
+
+    switch(range) {
+      case 'today':
+        start = end;
+        break;
+      case 'week':
+        start = new Date(now.setDate(now.getDate() - 7)).toISOString().split('T')[0];
+        break;
+      case 'month':
+        start = new Date(now.setMonth(now.getMonth() - 1)).toISOString().split('T')[0];
+        break;
+      case 'year':
+        start = new Date(now.setFullYear(now.getFullYear() - 1)).toISOString().split('T')[0];
+        break;
+    }
+
+    setStartDate(start);
+    setEndDate(end);
+  };
+
+  const handleSendInvoices = async () => {
+    if (selectedOrders.length === 0) {
+      alert('Selectează cel puțin o comandă');
+      return;
+    }
+
+    if (!confirm(`Trimitem ${selectedOrders.length} facturi în Oblio?`)) return;
+
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/admin/send-invoices`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-secret': secret
+        },
+        body: JSON.stringify({ orderIds: selectedOrders })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        alert(`Facturi trimise cu succes!\nSucces: ${result.results.filter((r: any) => r.success).length}/${result.results.length}`);
+        fetchData('orders');
+      } else {
+        alert('Eroare la trimitere facturi');
+      }
+    } catch (error) {
+      alert('Eroare de conexiune');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGenerateAWB = async () => {
+    if (selectedOrders.length === 0) {
+      alert('Selectează cel puțin o comandă');
+      return;
+    }
+
+    const courier = prompt('Selectează curier:\n1. fancourier\n2. cargus\n3. gls', 'fancourier');
+    if (!courier) return;
+
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/admin/generate-awb`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-secret': secret
+        },
+        body: JSON.stringify({ 
+          orderIds: selectedOrders,
+          courierService: courier
+        })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        alert(`AWB generat!\nNote: ${result.results[0]?.message || 'Succes'}`);
+        fetchData('orders');
+      } else {
+        alert('Eroare la generare AWB');
+      }
+    } catch (error) {
+      alert('Eroare de conexiune');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExport = async (format: 'xml' | 'excel') => {
+    if (selectedOrders.length === 0) {
+      alert('Selectează cel puțin o comandă');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/admin/export-orders`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-secret': secret
+        },
+        body: JSON.stringify({ 
+          orderIds: selectedOrders,
+          format 
+        })
+      });
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `orders_${Date.now()}.${format === 'xml' ? 'xml' : 'csv'}`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      alert('Eroare la export');
+    }
+  };
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-neutral-100 p-4">
@@ -193,11 +369,9 @@ export const Admin: React.FC = () => {
     );
   }
 
-  // --- RENDER DASHBOARD ---
   return (
     <div className="min-h-screen bg-neutral-50 pt-24 px-4 pb-12 animate-fade-in">
       <div className="max-w-7xl mx-auto">
-        {/* Header Dashboard */}
         <div className="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
             <div>
                 <h1 className="text-3xl font-black uppercase tracking-tight">Dashboard</h1>
@@ -209,13 +383,13 @@ export const Admin: React.FC = () => {
                     onClick={() => setActiveTab('orders')}
                     className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${activeTab === 'orders' ? 'bg-black text-white shadow-lg' : 'text-neutral-500 hover:bg-neutral-50'}`}
                 >
-                    Comenzi
+                    Comenzi ({orders.length})
                 </button>
                 <button 
                     onClick={() => setActiveTab('products')}
                     className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${activeTab === 'products' ? 'bg-black text-white shadow-lg' : 'text-neutral-500 hover:bg-neutral-50'}`}
                 >
-                    Produse & Stoc
+                    Produse
                 </button>
                 <button
                     onClick={() => { setIsAuthenticated(false); sessionStorage.removeItem('admin_secret'); }}
@@ -227,34 +401,142 @@ export const Admin: React.FC = () => {
             </div>
         </div>
 
-        {/* --- TAB COMENZI (NESCHIMBAT) --- */}
         {activeTab === 'orders' && (
-            <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
+            <>
+              {/* FILTRE ȘI ACȚIUNI */}
+              <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 p-6 mb-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                  {/* Filtre rapide */}
+                  <div>
+                    <label className="label-admin">Perioadă Rapidă</label>
+                    <div className="flex gap-2">
+                      <button onClick={() => handleQuickDateFilter('today')} className="px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded text-xs">Azi</button>
+                      <button onClick={() => handleQuickDateFilter('week')} className="px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded text-xs">7 zile</button>
+                      <button onClick={() => handleQuickDateFilter('month')} className="px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded text-xs">30 zile</button>
+                      <button onClick={() => handleQuickDateFilter('year')} className="px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded text-xs">1 an</button>
+                    </div>
+                  </div>
+
+                  {/* Data start */}
+                  <div>
+                    <label className="label-admin">De la data</label>
+                    <input 
+                      type="date" 
+                      value={startDate} 
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="input-admin"
+                    />
+                  </div>
+
+                  {/* Data end */}
+                  <div>
+                    <label className="label-admin">Până la data</label>
+                    <input 
+                      type="date" 
+                      value={endDate} 
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="input-admin"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Status filter */}
+                  <div>
+                    <label className="label-admin">Filtrare Status</label>
+                    <select 
+                      value={statusFilter} 
+                      onChange={(e) => setStatusFilter(e.target.value)}
+                      className="input-admin"
+                    >
+                      <option value="">Toate</option>
+                      <option value="pending">Pending</option>
+                      <option value="paid">Paid</option>
+                      <option value="completed">Completed</option>
+                      <option value="cancelled">Cancelled</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-end">
+                    <Button onClick={() => fetchData('orders')} variant="outline" fullWidth>
+                      Aplică Filtre
+                    </Button>
+                  </div>
+                </div>
+
+                {/* ACȚIUNI BULK */}
+                {selectedOrders.length > 0 && (
+                  <div className="mt-6 pt-6 border-t border-neutral-200">
+                    <p className="text-sm font-bold mb-3">
+                      {selectedOrders.length} comenzi selectate
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button onClick={handleSendInvoices} disabled={loading}>
+                        📄 Trimite Facturi în Oblio
+                      </Button>
+                      <Button onClick={handleGenerateAWB} disabled={loading} variant="secondary">
+                        📦 Generează AWB
+                      </Button>
+                      <Button onClick={() => handleExport('xml')} variant="outline">
+                        💾 Export XML
+                      </Button>
+                      <Button onClick={() => handleExport('excel')} variant="outline">
+                        📊 Export Excel
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* TABEL COMENZI */}
+              <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
                 <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left whitespace-nowrap md:whitespace-normal">
+                    <table className="w-full text-sm text-left">
                         <thead className="bg-neutral-50 text-neutral-500 uppercase font-bold text-[10px] tracking-wider border-b border-neutral-100">
                             <tr>
+                                <th className="px-6 py-4">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={selectedOrders.length === orders.length && orders.length > 0}
+                                    onChange={selectAllOrders}
+                                    className="w-4 h-4"
+                                  />
+                                </th>
                                 <th className="px-6 py-4">ID</th>
                                 <th className="px-6 py-4">Client</th>
-                                <th className="px-6 py-4">Total</th>
+                                <th className="px-6 py-4">Prețuri</th>
                                 <th className="px-6 py-4">Metodă</th>
                                 <th className="px-6 py-4">Status</th>
-                                <th className="px-6 py-4 min-w-[200px]">Produse</th>
+                                <th className="px-6 py-4">Livrare</th>
+                                <th className="px-6 py-4">Facturi/AWB</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-neutral-100">
                             {orders.map(order => (
                                 <tr key={order.id} className="hover:bg-neutral-50 transition-colors">
+                                    <td className="px-6 py-4">
+                                      <input 
+                                        type="checkbox"
+                                        checked={selectedOrders.includes(order.id)}
+                                        onChange={() => toggleOrderSelection(order.id)}
+                                        className="w-4 h-4"
+                                      />
+                                    </td>
                                     <td className="px-6 py-4 font-mono text-neutral-400">#{order.id}</td>
                                     <td className="px-6 py-4">
                                         <div className="font-bold">{order.customer_name}</div>
                                         <div className="text-xs text-neutral-500">{order.customer_email}</div>
                                         <div className="text-xs text-neutral-500 font-mono">{order.customer_phone}</div>
-                                        <div className="text-[10px] text-neutral-400 mt-1 max-w-[200px] truncate" title={`${order.city}, ${order.county}, ${order.address_line}`}>
-                                            {order.city}, {order.county}
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <div className="text-xs space-y-1">
+                                          <div>Subtotal: {parseFloat(order.subtotal || '0').toFixed(2)} RON</div>
+                                          {order.discount_amount > 0 && (
+                                            <div className="text-green-600">Reducere: -{parseFloat(order.discount_amount.toString()).toFixed(2)} RON</div>
+                                          )}
+                                          <div className="font-bold text-base">Total: {parseFloat(order.total_amount.toString()).toFixed(2)} RON</div>
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4 font-bold">{parseFloat(order.total_amount).toFixed(2)} RON</td>
                                     <td className="px-6 py-4 uppercase text-xs font-bold text-neutral-500">
                                         {order.payment_method === 'card' ? '💳 Card' : '💵 Ramburs'}
                                     </td>
@@ -266,29 +548,30 @@ export const Admin: React.FC = () => {
                                             {order.status}
                                         </span>
                                     </td>
-                                    <td className="px-6 py-4 text-xs text-neutral-600">
-                                        {(() => {
-                                            try {
-                                                const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
-                                                return items.map((i: any, idx: number) => (
-                                                    <div key={idx} className="mb-1 last:mb-0 flex items-center gap-1">
-                                                        <span className="font-bold bg-neutral-100 px-1 rounded">{i.quantity}x</span> 
-                                                        <span>{i.name}</span>
-                                                    </div>
-                                                ));
-                                            } catch (e) { return <span className="text-red-400">Eroare date</span>; }
-                                        })()}
+                                    <td className="px-6 py-4 text-xs">
+                                      <div>{order.shipping_method === 'easybox' ? '📦 Easy Box' : '🚚 Curier'}</div>
+                                      <div className="text-neutral-400">{parseFloat(order.shipping_cost?.toString() || '0').toFixed(2)} RON</div>
+                                    </td>
+                                    <td className="px-6 py-4 text-xs">
+                                      {order.oblio_invoice_number ? (
+                                        <div className="text-green-600">✓ {order.oblio_invoice_number}</div>
+                                      ) : (
+                                        <div className="text-neutral-400">-</div>
+                                      )}
+                                      {order.awb_number && (
+                                        <div className="text-blue-600 mt-1">📦 {order.awb_number}</div>
+                                      )}
                                     </td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
                 </div>
-                {orders.length === 0 && !loading && <div className="p-12 text-center text-neutral-400">Nu există comenzi încă.</div>}
-            </div>
+                {orders.length === 0 && !loading && <div className="p-12 text-center text-neutral-400">Nu există comenzi.</div>}
+              </div>
+            </>
         )}
 
-        {/* --- TAB PRODUSE (COMPLET ACTUALIZAT) --- */}
         {activeTab === 'products' && (
             <div>
                 <div className="flex justify-end mb-6">
@@ -301,7 +584,6 @@ export const Admin: React.FC = () => {
                     }}>+ Adaugă Produs Nou</Button>
                 </div>
 
-                {/* Formular Adăugare/Editare */}
                 {showForm && editingProduct && (
                     <div className="bg-white p-8 rounded-2xl shadow-xl mb-8 border border-neutral-200 animate-fade-in relative scroll-mt-24" id="productForm">
                         <h3 className="text-xl font-bold mb-6 flex items-center gap-2 border-b border-neutral-100 pb-4">
@@ -309,7 +591,6 @@ export const Admin: React.FC = () => {
                         </h3>
                         
                         <form onSubmit={handleProductSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            {/* COLOANA STÂNGA: Informații Generale */}
                             <div className="space-y-4">
                                 <div>
                                     <label className="label-admin">Nume Produs</label>
@@ -378,7 +659,6 @@ export const Admin: React.FC = () => {
                                     />
                                 </div>
 
-                                {/* EDITOR SPECIFICAȚII */}
                                 <div className="bg-neutral-50 p-4 rounded-xl border border-neutral-200">
                                     <label className="label-admin mb-2 block">Specificații Tehnice</label>
                                     {editingProduct.details.map((spec, idx) => (
@@ -409,9 +689,7 @@ export const Admin: React.FC = () => {
                                 </div>
                             </div>
 
-                            {/* COLOANA DREAPTA: Media & Vizual */}
                             <div className="space-y-6">
-                                {/* Imagine Principală - Upload */}
                                 <div>
                                     <label className="label-admin">Imagine Principală (Cover)</label>
                                     <div className="border-2 border-dashed border-neutral-300 rounded-xl p-4 text-center hover:bg-neutral-50 transition-colors cursor-pointer relative group overflow-hidden bg-neutral-50 min-h-[200px] flex items-center justify-center">
@@ -428,10 +706,8 @@ export const Admin: React.FC = () => {
                                             <div className="absolute inset-0 bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">Schimbă Poza</div>
                                         )}
                                     </div>
-                                    {editingProduct.imageUrl.length > 500000 && <p className="text-xs text-yellow-600 mt-1">⚠️ Atenție: Imagine mare. Poate încetini site-ul.</p>}
                                 </div>
 
-                                {/* Galerie - Multiple Upload */}
                                 <div>
                                     <label className="label-admin">Galerie (Mai multe poze)</label>
                                     <div className="grid grid-cols-3 gap-2 mb-2">
@@ -452,10 +728,8 @@ export const Admin: React.FC = () => {
                                             <span className="text-4xl font-light">+</span>
                                         </div>
                                     </div>
-                                    <p className="text-[10px] text-neutral-400">Pozele sunt salvate direct în baza de date.</p>
                                 </div>
 
-                                {/* Culori */}
                                 <div>
                                     <label className="label-admin">Culori Disponibile (HEX)</label>
                                     <input 
@@ -481,7 +755,6 @@ export const Admin: React.FC = () => {
                     </div>
                 )}
 
-                {/* LISTA PRODUSE */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {products.map(p => (
                         <div key={p.id} className="bg-white p-5 rounded-2xl shadow-sm border border-neutral-100 flex flex-col group hover:shadow-md transition-shadow">
@@ -534,7 +807,6 @@ export const Admin: React.FC = () => {
         )}
       </div>
       
-      {/* Stiluri CSS locale pentru input-urile de admin */}
       <style>{`
         .input-admin { 
             width: 100%; 
@@ -543,7 +815,7 @@ export const Admin: React.FC = () => {
             border-radius: 0.5rem; 
             transition: all 0.2s; 
             outline: none; 
-            font-size: 0.875rem; /* text-sm equivalent */
+            font-size: 0.875rem;
         }
         .input-admin:focus { 
             border-color: black; 
