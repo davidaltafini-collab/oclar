@@ -53,14 +53,18 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
         
         const lineItems = await stripe.checkout.sessions.listLineItems(session.id);
         
-        // Extragem metadata (discount code, shipping)
+        // Extragem metadata
         const metadata = session.metadata || {};
         const discountCode = metadata.discountCode || null;
         const discountAmount = parseFloat(metadata.discountAmount || 0);
         const shippingMethod = metadata.shippingMethod || 'courier';
-        // FIX: Asigurăm parsarea corectă a costului de transport
-        const shippingCost = parseFloat(metadata.shippingCost || 0);
         const subtotal = parseFloat(metadata.subtotal || 0);
+        
+        // FIX: Asigură preluarea corectă a costului de transport din metadata
+        // Stripe metadata sunt string-uri
+        let shippingCost = 0;
+        if (metadata.shippingCost) shippingCost = parseFloat(metadata.shippingCost);
+        else if (metadata.shipping_cost) shippingCost = parseFloat(metadata.shipping_cost);
 
         const orderData = {
           stripe_session_id: session.id,
@@ -87,6 +91,14 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'card', 'paid', NOW())`,
           [orderData.stripe_session_id, orderData.customer_name, orderData.customer_email, orderData.customer_phone, orderData.shipping_address, orderData.items, orderData.subtotal, orderData.shipping_method, orderData.shipping_cost, orderData.discount_code, orderData.discount_amount, orderData.total_amount]
         );
+
+        // Actualizare utilizare cod reducere
+        if (orderData.discount_code) {
+             await connection.query(
+                 'UPDATE discount_codes SET used_count = used_count + 1 WHERE code = ?',
+                 [orderData.discount_code]
+             );
+        }
 
         // Trimitem Email Confirmare
         if (orderData.customer_email) {
@@ -247,13 +259,16 @@ app.post('/api/calculate-shipping', async (req, res) => {
     });
 });
 
-// --- 7. RUTA COMANDĂ RAMBURS (ACTUALIZATĂ) ---
+// --- 7. RUTA COMANDĂ RAMBURS (ACTUALIZATĂ FIX) ---
 app.post('/api/create-order-ramburs', async (req, res) => {
     let connection;
     try {
         const body = req.body;
-        // FIX: Acceptăm și shippingCost (camelCase) și shipping_cost (snake_case)
-        const shippingCostVal = body.shippingCost !== undefined ? body.shippingCost : (body.shipping_cost || 0);
+        
+        // FIX: Preluăm shippingCost cu fallback și conversie sigură
+        let shippingCostVal = 0;
+        if (body.shippingCost !== undefined) shippingCostVal = parseFloat(body.shippingCost);
+        else if (body.shipping_cost !== undefined) shippingCostVal = parseFloat(body.shipping_cost);
 
         const { 
             customerName, 
@@ -323,8 +338,12 @@ app.post('/api/create-order-ramburs', async (req, res) => {
 app.post('/api/create-checkout-session', async (req, res) => {
     try {
         const body = req.body;
-        // FIX: Asigurare preluare cost transport
-        const shippingCostVal = body.shippingCost !== undefined ? body.shippingCost : (body.shipping_cost || 0);
+        
+        // FIX: Preluare shipping cost
+        let shippingCostVal = 0;
+        if (body.shippingCost !== undefined) shippingCostVal = parseFloat(body.shippingCost);
+        else if (body.shipping_cost !== undefined) shippingCostVal = parseFloat(body.shipping_cost);
+
         const { items, discountCode, discountAmount, shippingMethod, subtotal } = body;
         
         const origin = req.headers.origin || process.env.FRONTEND_URL || 'https://oclar.ro';
@@ -383,7 +402,7 @@ app.post('/api/create-checkout-session', async (req, res) => {
                 discountCode: discountCode || '',
                 discountAmount: discountAmount || 0,
                 shippingMethod: shippingMethod || 'courier',
-                shippingCost: shippingCostVal || 0,
+                shippingCost: shippingCostVal, // IMPORTANT: Trimitem explicit în metadata
                 subtotal: subtotal || 0
             }
         });
@@ -395,7 +414,7 @@ app.post('/api/create-checkout-session', async (req, res) => {
     }
 });
 
-// --- 9. RUTE ADMIN ---
+// --- 9. RUTE ADMIN (MODIFICAT PENTRU REDUCERI & EDITARE) ---
 app.all('/api/admin', async (req, res) => {
     const adminSecret = req.headers['x-admin-secret'];
     if (!adminSecret || adminSecret !== process.env.ADMIN_SECRET) {
@@ -406,6 +425,7 @@ app.all('/api/admin', async (req, res) => {
     try {
         connection = await pool.getConnection();
         
+        // GET
         if (req.method === 'GET') {
             const { type, startDate, endDate, status } = req.query;
             
@@ -451,6 +471,7 @@ app.all('/api/admin', async (req, res) => {
             }
         }
         
+        // POST (Produse)
         if (req.method === 'POST') {
              const { id, name, description, price, original_price, stock_quantity, category, imageUrl, gallery, colors, details } = req.body;
              
@@ -474,14 +495,17 @@ app.all('/api/admin', async (req, res) => {
              }
         }
         
+        // DELETE (Produse)
         if (req.method === 'DELETE') {
              await connection.query('DELETE FROM products WHERE id = ?', [req.query.id]);
              return res.json({ success: true });
         }
 
+        // PUT (Editare Comandă - NOU)
         if (req.method === 'PUT') {
             const { orderId, ...updateData } = req.body;
             
+            // Definim câmpurile permise pentru editare
             const allowedFields = ['customer_name', 'customer_email', 'customer_phone', 'status', 'county', 'city', 'address_line'];
             const updates = [];
             const values = [];
@@ -514,7 +538,7 @@ app.all('/api/admin', async (req, res) => {
     }
 });
 
-// --- 10. RUTE ADMIN: DISCOUNT CODES ---
+// --- 10. RUTE ADMIN: DISCOUNT CODES (NOU) ---
 app.post('/api/admin/discount-codes', async (req, res) => {
     const adminSecret = req.headers['x-admin-secret'];
     if (!adminSecret || adminSecret !== process.env.ADMIN_SECRET) {
@@ -587,7 +611,6 @@ app.delete('/api/admin/discount-codes', async (req, res) => {
     }
 });
 
-// ... Restul fișierului rămâne neschimbat (rutele de Oblio, AWB, Export, Status) ...
 // --- 11. RUTE OBLIO & AWB ---
 app.post('/api/admin/send-invoices', async (req, res) => {
     const adminSecret = req.headers['x-admin-secret'];
