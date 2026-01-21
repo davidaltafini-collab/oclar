@@ -69,8 +69,11 @@ function Model({
     });
   }, [cloned]);
 
-  // Handle pointer events for drag
+  // Handle pointer events for drag - SMOOTH on mobile
   useEffect(() => {
+    let rafId: number | null = null;
+    let pendingUpdate = false;
+
     const handlePointerDown = (e: PointerEvent) => {
       isDraggingRef.current = true;
       lastPosRef.current = { x: e.clientX, y: e.clientY };
@@ -79,17 +82,28 @@ function Model({
     const handlePointerMove = (e: PointerEvent) => {
       if (!isDraggingRef.current) return;
       
-      const deltaX = e.clientX - lastPosRef.current.x;
-      const deltaY = e.clientY - lastPosRef.current.y;
-      
-      rotationRef.current.y += deltaX * dragSensitivity;
-      rotationRef.current.x += deltaY * dragSensitivity;
-      
-      lastPosRef.current = { x: e.clientX, y: e.clientY };
+      // Throttle with requestAnimationFrame for smooth 60fps
+      if (!pendingUpdate) {
+        pendingUpdate = true;
+        rafId = requestAnimationFrame(() => {
+          const deltaX = e.clientX - lastPosRef.current.x;
+          const deltaY = e.clientY - lastPosRef.current.y;
+          
+          rotationRef.current.y += deltaX * dragSensitivity;
+          rotationRef.current.x += deltaY * dragSensitivity;
+          
+          lastPosRef.current = { x: e.clientX, y: e.clientY };
+          pendingUpdate = false;
+        });
+      }
     };
 
     const handlePointerUp = () => {
       isDraggingRef.current = false;
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        pendingUpdate = false;
+      }
     };
 
     window.addEventListener('pointerdown', handlePointerDown);
@@ -97,6 +111,7 @@ function Model({
     window.addEventListener('pointerup', handlePointerUp);
     
     return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
       window.removeEventListener('pointerdown', handlePointerDown);
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
@@ -120,10 +135,11 @@ function Model({
         0.06
       );
     } else {
+      // Dragging - MUCH smoother lerp for mobile
       group.current.rotation.x = THREE.MathUtils.lerp(
         group.current.rotation.x,
         rotationRef.current.x,
-        0.1
+        0.3 // Increased for instant response
       );
     }
 
@@ -135,7 +151,7 @@ function Model({
     group.current.rotation.y = THREE.MathUtils.lerp(
       group.current.rotation.y,
       rotationRef.current.y,
-      isDraggingRef.current ? 0.2 : 0.1
+      isDraggingRef.current ? 0.4 : 0.1 // Much smoother on drag
     );
   });
 

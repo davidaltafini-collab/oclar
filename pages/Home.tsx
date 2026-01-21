@@ -67,10 +67,10 @@ export const Home: React.FC = () => {
 
   return (
     <main className="bg-white overflow-hidden">
-      {/* HERO - Layout ca în poză: text mic în stânga, model URIAȘ în dreapta */}
+      {/* HERO - Text MARE pe mobil, yellow glow în spate model pe PC */}
       <section className="relative min-h-screen flex flex-col justify-center bg-white pb-20 md:pb-24 overflow-hidden border-b border-neutral-100">
-        {/* Background effects */}
-        <div className="absolute top-1/2 right-1/3 w-[800px] h-[800px] bg-brand-yellow/10 rounded-full blur-[120px] pointer-events-none animate-pulse-glow" />
+        {/* Background effects - Yellow glow for contrast */}
+        <div className="absolute top-1/2 right-1/4 w-[1000px] h-[1000px] bg-brand-yellow/15 rounded-full blur-[150px] pointer-events-none animate-pulse-glow hidden md:block" />
         
         {/* DESKTOP LAYOUT - Asimetric */}
         <div className="hidden md:flex w-full h-screen items-center">
@@ -99,16 +99,15 @@ export const Home: React.FC = () => {
               Ochelari premium anti-lumină albastră. O soluție simplă pentru o problemă modernă.
             </p>
 
-            {/* Buttons - simple și profesionale */}
+            {/* Buttons - YELLOW primary, white outline secondary */}
             <div
               className="flex flex-col gap-3 animate-fade-in opacity-0"
               style={{ animationDelay: '0.8s', animationFillMode: 'forwards' }}
             >
               <button
                 onClick={() => document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth' })}
-                className="group relative px-6 py-3 bg-black text-white font-bold uppercase text-xs tracking-widest overflow-hidden transition-all duration-300 hover:shadow-lg hover:shadow-brand-yellow/30 rounded-lg"
+                className="group relative px-6 py-3 bg-brand-yellow text-black font-bold uppercase text-xs tracking-widest overflow-hidden transition-all duration-300 hover:bg-yellow-400 hover:shadow-lg hover:shadow-brand-yellow/50 rounded-lg"
               >
-                <div className="absolute inset-0 bg-brand-yellow/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 <span className="relative z-10">Vezi Toată Colecția</span>
               </button>
               
@@ -120,7 +119,7 @@ export const Home: React.FC = () => {
             </div>
           </div>
 
-          {/* 3D MODEL - 70% dreapta, URIAȘ */}
+          {/* 3D MODEL - 70% dreapta, URIAȘ cu yellow glow în spate */}
           <div className="w-[70%] h-full relative">
             <Oclar3D
               autoRotate
@@ -132,17 +131,17 @@ export const Home: React.FC = () => {
           </div>
         </div>
 
-        {/* MOBILE LAYOUT - Vertical stack */}
+        {/* MOBILE LAYOUT - TEXT MULT MAI MARE */}
         <div className="md:hidden flex flex-col min-h-screen justify-center px-6 pt-20">
-          {/* Text */}
-          <div className="mb-8">
+          {/* Text - 3X MAI MARE */}
+          <div className="mb-6">
             <div className="overflow-hidden mb-3">
-              <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-xs block animate-slide-up">
+              <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-sm block animate-slide-up">
                 Eyewear for the Digital Age
               </span>
             </div>
 
-            <h1 className="text-6xl font-black uppercase tracking-tighter mb-4 leading-[0.85] text-neutral-950 animate-slide-up-delay">
+            <h1 className="text-[15vw] sm:text-8xl font-black uppercase tracking-tighter mb-4 leading-[0.85] text-neutral-950 animate-slide-up-delay">
               Vezi <br />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-neutral-800 to-neutral-500">
                 Până la
@@ -152,38 +151,38 @@ export const Home: React.FC = () => {
           </div>
 
           {/* 3D Model - Fixed height în pixeli */}
-          <div className="w-full" style={{ height: '400px' }}>
+          <div className="w-full" style={{ height: '350px' }}>
             <Oclar3D
               autoRotate
               intensity={0.15}
               autoRotateSpeed={0.004}
-              dragSensitivity={0.008}
+              dragSensitivity={0.01}
               className="w-full h-full"
             />
           </div>
 
-          {/* Paragraf + Butoane */}
-          <div className="mt-6">
+          {/* Paragraf + Butoane - mai sus, mai compacte */}
+          <div className="mt-4">
             <p
-              className="text-neutral-500 text-base leading-relaxed mb-6 animate-fade-in opacity-0"
+              className="text-neutral-500 text-lg leading-relaxed mb-5 animate-fade-in opacity-0"
               style={{ animationDelay: '0.6s', animationFillMode: 'forwards' }}
             >
               Ochelari premium anti-lumină albastră. O soluție simplă pentru o problemă modernă.
             </p>
 
             <div
-              className="flex flex-col gap-3 animate-fade-in opacity-0 pb-8"
+              className="flex flex-col gap-3 animate-fade-in opacity-0 pb-6"
               style={{ animationDelay: '0.8s', animationFillMode: 'forwards' }}
             >
               <button
                 onClick={() => document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth' })}
-                className="w-full px-6 py-3 bg-black text-white font-bold uppercase text-xs tracking-widest rounded-lg active:scale-95 transition-transform"
+                className="w-full px-6 py-3.5 bg-brand-yellow text-black font-bold uppercase text-xs tracking-widest rounded-lg active:scale-95 transition-transform shadow-md"
               >
                 Vezi Toată Colecția
               </button>
               
               <Link to="/about" className="w-full">
-                <button className="w-full px-6 py-3 bg-white text-black font-bold uppercase text-xs tracking-widest border-2 border-black rounded-lg active:scale-95 transition-transform">
+                <button className="w-full px-6 py-3.5 bg-white text-black font-bold uppercase text-xs tracking-widest border-2 border-black rounded-lg active:scale-95 transition-transform">
                   Misiunea Noastră
                 </button>
               </Link>
@@ -351,7 +350,7 @@ export const Home: React.FC = () => {
 
                   <button
                     onClick={() => addToCart(product)}
-                    className="mt-6 py-3 border border-neutral-200 hover:border-black hover:bg-black hover:text-white uppercase font-bold text-xs tracking-widest transition-colors duration-300 w-full rounded-xl self-start px-8"
+                    className="mt-6 py-3 bg-brand-yellow text-black hover:bg-yellow-400 uppercase font-bold text-xs tracking-widest transition-all duration-300 w-full rounded-xl shadow-sm hover:shadow-md"
                   >
                     Adaugă în Coș
                   </button>
