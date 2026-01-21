@@ -266,7 +266,7 @@ ${discountValue > 0 ? `Reducere: -${discountValue.toFixed(2)} RON\n` : ''}
 TOTAL: ${parseFloat(totalAmount).toFixed(2)} RON
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Procesează comanda pe https://oclar.ro/#/admin-dashboard
+Procesează comanda pe https://oclar.ro/admin-dashboard
         `,
         html: `
 <!DOCTYPE html>
@@ -328,7 +328,7 @@ Procesează comanda pe https://oclar.ro/#/admin-dashboard
       </div>
     </div>
     
-    <p><a href="https://oclar.ro/#/admin-dashboard" style="background: #000; color: #fff; padding: 10px 20px; text-decoration: none; display: inline-block;">Vezi Comandă în Admin</a></p>
+    <p><a href="https://oclar.ro/admin-dashboard" style="background: #000; color: #fff; padding: 10px 20px; text-decoration: none; display: inline-block;">Vezi Comandă în Admin</a></p>
   </div>
 </body>
 </html>
