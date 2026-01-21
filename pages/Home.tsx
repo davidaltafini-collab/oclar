@@ -131,11 +131,14 @@ export const Home: React.FC = () => {
               </h1>
            </div>
 
-           {/* 3D MODEL - TRAS MULT MAI SUS + LUMINĂ */}
-           {/* -mt-32 trage modelul peste partea de jos a textului pentru efect compact */}
-           <div className="w-full relative z-10 -mt-20" style={{ height: '350px' }}>
+           {/* 3D MODEL - MODIFICAT PENTRU TINE:
+              1. w-[85%] mx-auto -> Îl face mai îngust (mai mic orizontal)
+              2. h-[250px] -> Am scăzut de la 350px (aprox 30% mai mic)
+              3. -mt-32 -> Margine negativă mare ca să urce PESTE textul de jos și sub cel de sus
+           */}
+           <div className="w-[85%] mx-auto relative z-10 -mt-32" style={{ height: '250px' }}>
               {/* Lumina Galbenă Mobile */}
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-brand-yellow/30 rounded-full blur-[80px] pointer-events-none"></div>
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[250px] h-[250px] bg-brand-yellow/30 rounded-full blur-[80px] pointer-events-none"></div>
               
               <Oclar3D
                 autoRotate
@@ -147,7 +150,7 @@ export const Home: React.FC = () => {
            </div>
 
            {/* BUTOANE - TRAS SUS */}
-           <div className="relative z-20 -mt-16 bg-white/50 backdrop-blur-sm rounded-xl p-4">
+           <div className="relative z-20 -mt-10 bg-white/60 backdrop-blur-sm rounded-xl p-4">
               <p className="text-neutral-600 font-medium mb-6 animate-fade-in opacity-0 leading-tight" style={{animationDelay: '0.6s', animationFillMode: 'forwards'}}>
                  Ochelari premium anti-lumină albastră. <br/> Soluție modernă.
               </p>
@@ -210,7 +213,7 @@ export const Home: React.FC = () => {
                <div className="absolute inset-0 bg-brand-yellow/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
                <span className="text-sm font-bold text-brand-yellow uppercase tracking-widest mb-2 block relative z-10">Motto-ul Nostru</span>
                <h3 className="text-3xl md:text-5xl font-black uppercase tracking-tighter italic relative z-10">
-                 "Vezi până la capăt."
+                 "Totul pentru ochii tăi."
                </h3>
                <p className="text-neutral-500 mt-4 max-w-lg relative z-10">
                  Fie că e vorba de un proiect important, un joc competitiv sau un maraton de filme. Rămâi OCLARat, rămâi protejat.
