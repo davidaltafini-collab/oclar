@@ -70,7 +70,7 @@ export const About: React.FC = () => {
             {/* Coloana Dreapta - Povestea */}
             <div className="md:col-span-7 space-y-8 text-lg md:text-xl leading-relaxed text-neutral-600 font-light reveal-on-scroll" style={{transitionDelay: '100ms'}}>
                <p>
-                 <strong className="text-black font-bold uppercase tracking-wide">OCLAR</strong> a luat naștere dintr-o nevoie personală în 2023. Într-o lume dominată de ecrane, ochii noștri sunt sub asediu constant. 
+                 <strong className="text-black font-bold uppercase tracking-wide">OCLAR</strong> a luat naștere dintr-o nevoie personală după, observând efectele ecranelor asupra propriilor mei ochi. Într-o lume dominată de ecrane, ochii noștri sunt sub asediu constant. 
                </p>
                <p>
                  Lumina albastră artificială este inamicul invizibil al productivității. Durerile de cap, ochii uscați și insomniile au devenit "normalul" toxic al vieții moderne. Noi refuzăm să acceptăm acest lucru.
