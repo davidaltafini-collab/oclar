@@ -56,7 +56,7 @@ interface DiscountCode {
   created_at: string;
 }
 
-export default function Admin() {
+export function Admin() {
   const [activeTab, setActiveTab] = useState<'orders' | 'products' | 'discounts'>('orders');
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
