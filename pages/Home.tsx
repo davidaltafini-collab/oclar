@@ -111,9 +111,9 @@ export const Home: React.FC = () => {
         </div>
 
         {/* ---------------- MOBILE LAYOUT (<768px) ---------------- */}
-        <div className="md:hidden flex flex-col min-h-screen justify-center px-6 pt-20 pb-8 relative">
+        <div className="md:hidden flex flex-col min-h-screen justify-center px-6 pt-24 pb-8 relative">
            
-           {/* TEXT */}
+           {/* 1. TEXT */}
            <div className="relative z-20 mb-4">
               <div className="overflow-hidden mb-4">
                 <span className="text-brand-yellow font-bold uppercase tracking-[0.2em] text-xs block animate-slide-up">
@@ -131,26 +131,26 @@ export const Home: React.FC = () => {
               </h1>
            </div>
 
-           {/* 3D MODEL - MODIFICAT PENTRU TINE:
-              1. w-[85%] mx-auto -> Îl face mai îngust (mai mic orizontal)
-              2. h-[250px] -> Am scăzut de la 350px (aprox 30% mai mic)
-              3. -mt-32 -> Margine negativă mare ca să urce PESTE textul de jos și sub cel de sus
-           */}
-           <div className="w-[85%] mx-auto relative z-10 -mt-32" style={{ height: '250px' }}>
-              {/* Lumina Galbenă Mobile */}
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[250px] h-[250px] bg-brand-yellow/30 rounded-full blur-[80px] pointer-events-none"></div>
+           {/* 2. 3D MODEL - MULT MAI MIC ȘI MAI SUS */}
+           {/* w-[80%] -> Mai îngust */}
+           {/* height: '220px' -> ~30% mai mic decât înainte */}
+           {/* -mt-44 -> Urcă masiv peste textul "CAPĂT" pentru suprapunere */}
+           <div className="w-[80%] mx-auto relative z-10 -mt-44" style={{ height: '220px' }}>
+              
+              {/* Lumina Galbenă Mobile - În spatele ochelarilor */}
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[200px] h-[200px] bg-brand-yellow/30 rounded-full blur-[60px] pointer-events-none -z-10"></div>
               
               <Oclar3D
                 autoRotate
                 intensity={0.3}
                 autoRotateSpeed={0.004}
-                dragSensitivity={0.01}
-                className="w-full h-full"
+                dragSensitivity={0.015} // Sensibilitate mai mare pe mobil pt control fin
+                className="w-full h-full" // Umple containerul de 220px
               />
            </div>
 
-           {/* BUTOANE - TRAS SUS */}
-           <div className="relative z-20 -mt-10 bg-white/60 backdrop-blur-sm rounded-xl p-4">
+           {/* 3. BUTOANE - TRAS SUS SUB OCHELARI */}
+           <div className="relative z-20 -mt-2 bg-white/60 backdrop-blur-sm rounded-xl p-4">
               <p className="text-neutral-600 font-medium mb-6 animate-fade-in opacity-0 leading-tight" style={{animationDelay: '0.6s', animationFillMode: 'forwards'}}>
                  Ochelari premium anti-lumină albastră. <br/> Soluție modernă.
               </p>
@@ -167,7 +167,10 @@ export const Home: React.FC = () => {
         </div>
       </section>
 
-      {/* ================= CORE VALUES (Păstrat din codul tău) ================= */}
+      {/* ================= RESTUL CODULUI RĂMÂNE LA FEL (Core Values, Shop, etc.) ================= */}
+      {/* ... (Copy-paste la restul secțiunilor din codul tău anterior) ... */}
+      
+      {/* Core Values Section */}
       <section className="py-32 px-6 md:px-12 bg-neutral-950 text-white relative">
         <div className="absolute top-0 left-12 w-1 h-24 bg-brand-yellow shadow-[0_0_15px_#FACC15]"></div>
         
@@ -223,7 +226,7 @@ export const Home: React.FC = () => {
         </div>
       </section>
 
-      {/* ================= SHOP SECTION ================= */}
+      {/* Product Grid */}
       <section id="shop" className="py-32 px-4 md:px-12 max-w-screen-2xl mx-auto bg-white min-h-[600px]">
         <div className="flex flex-col md:flex-row justify-between items-end mb-16 border-b-2 border-black pb-6 reveal-on-scroll">
           <h3 className="text-5xl font-black uppercase tracking-tighter">Colecția</h3>

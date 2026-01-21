@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Environment, Html, useGLTF } from '@react-three/drei';
@@ -51,11 +51,12 @@ function Model({
   const { scene } = useGLTF(url);
   const cloned = useMemo(() => scene.clone(true), [scene]);
   
-  // Manual rotation state for drag
+  // Refs pentru rotație și drag
   const rotationRef = useRef({ x: 0, y: 0 });
   const isDraggingRef = useRef(false);
   const lastPosRef = useRef({ x: 0, y: 0 });
 
+  // Configurare materiale
   useEffect(() => {
     cloned.traverse((obj: any) => {
       if (obj?.isMesh) {
@@ -69,49 +70,39 @@ function Model({
     });
   }, [cloned]);
 
-  // Handle pointer events for drag - SMOOTH on mobile
+  // LOGICA NOUĂ DE DRAG - FĂRĂ GLITCH
   useEffect(() => {
-    let rafId: number | null = null;
-    let pendingUpdate = false;
-
     const handlePointerDown = (e: PointerEvent) => {
       isDraggingRef.current = true;
       lastPosRef.current = { x: e.clientX, y: e.clientY };
+      // Oprim auto-rotate temporar când userul interacționează
     };
 
     const handlePointerMove = (e: PointerEvent) => {
       if (!isDraggingRef.current) return;
       
-      // Throttle with requestAnimationFrame for smooth 60fps
-      if (!pendingUpdate) {
-        pendingUpdate = true;
-        rafId = requestAnimationFrame(() => {
-          const deltaX = e.clientX - lastPosRef.current.x;
-          const deltaY = e.clientY - lastPosRef.current.y;
-          
-          rotationRef.current.y += deltaX * dragSensitivity;
-          rotationRef.current.x += deltaY * dragSensitivity;
-          
-          lastPosRef.current = { x: e.clientX, y: e.clientY };
-          pendingUpdate = false;
-        });
-      }
+      // Calculăm delta sincron pentru a evita "teleportarea"
+      const deltaX = e.clientX - lastPosRef.current.x;
+      const deltaY = e.clientY - lastPosRef.current.y;
+      
+      // Actualizăm rotația țintă
+      rotationRef.current.y += deltaX * dragSensitivity;
+      rotationRef.current.x += deltaY * dragSensitivity;
+      
+      // Actualizăm ultima poziție imediat
+      lastPosRef.current = { x: e.clientX, y: e.clientY };
     };
 
     const handlePointerUp = () => {
       isDraggingRef.current = false;
-      if (rafId !== null) {
-        cancelAnimationFrame(rafId);
-        pendingUpdate = false;
-      }
     };
 
+    // Adăugăm listenerii pe window pentru a prinde drag-ul chiar dacă ieșim din canvas
     window.addEventListener('pointerdown', handlePointerDown);
     window.addEventListener('pointermove', handlePointerMove);
     window.addEventListener('pointerup', handlePointerUp);
     
     return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId);
       window.removeEventListener('pointerdown', handlePointerDown);
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
@@ -121,13 +112,14 @@ function Model({
   useFrame(({ mouse, clock }) => {
     if (!group.current) return;
 
-    // Floating
+    // Efect de plutire (Floating)
     const t = clock.getElapsedTime();
     const floatY = Math.sin(t * floatSpeed) * floatIntensity;
     group.current.position.y = THREE.MathUtils.lerp(group.current.position.y, floatY, 0.08);
 
-    // Mouse reactive tilt (only when not dragging)
+    // Tilt pe axa X (Sus/Jos)
     if (!isDraggingRef.current) {
+      // Când nu tragem, se uită ușor după mouse
       const targetX = mouse.y * intensity;
       group.current.rotation.x = THREE.MathUtils.lerp(
         group.current.rotation.x, 
@@ -135,15 +127,15 @@ function Model({
         0.06
       );
     } else {
-      // Dragging - MUCH smoother lerp for mobile
+      // Când tragem, răspunde instant la deget
       group.current.rotation.x = THREE.MathUtils.lerp(
         group.current.rotation.x,
         rotationRef.current.x,
-        0.3 // Increased for instant response
+        0.5 
       );
     }
 
-    // Auto rotate + drag rotation
+    // Auto Rotate + Drag pe axa Y (Stânga/Dreapta)
     if (autoRotate && !isDraggingRef.current) {
       rotationRef.current.y += autoRotateSpeed;
     }
@@ -151,7 +143,7 @@ function Model({
     group.current.rotation.y = THREE.MathUtils.lerp(
       group.current.rotation.y,
       rotationRef.current.y,
-      isDraggingRef.current ? 0.4 : 0.1 // Much smoother on drag
+      isDraggingRef.current ? 0.5 : 0.1
     );
   });
 
@@ -166,9 +158,8 @@ function Model({
 function Loader() {
   return (
     <Html center>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 pointer-events-none select-none">
         <div className="w-6 h-6 border-4 border-neutral-200 border-t-brand-yellow rounded-full animate-spin" />
-        <span className="text-xs font-bold uppercase tracking-widest text-neutral-400">Loading 3D...</span>
       </div>
     </Html>
   );
@@ -193,35 +184,22 @@ export const Oclar3D: React.FC<{
   floatSpeed = 0.8,
   dragSensitivity = 0.005,
 }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  // FIXED viewport height - calculate once and never change
-  const [fixedHeight, setFixedHeight] = useState<number | null>(null);
-
-  useEffect(() => {
-    // Calculate viewport height ONCE on mount
-    const vh = window.innerHeight;
-    setFixedHeight(vh);
-  }, []);
-
-  if (!fixedHeight) return null; // Wait for calculation
-
   return (
     <div
-      ref={containerRef}
-      className={`w-full ${className}`}
+      className={`relative ${className}`} // Am scos w-full h-full obligatoriu, îl ia din className
       style={{
-        height: `${fixedHeight}px`, // Use fixed pixel value, not vh
-        touchAction: 'pan-y',
+        touchAction: 'none', // Critic pentru mobil: previne scroll-ul paginii când rotești ochelarii
         cursor: 'grab',
       }}
     >
       <Canvas
         shadows
-        dpr={[1, 2]}
+        dpr={[1, 2]} // Optimizare performanță pixel ratio
         gl={{ 
           antialias: true, 
           alpha: true, 
-          powerPreference: 'high-performance' 
+          powerPreference: 'high-performance',
+          preserveDrawingBuffer: true
         }}
         camera={{ fov: 35, near: 0.1, far: 2000, position: [0, 0, 5] }}
       >
