@@ -31,9 +31,15 @@ function Model({
   const group = useRef<THREE.Group>(null);
   const { scene } = useGLTF(url);
   const cloned = useMemo(() => scene.clone(true), [scene]);
+  const { gl } = useThree();
   
   const [hasLoaded, setHasLoaded] = useState(false);
   const animationProgress = useRef(0);
+
+  // Setup fundal transparent
+  useEffect(() => {
+    gl.setClearColor(0x000000, 0);
+  }, [gl]);
 
   // Setup Materiale
   useEffect(() => {
@@ -45,7 +51,6 @@ function Model({
       }
     });
     
-    // Declanșăm animația de intrare după ce materialele sunt setate
     setTimeout(() => {
       setHasLoaded(true);
       onLoaded?.();
@@ -59,10 +64,8 @@ function Model({
     if (!hasLoaded || animationProgress.current < 1) {
       animationProgress.current = Math.min(animationProgress.current + 0.025, 1);
       
-      // Ease out cubic pentru o mișcare mai naturală
       const eased = 1 - Math.pow(1 - animationProgress.current, 3);
       
-      // Pornește de la y = -2 și opacity 0
       const startY = -2;
       const targetFloatY = 0;
       
@@ -76,15 +79,15 @@ function Model({
         }
       });
       
-      return; // Nu executăm restul animațiilor până nu se termină intrarea
+      return;
     }
 
-    // 1. Floating Effect (Plutire sus-jos)
+    // 1. Floating Effect
     const t = clock.getElapsedTime();
     const floatY = Math.sin(t * floatSpeed) * floatIntensity;
     group.current.position.y = THREE.MathUtils.lerp(group.current.position.y, floatY, 0.08);
 
-    // 2. Mouse Tilt (doar când nu faci drag)
+    // 2. Mouse Tilt
     if (!isDraggingRef.current) {
       const targetX = mouse.y * intensity;
       group.current.rotation.x = THREE.MathUtils.lerp(
@@ -96,7 +99,7 @@ function Model({
        group.current.rotation.x = THREE.MathUtils.lerp(group.current.rotation.x, 0, 0.2);
     }
 
-    // 3. Rotație (Auto + Manual)
+    // 3. Rotație
     if (autoRotate && !isDraggingRef.current) {
       externalRotationY.current += autoRotateSpeed;
     }
@@ -115,7 +118,6 @@ function Model({
   );
 }
 
-// Loader simplu, fără nimic vizibil
 function Loader() {
   return null;
 }
@@ -142,7 +144,6 @@ export const Oclar3D: React.FC<{
   const isDraggingRef = useRef(false);
   const lastPosRef = useRef({ x: 0 });
   const externalRotationY = useRef(0);
-  const [isModelLoaded, setIsModelLoaded] = useState(false);
 
   const handlePointerDown = (e: React.PointerEvent) => {
     isDraggingRef.current = true;
@@ -183,7 +184,6 @@ export const Oclar3D: React.FC<{
           alpha: true, 
           powerPreference: 'high-performance',
         }}
-        style={{ background: 'transparent' }}
         camera={{ fov: 45, near: 0.1, far: 2000, position: [0, 0, 3.5] }}
       >
         <ambientLight intensity={0.8} />
@@ -202,7 +202,6 @@ export const Oclar3D: React.FC<{
             dragSensitivity={dragSensitivity}
             isDraggingRef={isDraggingRef}
             externalRotationY={externalRotationY}
-            onLoaded={() => setIsModelLoaded(true)}
           />
         </Suspense>
       </Canvas>
