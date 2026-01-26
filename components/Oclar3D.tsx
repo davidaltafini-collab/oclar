@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Environment, Html, useGLTF } from '@react-three/drei';
@@ -11,9 +11,9 @@ type ModelProps = {
   floatIntensity?: number;
   floatSpeed?: number;
   dragSensitivity?: number;
+  // Refs primite de la părinte pentru control
   isDraggingRef: React.MutableRefObject<boolean>;
   externalRotationY: React.MutableRefObject<number>;
-  onLoaded?: () => void;
 };
 
 function Model({
@@ -25,16 +25,14 @@ function Model({
   floatSpeed = 0.8,
   dragSensitivity = 0.005,
   isDraggingRef,
-  externalRotationY,
-  onLoaded
+  externalRotationY
 }: ModelProps) {
   const group = useRef<THREE.Group>(null);
   const { scene } = useGLTF(url);
   const cloned = useMemo(() => scene.clone(true), [scene]);
   
-  const [hasLoaded, setHasLoaded] = useState(false);
-  const animationProgress = useRef(0);
-  const originalMaterials = useRef<Map<any, { transparent: boolean; opacity: number }>>(new Map());
+  // Stare internă pentru tilt (înclinare pe X)
+  const tiltRef = useRef(0);
 
   // Setup Materiale
   useEffect(() => {
@@ -43,68 +41,21 @@ function Model({
         obj.castShadow = true;
         obj.receiveShadow = true;
         if (obj.material?.map) obj.material.map.colorSpace = THREE.SRGBColorSpace;
-        
-        // Salvăm setările originale ale materialelor
-        if (obj.material) {
-          originalMaterials.current.set(obj.material, {
-            transparent: obj.material.transparent,
-            opacity: obj.material.opacity
-          });
-        }
       }
     });
-    
-    setTimeout(() => {
-      setHasLoaded(true);
-      onLoaded?.();
-    }, 100);
-  }, [cloned, onLoaded]);
+  }, [cloned]);
 
   useFrame(({ mouse, clock }) => {
     if (!group.current) return;
 
-    // Animație de intrare (slide up + fade in)
-    if (!hasLoaded || animationProgress.current < 1) {
-      animationProgress.current = Math.min(animationProgress.current + 0.025, 1);
-      
-      const eased = 1 - Math.pow(1 - animationProgress.current, 3);
-      
-      const startY = -2;
-      const targetFloatY = 0;
-      
-      group.current.position.y = THREE.MathUtils.lerp(startY, targetFloatY, eased);
-      
-      // Fade in
-      group.current.traverse((obj: any) => {
-        if (obj?.isMesh && obj.material) {
-          obj.material.transparent = true;
-          obj.material.opacity = eased;
-        }
-      });
-      
-      // Când animația s-a terminat, resetăm materialele la starea originală
-      if (animationProgress.current >= 1) {
-        group.current.traverse((obj: any) => {
-          if (obj?.isMesh && obj.material) {
-            const original = originalMaterials.current.get(obj.material);
-            if (original) {
-              obj.material.transparent = original.transparent;
-              obj.material.opacity = original.opacity;
-            }
-          }
-        });
-      }
-      
-      return;
-    }
-
-    // 1. Floating Effect
+    // 1. Floating Effect (Plutire sus-jos)
     const t = clock.getElapsedTime();
     const floatY = Math.sin(t * floatSpeed) * floatIntensity;
     group.current.position.y = THREE.MathUtils.lerp(group.current.position.y, floatY, 0.08);
 
-    // 2. Mouse Tilt
+    // 2. Mouse Tilt (doar când nu faci drag)
     if (!isDraggingRef.current) {
+      // Pe mobil mouse.y e 0 de obicei, pe desktop face tilt fin
       const targetX = mouse.y * intensity;
       group.current.rotation.x = THREE.MathUtils.lerp(
         group.current.rotation.x, 
@@ -112,18 +63,22 @@ function Model({
         0.06
       );
     } else {
+       // Reset tilt la 0 când tragi, pentru stabilitate
        group.current.rotation.x = THREE.MathUtils.lerp(group.current.rotation.x, 0, 0.2);
     }
 
-    // 3. Rotație
+    // 3. Rotație (Auto + Manual)
+    // Dacă nu tragem, adăugăm viteza automată la valoarea noastră de referință
     if (autoRotate && !isDraggingRef.current) {
       externalRotationY.current += autoRotateSpeed;
     }
     
+    // Aplicăm rotația calculată (fie de auto, fie de drag din părinte)
+    // Folosim lerp pentru o oprire fină
     group.current.rotation.y = THREE.MathUtils.lerp(
         group.current.rotation.y, 
         externalRotationY.current, 
-        0.15
+        0.15 // Factor de smoothing
     );
   });
 
@@ -135,7 +90,13 @@ function Model({
 }
 
 function Loader() {
-  return null;
+  return (
+    <Html center>
+      <div className="flex items-center gap-3">
+        <div className="w-6 h-6 border-4 border-neutral-200 border-t-brand-yellow rounded-full animate-spin" />
+      </div>
+    </Html>
+  );
 }
 
 export const Oclar3D: React.FC<{
@@ -157,21 +118,26 @@ export const Oclar3D: React.FC<{
   floatSpeed = 0.8,
   dragSensitivity = 0.005,
 }) => {
+  // Aceste refs trăiesc în afara canvas-ului pentru a păstra starea între randări
   const isDraggingRef = useRef(false);
   const lastPosRef = useRef({ x: 0 });
-  const externalRotationY = useRef(0);
+  const externalRotationY = useRef(0); // Ținem minte rotația totală aici
 
   const handlePointerDown = (e: React.PointerEvent) => {
     isDraggingRef.current = true;
     lastPosRef.current = { x: e.clientX };
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    // NU resetăm rotația. Continuăm de unde a rămas auto-rotate-ul.
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
     if (!isDraggingRef.current) return;
     
     const deltaX = e.clientX - lastPosRef.current.x;
+    
+    // Adăugăm diferența de mișcare la rotația totală
     externalRotationY.current += deltaX * (dragSensitivity || 0.005);
+    
     lastPosRef.current = { x: e.clientX };
   };
 
@@ -184,8 +150,8 @@ export const Oclar3D: React.FC<{
     <div
       className={`relative ${className}`}
       style={{
-        touchAction: 'pan-y',
-        cursor: isDraggingRef.current ? 'grabbing' : 'grab',
+        touchAction: 'pan-y', // ESENȚIAL: Permite scroll vertical, blochează orizontal pt drag
+        cursor: 'grab',
       }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -195,11 +161,8 @@ export const Oclar3D: React.FC<{
       <Canvas
         shadows
         dpr={[1, 2]}
-        gl={{ 
-          antialias: true, 
-          alpha: true, 
-          powerPreference: 'high-performance',
-        }}
+        gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
+        // Am pus camera mai aproape (Z=3.5) ca să se vadă mare
         camera={{ fov: 45, near: 0.1, far: 2000, position: [0, 0, 3.5] }}
       >
         <ambientLight intensity={0.8} />
