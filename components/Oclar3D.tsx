@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Environment, Html, useGLTF } from '@react-three/drei';
@@ -10,7 +10,6 @@ type ModelProps = {
   intensity?: number;
   floatIntensity?: number;
   floatSpeed?: number;
-  dragSensitivity?: number;
   isDraggingRef: React.MutableRefObject<boolean>;
   externalRotationY: React.MutableRefObject<number>;
   onReady: () => void;
@@ -29,52 +28,53 @@ function Model({
 }: ModelProps) {
   const group = useRef<THREE.Group>(null);
   const { scene } = useGLTF(url);
-  
-  // Clonăm scena pentru a evita conflicte dacă folosim modelul în mai multe locuri
   const cloned = useMemo(() => scene.clone(true), [scene]);
   
   const appear = useRef(0);
-  const [isInitialized, setIsInitialized] = useState(false);
+  const frameCount = useRef(0); // Contor pentru cadre
+  const [shouldStartAnim, setShouldStartAnim] = useState(false);
 
   useLayoutEffect(() => {
+    // 1. Pregătim modelul în stare invizibilă
     if (group.current) {
-      group.current.position.y = -0.3;
-      group.current.visible = false; // Îl ținem invizibil la început
+      group.current.position.y = -0.5;
+      group.current.visible = false;
     }
 
     cloned.traverse((obj: any) => {
       if (obj?.isMesh) {
         obj.castShadow = true;
         obj.receiveShadow = true;
-
         if (obj.material) {
           obj.material.transparent = true;
           obj.material.opacity = 0;
-          // Forțăm materialul să fie pregătit
           obj.material.needsUpdate = true;
         }
       }
     });
+  }, [cloned]);
 
-    // Mic delay pentru a permite Environment-ului să se încarce complet în memorie
-    const timer = setTimeout(() => {
-      setIsInitialized(true);
-      onReady();
-    }, 100);
+  useFrame((state) => {
+    if (!group.current) return;
 
-    return () => clearTimeout(timer);
-  }, [cloned, onReady]);
+    // 2. Așteptăm exact 15 cadre înainte de a arăta orice
+    // Asta îi dă GPU-ului timp să încarce Environment preset "city"
+    if (frameCount.current < 15) {
+      frameCount.current++;
+      return; 
+    }
 
-  useFrame(({ mouse, clock }) => {
-    if (!group.current || !isInitialized) return;
+    if (!shouldStartAnim) {
+      setShouldStartAnim(true);
+      onReady(); // Anunțăm părintele că poate face fade-in la Canvas
+    }
 
-    // Afișăm obiectul doar după ce inițializarea e gata
     group.current.visible = true;
 
-    // 0. Animație de apariție (Fade + Slide Up)
+    // 3. Animația de apariție (Slide + Fade)
     if (appear.current < 1) {
-      appear.current = THREE.MathUtils.lerp(appear.current, 1, 0.06);
-      group.current.position.y = THREE.MathUtils.lerp(-0.3, 0, appear.current);
+      appear.current = THREE.MathUtils.lerp(appear.current, 1, 0.05);
+      group.current.position.y = THREE.MathUtils.lerp(-0.5, 0, appear.current);
 
       cloned.traverse((obj: any) => {
         if (obj?.isMesh && obj.material) {
@@ -85,31 +85,26 @@ function Model({
       if (appear.current > 0.98) {
         cloned.traverse((obj: any) => {
           if (obj?.isMesh && obj.material) {
-            obj.material.opacity = 1;
             obj.material.transparent = false;
           }
         });
       }
     }
 
-    // 1. Plutire (doar după ce a apărut)
-    if (appear.current > 0.9) {
-      const t = clock.getElapsedTime();
+    // 4. Efect de plutire
+    const t = state.clock.getElapsedTime();
+    if (appear.current > 0.8) {
       const floatY = Math.sin(t * floatSpeed) * floatIntensity;
-      group.current.position.y = THREE.MathUtils.lerp(group.current.position.y, floatY, 0.08);
+      group.current.position.y = THREE.MathUtils.lerp(group.current.position.y, floatY, 0.05);
     }
 
-    // 2. Mouse Tilt (când nu se face drag)
+    // 5. Rotație și Tilt
     if (!isDraggingRef.current) {
-      const targetX = mouse.y * intensity;
+      const targetX = state.mouse.y * intensity;
       group.current.rotation.x = THREE.MathUtils.lerp(group.current.rotation.x, targetX, 0.06);
+      if (autoRotate) externalRotationY.current += autoRotateSpeed;
     } else {
       group.current.rotation.x = THREE.MathUtils.lerp(group.current.rotation.x, 0, 0.1);
-    }
-
-    // 3. Rotație Automată + Manuală
-    if (autoRotate && !isDraggingRef.current) {
-      externalRotationY.current += autoRotateSpeed;
     }
 
     group.current.rotation.y = THREE.MathUtils.lerp(
@@ -126,26 +121,7 @@ function Model({
   );
 }
 
-function Loader() {
-  return (
-    <Html center>
-      <div className="flex items-center gap-3">
-        <div className="w-6 h-6 border-4 border-neutral-200 border-t-brand-yellow rounded-full animate-spin" />
-      </div>
-    </Html>
-  );
-}
-
-export const Oclar3D: React.FC<{
-  url?: string;
-  className?: string;
-  autoRotate?: boolean;
-  autoRotateSpeed?: number;
-  intensity?: number;
-  floatIntensity?: number;
-  floatSpeed?: number;
-  dragSensitivity?: number;
-}> = ({
+export const Oclar3D: React.FC<any> = ({
   url = '/models/oclar.glb',
   className = '',
   autoRotate = true,
@@ -156,21 +132,18 @@ export const Oclar3D: React.FC<{
   dragSensitivity = 0.005,
 }) => {
   const isDraggingRef = useRef(false);
-  const lastPosRef = useRef({ x: 0 });
   const externalRotationY = useRef(0);
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [isReady, setIsReady] = useState(false);
 
+  // Handlers pentru Drag
   const handlePointerDown = (e: React.PointerEvent) => {
     isDraggingRef.current = true;
-    lastPosRef.current = { x: e.clientX };
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
     if (!isDraggingRef.current) return;
-    const deltaX = e.clientX - lastPosRef.current.x;
-    externalRotationY.current += deltaX * (dragSensitivity || 0.005);
-    lastPosRef.current = { x: e.clientX };
+    externalRotationY.current += e.movementX * dragSensitivity;
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
@@ -180,17 +153,13 @@ export const Oclar3D: React.FC<{
 
   return (
     <div
-      className={`relative transition-opacity duration-700 ease-out ${className} ${
-        isLoaded ? 'opacity-100' : 'opacity-0'
+      className={`relative w-full h-full transition-opacity duration-1000 ${className} ${
+        isReady ? 'opacity-100' : 'opacity-0'
       }`}
-      style={{
-        touchAction: 'pan-y',
-        cursor: 'grab',
-      }}
+      style={{ touchAction: 'none', cursor: 'grab', background: 'transparent' }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
-      onPointerLeave={handlePointerUp}
     >
       <Canvas
         shadows
@@ -199,15 +168,15 @@ export const Oclar3D: React.FC<{
           antialias: true, 
           alpha: true, 
           powerPreference: 'high-performance',
-          toneMapping: THREE.ACESFilmicToneMapping 
+          toneMapping: THREE.ACESFilmicToneMapping,
+          outputColorSpace: THREE.SRGBColorSpace 
         }}
-        camera={{ fov: 45, near: 0.1, far: 1000, position: [0, 0, 3.5] }}
+        camera={{ fov: 45, position: [0, 0, 3.5] }}
       >
-        <ambientLight intensity={0.8} />
-        <directionalLight position={[5, 8, 5]} intensity={1.5} castShadow />
-        <directionalLight position={[-6, 3, -2]} intensity={0.8} />
-
-        <Suspense fallback={<Loader />}>
+        <ambientLight intensity={0.7} />
+        <pointLight position={[10, 10, 10]} intensity={1} />
+        
+        <Suspense fallback={null}>
           <Environment preset="city" />
           <Model
             url={url}
@@ -218,7 +187,7 @@ export const Oclar3D: React.FC<{
             floatSpeed={floatSpeed}
             isDraggingRef={isDraggingRef}
             externalRotationY={externalRotationY}
-            onReady={() => setIsLoaded(true)}
+            onReady={() => setIsReady(true)}
           />
         </Suspense>
       </Canvas>
