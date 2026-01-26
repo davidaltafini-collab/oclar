@@ -1,151 +1,204 @@
-import React, { Suspense, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Canvas, useFrame } from '@react-three/fiber';
 import { Environment, Html, useGLTF, useEnvironment } from '@react-three/drei';
 
 type ModelProps = {
   url: string;
+  autoRotate?: boolean;
   autoRotateSpeed?: number;
   intensity?: number;
   floatIntensity?: number;
   floatSpeed?: number;
+  dragSensitivity?: number;
   isDraggingRef: React.MutableRefObject<boolean>;
   externalRotationY: React.MutableRefObject<number>;
-  envTexture: THREE.Texture; // Primim textura de mediu direct
 };
 
 function Model({
   url,
+  autoRotate = true,
   autoRotateSpeed = 0.006,
   intensity = 0.18,
   floatIntensity = 0.08,
   floatSpeed = 0.8,
   isDraggingRef,
-  externalRotationY,
-  envTexture
+  externalRotationY
 }: ModelProps) {
   const group = useRef<THREE.Group>(null);
   const { scene } = useGLTF(url);
-  const appear = useRef(0);
-
-  // CORE FIX 1: Modificăm materialele în memorie ÎNAINTE de prima randare
-  const preparedScene = useMemo(() => {
-    const cloned = scene.clone(true);
-    cloned.traverse((obj: any) => {
-      if (obj.isMesh) {
+  
+  // Încărcăm textura de mediu separat pentru a o injecta manual în materiale
+  const envMap = useEnvironment({ preset: 'city' });
+  
+  const cloned = useMemo(() => {
+    const c = scene.clone(true);
+    c.traverse((obj: any) => {
+      if (obj?.isMesh) {
         obj.castShadow = true;
         obj.receiveShadow = true;
-        // Injectăm manual textura de mediu pentru a nu aștepta propagarea automată
         if (obj.material) {
-          obj.material.envMap = envTexture;
+          // FIX CORE: Injectăm mediul și oprim scrierea în depth buffer pentru a evita negrul
+          obj.material.envMap = envMap;
           obj.material.transparent = true;
           obj.material.opacity = 0;
-          obj.material.depthWrite = false; // Previne silueta neagră peste fundal
+          obj.material.depthWrite = false; 
           obj.material.needsUpdate = true;
         }
       }
     });
-    return cloned;
-  }, [scene, envTexture]);
+    return c;
+  }, [scene, envMap]);
 
-  useFrame((state) => {
+  const appear = useRef(0);
+
+  useLayoutEffect(() => {
+    if (group.current) {
+      group.current.position.y = -0.3;
+    }
+  }, []);
+
+  useFrame(({ mouse, clock }) => {
     if (!group.current) return;
 
-    // CORE FIX 2: Animație bazată pe delta time pentru consistență
+    // 1. Appear Animation (Slide + Fade)
     if (appear.current < 1) {
-      appear.current = THREE.MathUtils.lerp(appear.current, 1, 0.07);
-      group.current.position.y = THREE.MathUtils.lerp(-0.4, 0, appear.current);
-      
-      preparedScene.traverse((obj: any) => {
-        if (obj.isMesh && obj.material) {
+      appear.current = THREE.MathUtils.lerp(appear.current, 1, 0.06);
+      group.current.position.y = THREE.MathUtils.lerp(-0.3, 0, appear.current);
+
+      cloned.traverse((obj: any) => {
+        if (obj?.isMesh && obj.material) {
           obj.material.opacity = appear.current;
+          
+          // Când e aproape gata, activăm depthWrite înapoi pentru randare corectă
           if (appear.current > 0.95) {
             obj.material.depthWrite = true;
-            // Nu scoatem transparenta complet imediat pentru a evita "snap" vizual
+            obj.material.transparent = false;
           }
         }
       });
     }
 
-    // Plutire
-    const t = state.clock.getElapsedTime();
-    const floatY = Math.sin(t * floatSpeed) * floatIntensity;
-    if (appear.current > 0.8) {
-      group.current.position.y = THREE.MathUtils.lerp(group.current.position.y, floatY, 0.1);
+    // 2. Floating Effect
+    const t = clock.getElapsedTime();
+    if (appear.current > 0.95) {
+      const floatY = Math.sin(t * floatSpeed) * floatIntensity;
+      group.current.position.y = THREE.MathUtils.lerp(group.current.position.y, floatY, 0.08);
     }
 
-    // Rotație (identic cu logica ta, optimizată)
+    // 3. Mouse Tilt
     if (!isDraggingRef.current) {
-      const targetX = state.mouse.y * intensity;
+      const targetX = mouse.y * intensity;
       group.current.rotation.x = THREE.MathUtils.lerp(group.current.rotation.x, targetX, 0.06);
+    } else {
+      group.current.rotation.x = THREE.MathUtils.lerp(group.current.rotation.x, 0, 0.2);
+    }
+
+    // 4. Rotation Logic
+    if (autoRotate && !isDraggingRef.current) {
       externalRotationY.current += autoRotateSpeed;
     }
-    
-    group.current.rotation.y = THREE.MathUtils.lerp(group.current.rotation.y, externalRotationY.current, 0.1);
+
+    group.current.rotation.y = THREE.MathUtils.lerp(
+      group.current.rotation.y,
+      externalRotationY.current,
+      0.15
+    );
   });
 
   return (
     <group ref={group}>
-      <primitive object={preparedScene} />
+      <primitive object={cloned} />
     </group>
   );
 }
 
-// Componentă intermediară care forțează așteptarea Environment-ului
-function SceneContent(props: any) {
-  // CORE FIX 3: Încărcăm Environment-ul ca și textură înainte de a randa modelul
-  const envTexture = useEnvironment({ preset: 'city' });
-
+function Loader() {
   return (
-    <>
-      <Environment map={envTexture} />
-      <Model {...props} envTexture={envTexture} />
-    </>
+    <Html center>
+      <div className="flex items-center gap-3">
+        <div className="w-6 h-6 border-4 border-neutral-200 border-t-brand-yellow rounded-full animate-spin" />
+      </div>
+    </Html>
   );
 }
 
-export const Oclar3D: React.FC<any> = ({
+export const Oclar3D: React.FC<{
+  url?: string;
+  className?: string;
+  autoRotate?: boolean;
+  autoRotateSpeed?: number;
+  intensity?: number;
+  floatIntensity?: number;
+  floatSpeed?: number;
+  dragSensitivity?: number;
+}> = ({
   url = '/models/oclar.glb',
   className = '',
+  autoRotate = true,
+  autoRotateSpeed = 0.006,
+  intensity = 0.18,
+  floatIntensity = 0.08,
+  floatSpeed = 0.8,
   dragSensitivity = 0.005,
-  ...rest
 }) => {
   const isDraggingRef = useRef(false);
+  const lastPosRef = useRef({ x: 0 });
   const externalRotationY = useRef(0);
 
+  const handlePointerDown = (e: React.PointerEvent) => {
+    isDraggingRef.current = true;
+    lastPosRef.current = { x: e.clientX };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!isDraggingRef.current) return;
+    const deltaX = e.clientX - lastPosRef.current.x;
+    externalRotationY.current += deltaX * (dragSensitivity || 0.005);
+    lastPosRef.current = { x: e.clientX };
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    isDraggingRef.current = false;
+    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+  };
+
   return (
-    <div 
-      className={`relative w-full h-full ${className}`} 
-      style={{ touchAction: 'none' }}
-      onPointerDown={(e) => {
-        isDraggingRef.current = true;
-        (e.target as HTMLElement).setPointerCapture(e.pointerId);
-      }}
-      onPointerMove={(e) => {
-        if (isDraggingRef.current) externalRotationY.current += e.movementX * dragSensitivity;
-      }}
-      onPointerUp={(e) => {
-        isDraggingRef.current = false;
-        (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-      }}
+    <div
+      className={`relative ${className}`}
+      style={{ touchAction: 'pan-y', cursor: 'grab' }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerLeave={handlePointerUp}
     >
       <Canvas
         shadows
+        dpr={[1, 2]}
         gl={{ 
-          antialias: true, 
-          alpha: true, 
-          powerPreference: 'high-performance',
-          outputColorSpace: THREE.SRGBColorSpace 
+            antialias: true, 
+            alpha: true, 
+            powerPreference: 'high-performance',
+            outputColorSpace: THREE.SRGBColorSpace 
         }}
-        camera={{ fov: 45, position: [0, 0, 3.5] }}
+        camera={{ fov: 45, near: 0.1, far: 2000, position: [0, 0, 3.5] }}
       >
-        <ambientLight intensity={0.5} />
-        <Suspense fallback={null}>
-          <SceneContent 
-            url={url} 
-            isDraggingRef={isDraggingRef} 
-            externalRotationY={externalRotationY} 
-            {...rest} 
+        <ambientLight intensity={0.8} />
+        <directionalLight position={[5, 8, 5]} intensity={1.5} castShadow />
+        <directionalLight position={[-6, 3, -2]} intensity={0.8} />
+
+        <Suspense fallback={<Loader />}>
+          <Environment preset="city" />
+          <Model
+            url={url}
+            autoRotate={autoRotate}
+            autoRotateSpeed={autoRotateSpeed}
+            intensity={intensity}
+            floatIntensity={floatIntensity}
+            floatSpeed={floatSpeed}
+            isDraggingRef={isDraggingRef}
+            externalRotationY={externalRotationY}
           />
         </Suspense>
       </Canvas>
