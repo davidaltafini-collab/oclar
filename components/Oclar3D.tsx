@@ -138,9 +138,18 @@ export const Oclar3D: React.FC<{
 
   // 🔹 Activam scena completa DUPA first paint / idle
   useEffect(() => {
-    const id = requestIdleCallback(() => setReady(true));
-    return () => cancelIdleCallback(id);
+    let id: number;
+
+    if ('requestIdleCallback' in window) {
+      id = (window as any).requestIdleCallback(() => setReady(true));
+      return () => (window as any).cancelIdleCallback?.(id);
+    } else {
+      // Fallback pentru iOS Safari
+      const timeout = setTimeout(() => setReady(true), 100);
+      return () => clearTimeout(timeout);
+    }
   }, []);
+
 
   const handlePointerDown = (e: React.PointerEvent) => {
     isDraggingRef.current = true;
