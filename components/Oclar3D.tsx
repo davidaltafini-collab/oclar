@@ -31,15 +31,10 @@ function Model({
   const group = useRef<THREE.Group>(null);
   const { scene } = useGLTF(url);
   const cloned = useMemo(() => scene.clone(true), [scene]);
-  const { gl } = useThree();
   
   const [hasLoaded, setHasLoaded] = useState(false);
   const animationProgress = useRef(0);
-
-  // Setup fundal transparent
-  useEffect(() => {
-    gl.setClearColor(0x000000, 0);
-  }, [gl]);
+  const originalMaterials = useRef<Map<any, { transparent: boolean; opacity: number }>>(new Map());
 
   // Setup Materiale
   useEffect(() => {
@@ -48,6 +43,14 @@ function Model({
         obj.castShadow = true;
         obj.receiveShadow = true;
         if (obj.material?.map) obj.material.map.colorSpace = THREE.SRGBColorSpace;
+        
+        // Salvăm setările originale ale materialelor
+        if (obj.material) {
+          originalMaterials.current.set(obj.material, {
+            transparent: obj.material.transparent,
+            opacity: obj.material.opacity
+          });
+        }
       }
     });
     
@@ -78,6 +81,19 @@ function Model({
           obj.material.opacity = eased;
         }
       });
+      
+      // Când animația s-a terminat, resetăm materialele la starea originală
+      if (animationProgress.current >= 1) {
+        group.current.traverse((obj: any) => {
+          if (obj?.isMesh && obj.material) {
+            const original = originalMaterials.current.get(obj.material);
+            if (original) {
+              obj.material.transparent = original.transparent;
+              obj.material.opacity = original.opacity;
+            }
+          }
+        });
+      }
       
       return;
     }
