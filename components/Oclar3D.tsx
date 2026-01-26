@@ -1,6 +1,6 @@
-import React, { Suspense, useEffect, useMemo, useRef } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Canvas, useFrame } from '@react-three/fiber';
 import { Environment, Html, useGLTF } from '@react-three/drei';
 
 type ModelProps = {
@@ -11,9 +11,9 @@ type ModelProps = {
   floatIntensity?: number;
   floatSpeed?: number;
   dragSensitivity?: number;
-  // Refs primite de la părinte pentru control
   isDraggingRef: React.MutableRefObject<boolean>;
   externalRotationY: React.MutableRefObject<number>;
+  ready: boolean; // 🔹 ADAUGAT – stare fake poster
 };
 
 function Model({
@@ -25,60 +25,71 @@ function Model({
   floatSpeed = 0.8,
   dragSensitivity = 0.005,
   isDraggingRef,
-  externalRotationY
+  externalRotationY,
+  ready
 }: ModelProps) {
   const group = useRef<THREE.Group>(null);
   const { scene } = useGLTF(url);
   const cloned = useMemo(() => scene.clone(true), [scene]);
-  
-  // Stare internă pentru tilt (înclinare pe X)
+
   const tiltRef = useRef(0);
 
-  // Setup Materiale
+  // === MATERIAL SETUP (PASSTRAT + fake poster logic) ===
   useEffect(() => {
     cloned.traverse((obj: any) => {
-      if (obj?.isMesh) {
+      if (obj?.isMesh && obj.material) {
         obj.castShadow = true;
         obj.receiveShadow = true;
-        if (obj.material?.map) obj.material.map.colorSpace = THREE.SRGBColorSpace;
+
+        if (obj.material.map) {
+          obj.material.map.colorSpace = THREE.SRGBColorSpace;
+        }
+
+        // 🔹 FAKE POSTER: fara envMap pana scena e gata
+        obj.material.envMapIntensity = ready ? 1 : 0;
+        obj.material.needsUpdate = true;
       }
     });
-  }, [cloned]);
+  }, [cloned, ready]);
 
   useFrame(({ mouse, clock }) => {
     if (!group.current) return;
 
-    // 1. Floating Effect (Plutire sus-jos)
+    // 1. Floating Effect
     const t = clock.getElapsedTime();
     const floatY = Math.sin(t * floatSpeed) * floatIntensity;
-    group.current.position.y = THREE.MathUtils.lerp(group.current.position.y, floatY, 0.08);
+    group.current.position.y = THREE.MathUtils.lerp(
+      group.current.position.y,
+      floatY,
+      0.08
+    );
 
-    // 2. Mouse Tilt (doar când nu faci drag)
+    // 2. Mouse Tilt
     if (!isDraggingRef.current) {
-      // Pe mobil mouse.y e 0 de obicei, pe desktop face tilt fin
       const targetX = mouse.y * intensity;
       group.current.rotation.x = THREE.MathUtils.lerp(
-        group.current.rotation.x, 
-        targetX, 
+        group.current.rotation.x,
+        targetX,
         0.06
       );
     } else {
-       // Reset tilt la 0 când tragi, pentru stabilitate
-       group.current.rotation.x = THREE.MathUtils.lerp(group.current.rotation.x, 0, 0.2);
+      group.current.rotation.x = THREE.MathUtils.lerp(
+        group.current.rotation.x,
+        0,
+        0.2
+      );
     }
 
-    // 3. Rotație (Auto + Manual)
-    // Dacă nu tragem, adăugăm viteza automată la valoarea noastră de referință
-    if (autoRotate && !isDraggingRef.current) {
+    // 3. Rotatie Auto + Manual
+    // 🔹 autoRotate porneste DOAR cand ready = true
+    if (autoRotate && !isDraggingRef.current && ready) {
       externalRotationY.current += autoRotateSpeed;
     }
-    
-    // Aplicăm rotația calculată (fie de auto, fie de drag din părinte)
-    // Folosim lerp pentru o oprire fină
+
     group.current.rotation.y = THREE.MathUtils.lerp(
-        group.current.rotation.y, 
-        externalRotationY.current, 
-        0.15 // Factor de smoothing
+      group.current.rotation.y,
+      externalRotationY.current,
+      0.15
     );
   });
 
@@ -118,26 +129,30 @@ export const Oclar3D: React.FC<{
   floatSpeed = 0.8,
   dragSensitivity = 0.005,
 }) => {
-  // Aceste refs trăiesc în afara canvas-ului pentru a păstra starea între randări
   const isDraggingRef = useRef(false);
   const lastPosRef = useRef({ x: 0 });
-  const externalRotationY = useRef(0); // Ținem minte rotația totală aici
+  const externalRotationY = useRef(0);
+
+  // 🔹 STARE FAKE POSTER
+  const [ready, setReady] = useState(false);
+
+  // 🔹 Activam scena completa DUPA first paint / idle
+  useEffect(() => {
+    const id = requestIdleCallback(() => setReady(true));
+    return () => cancelIdleCallback(id);
+  }, []);
 
   const handlePointerDown = (e: React.PointerEvent) => {
     isDraggingRef.current = true;
     lastPosRef.current = { x: e.clientX };
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    // NU resetăm rotația. Continuăm de unde a rămas auto-rotate-ul.
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
     if (!isDraggingRef.current) return;
-    
+
     const deltaX = e.clientX - lastPosRef.current.x;
-    
-    // Adăugăm diferența de mișcare la rotația totală
     externalRotationY.current += deltaX * (dragSensitivity || 0.005);
-    
     lastPosRef.current = { x: e.clientX };
   };
 
@@ -150,7 +165,7 @@ export const Oclar3D: React.FC<{
     <div
       className={`relative ${className}`}
       style={{
-        touchAction: 'pan-y', // ESENȚIAL: Permite scroll vertical, blochează orizontal pt drag
+        touchAction: 'pan-y',
         cursor: 'grab',
       }}
       onPointerDown={handlePointerDown}
@@ -162,15 +177,16 @@ export const Oclar3D: React.FC<{
         shadows
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
-        // Am pus camera mai aproape (Z=3.5) ca să se vadă mare
         camera={{ fov: 45, near: 0.1, far: 2000, position: [0, 0, 3.5] }}
       >
         <ambientLight intensity={0.8} />
         <directionalLight position={[5, 8, 5]} intensity={1.5} castShadow />
         <directionalLight position={[-6, 3, -2]} intensity={0.8} />
 
-        <Suspense fallback={<Loader />}>
-          <Environment preset="city" />
+        <Suspense fallback={null}>
+          {/* 🔹 Environment apare DOAR cand ready = true */}
+          {ready && <Environment preset="city" />}
+
           <Model
             url={url}
             autoRotate={autoRotate}
@@ -181,6 +197,7 @@ export const Oclar3D: React.FC<{
             dragSensitivity={dragSensitivity}
             isDraggingRef={isDraggingRef}
             externalRotationY={externalRotationY}
+            ready={ready}
           />
         </Suspense>
       </Canvas>
