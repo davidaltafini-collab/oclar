@@ -62,8 +62,8 @@ function Model({
       // Ease out cubic pentru o mișcare mai naturală
       const eased = 1 - Math.pow(1 - animationProgress.current, 3);
       
-      // Pornește de la y = -1.5 și opacity 0
-      const startY = -1.5;
+      // Pornește de la y = -2 și opacity 0
+      const startY = -2;
       const targetFloatY = 0;
       
       group.current.position.y = THREE.MathUtils.lerp(startY, targetFloatY, eased);
@@ -115,15 +115,9 @@ function Model({
   );
 }
 
+// Loader simplu, fără nimic vizibil
 function Loader() {
-  return (
-    <Html center>
-      <div className="flex flex-col items-center gap-3">
-        {/* Shimmer subtil în loc de spinner */}
-        <div className="w-32 h-32 rounded-full bg-gradient-to-br from-neutral-100/20 to-brand-yellow/10 animate-pulse" />
-      </div>
-    </Html>
-  );
+  return null;
 }
 
 export const Oclar3D: React.FC<{
@@ -181,17 +175,15 @@ export const Oclar3D: React.FC<{
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerUp}
     >
-      {/* Fundal subtil care dispare când modelul e gata */}
-      <div 
-        className={`absolute inset-0 bg-gradient-to-b from-neutral-50/50 to-transparent pointer-events-none transition-opacity duration-1000 ${
-          isModelLoaded ? 'opacity-0' : 'opacity-100'
-        }`}
-      />
-      
       <Canvas
         shadows
         dpr={[1, 2]}
-        gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
+        gl={{ 
+          antialias: true, 
+          alpha: true, 
+          powerPreference: 'high-performance',
+        }}
+        style={{ background: 'transparent' }}
         camera={{ fov: 45, near: 0.1, far: 2000, position: [0, 0, 3.5] }}
       >
         <ambientLight intensity={0.8} />
