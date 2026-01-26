@@ -1,7 +1,7 @@
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { Environment, Html, useGLTF } from '@react-three/drei';
+import { Environment, useGLTF } from '@react-three/drei';
 
 type ModelProps = {
   url: string;
@@ -32,10 +32,9 @@ function Model({
   const { scene } = useGLTF(url);
   const cloned = useMemo(() => scene.clone(true), [scene]);
 
-  // 🔹 progres animatie intrare (0 → 1)
-  const appearProgress = useRef(0);
+  // progres animatie aparitie
+  const appear = useRef(0);
 
-  // === MATERIAL SETUP (pastrat + fake poster + fade) ===
   useEffect(() => {
     cloned.traverse((obj: any) => {
       if (obj?.isMesh && obj.material) {
@@ -46,59 +45,46 @@ function Model({
           obj.material.map.colorSpace = THREE.SRGBColorSpace;
         }
 
-        // fake poster: fara reflexii initial
-        obj.material.envMapIntensity = ready ? 1 : 0;
-
-        // fade initial
         obj.material.transparent = true;
-        obj.material.opacity = ready ? 0 : 0;
-        obj.material.needsUpdate = true;
+        obj.material.opacity = 0;
       }
     });
 
-    // pozitie initiala (jos)
-    if (group.current && !ready) {
-      group.current.position.y = -0.35;
+    if (group.current) {
+      group.current.position.y = -0.3;
     }
-  }, [cloned, ready]);
+  }, [cloned]);
 
   useFrame(({ mouse, clock }) => {
     if (!group.current) return;
 
-    // === ENTRY ANIMATION (o singura data) ===
-    if (ready && appearProgress.current < 1) {
-      appearProgress.current = THREE.MathUtils.lerp(
-        appearProgress.current,
-        1,
-        0.08
-      );
+    // === APPEAR ANIMATION ===
+    if (ready && appear.current < 1) {
+      appear.current = THREE.MathUtils.lerp(appear.current, 1, 0.08);
 
-      // slide up
       group.current.position.y = THREE.MathUtils.lerp(
-        -0.35,
+        -0.3,
         0,
-        appearProgress.current
+        appear.current
       );
 
-      // fade-in material
       cloned.traverse((obj: any) => {
         if (obj?.isMesh && obj.material) {
-          obj.material.opacity = appearProgress.current;
+          obj.material.opacity = appear.current;
         }
       });
     }
 
-    // dupa ce animatia s-a terminat, revenim la materiale solide
-    if (appearProgress.current >= 0.99) {
+    if (appear.current > 0.98) {
       cloned.traverse((obj: any) => {
         if (obj?.isMesh && obj.material) {
-          obj.material.transparent = false;
           obj.material.opacity = 1;
+          obj.material.transparent = false;
         }
       });
     }
 
-    // === FLOATING (pastrat identic) ===
+    // === FLOATING ===
     const t = clock.getElapsedTime();
     const floatY = Math.sin(t * floatSpeed) * floatIntensity;
     group.current.position.y = THREE.MathUtils.lerp(
@@ -107,7 +93,7 @@ function Model({
       0.08
     );
 
-    // === MOUSE TILT (pastrat identic) ===
+    // === MOUSE TILT ===
     if (!isDraggingRef.current) {
       const targetX = mouse.y * intensity;
       group.current.rotation.x = THREE.MathUtils.lerp(
@@ -123,7 +109,7 @@ function Model({
       );
     }
 
-    // === ROTATIE AUTO + MANUAL (pastrat) ===
+    // === ROTATION ===
     if (autoRotate && !isDraggingRef.current && ready) {
       externalRotationY.current += autoRotateSpeed;
     }
@@ -142,16 +128,7 @@ function Model({
   );
 }
 
-export const Oclar3D: React.FC<{
-  url?: string;
-  className?: string;
-  autoRotate?: boolean;
-  autoRotateSpeed?: number;
-  intensity?: number;
-  floatIntensity?: number;
-  floatSpeed?: number;
-  dragSensitivity?: number;
-}> = ({
+export const Oclar3D = ({
   url = '/models/oclar.glb',
   className = '',
   autoRotate = true,
@@ -167,17 +144,9 @@ export const Oclar3D: React.FC<{
 
   const [ready, setReady] = useState(false);
 
-  // 🔹 idle + fallback Safari
   useEffect(() => {
-    let id: number;
-
-    if ('requestIdleCallback' in window) {
-      id = (window as any).requestIdleCallback(() => setReady(true));
-      return () => (window as any).cancelIdleCallback?.(id);
-    } else {
-      const timeout = setTimeout(() => setReady(true), 100);
-      return () => clearTimeout(timeout);
-    }
+    const timeout = setTimeout(() => setReady(true), 50);
+    return () => clearTimeout(timeout);
   }, []);
 
   const handlePointerDown = (e: React.PointerEvent) => {
@@ -188,8 +157,8 @@ export const Oclar3D: React.FC<{
 
   const handlePointerMove = (e: React.PointerEvent) => {
     if (!isDraggingRef.current) return;
-    const deltaX = e.clientX - lastPosRef.current.x;
-    externalRotationY.current += deltaX * (dragSensitivity || 0.005);
+    externalRotationY.current +=
+      (e.clientX - lastPosRef.current.x) * dragSensitivity;
     lastPosRef.current = { x: e.clientX };
   };
 
@@ -218,7 +187,7 @@ export const Oclar3D: React.FC<{
         <directionalLight position={[-6, 3, -2]} intensity={0.8} />
 
         <Suspense fallback={null}>
-          {ready && <Environment preset="city" />}
+          <Environment preset="city" />
           <Model
             url={url}
             autoRotate={autoRotate}
