@@ -13,7 +13,7 @@ type ModelProps = {
   dragSensitivity?: number;
   isDraggingRef: React.MutableRefObject<boolean>;
   externalRotationY: React.MutableRefObject<number>;
-  ready: boolean; // 🔹 ADAUGAT – stare fake poster
+  ready: boolean;
 };
 
 function Model({
@@ -32,9 +32,10 @@ function Model({
   const { scene } = useGLTF(url);
   const cloned = useMemo(() => scene.clone(true), [scene]);
 
-  const tiltRef = useRef(0);
+  // 🔹 progres animatie intrare (0 → 1)
+  const appearProgress = useRef(0);
 
-  // === MATERIAL SETUP (PASSTRAT + fake poster logic) ===
+  // === MATERIAL SETUP (pastrat + fake poster + fade) ===
   useEffect(() => {
     cloned.traverse((obj: any) => {
       if (obj?.isMesh && obj.material) {
@@ -45,17 +46,59 @@ function Model({
           obj.material.map.colorSpace = THREE.SRGBColorSpace;
         }
 
-        // 🔹 FAKE POSTER: fara envMap pana scena e gata
+        // fake poster: fara reflexii initial
         obj.material.envMapIntensity = ready ? 1 : 0;
+
+        // fade initial
+        obj.material.transparent = true;
+        obj.material.opacity = ready ? 0 : 0;
         obj.material.needsUpdate = true;
       }
     });
+
+    // pozitie initiala (jos)
+    if (group.current && !ready) {
+      group.current.position.y = -0.35;
+    }
   }, [cloned, ready]);
 
   useFrame(({ mouse, clock }) => {
     if (!group.current) return;
 
-    // 1. Floating Effect
+    // === ENTRY ANIMATION (o singura data) ===
+    if (ready && appearProgress.current < 1) {
+      appearProgress.current = THREE.MathUtils.lerp(
+        appearProgress.current,
+        1,
+        0.08
+      );
+
+      // slide up
+      group.current.position.y = THREE.MathUtils.lerp(
+        -0.35,
+        0,
+        appearProgress.current
+      );
+
+      // fade-in material
+      cloned.traverse((obj: any) => {
+        if (obj?.isMesh && obj.material) {
+          obj.material.opacity = appearProgress.current;
+        }
+      });
+    }
+
+    // dupa ce animatia s-a terminat, revenim la materiale solide
+    if (appearProgress.current >= 0.99) {
+      cloned.traverse((obj: any) => {
+        if (obj?.isMesh && obj.material) {
+          obj.material.transparent = false;
+          obj.material.opacity = 1;
+        }
+      });
+    }
+
+    // === FLOATING (pastrat identic) ===
     const t = clock.getElapsedTime();
     const floatY = Math.sin(t * floatSpeed) * floatIntensity;
     group.current.position.y = THREE.MathUtils.lerp(
@@ -64,7 +107,7 @@ function Model({
       0.08
     );
 
-    // 2. Mouse Tilt
+    // === MOUSE TILT (pastrat identic) ===
     if (!isDraggingRef.current) {
       const targetX = mouse.y * intensity;
       group.current.rotation.x = THREE.MathUtils.lerp(
@@ -80,8 +123,7 @@ function Model({
       );
     }
 
-    // 3. Rotatie Auto + Manual
-    // 🔹 autoRotate porneste DOAR cand ready = true
+    // === ROTATIE AUTO + MANUAL (pastrat) ===
     if (autoRotate && !isDraggingRef.current && ready) {
       externalRotationY.current += autoRotateSpeed;
     }
@@ -97,16 +139,6 @@ function Model({
     <group ref={group}>
       <primitive object={cloned} />
     </group>
-  );
-}
-
-function Loader() {
-  return (
-    <Html center>
-      <div className="flex items-center gap-3">
-        <div className="w-6 h-6 border-4 border-neutral-200 border-t-brand-yellow rounded-full animate-spin" />
-      </div>
-    </Html>
   );
 }
 
@@ -133,10 +165,9 @@ export const Oclar3D: React.FC<{
   const lastPosRef = useRef({ x: 0 });
   const externalRotationY = useRef(0);
 
-  // 🔹 STARE FAKE POSTER
   const [ready, setReady] = useState(false);
 
-  // 🔹 Activam scena completa DUPA first paint / idle
+  // 🔹 idle + fallback Safari
   useEffect(() => {
     let id: number;
 
@@ -144,12 +175,10 @@ export const Oclar3D: React.FC<{
       id = (window as any).requestIdleCallback(() => setReady(true));
       return () => (window as any).cancelIdleCallback?.(id);
     } else {
-      // Fallback pentru iOS Safari
       const timeout = setTimeout(() => setReady(true), 100);
       return () => clearTimeout(timeout);
     }
   }, []);
-
 
   const handlePointerDown = (e: React.PointerEvent) => {
     isDraggingRef.current = true;
@@ -159,7 +188,6 @@ export const Oclar3D: React.FC<{
 
   const handlePointerMove = (e: React.PointerEvent) => {
     if (!isDraggingRef.current) return;
-
     const deltaX = e.clientX - lastPosRef.current.x;
     externalRotationY.current += deltaX * (dragSensitivity || 0.005);
     lastPosRef.current = { x: e.clientX };
@@ -173,10 +201,7 @@ export const Oclar3D: React.FC<{
   return (
     <div
       className={`relative ${className}`}
-      style={{
-        touchAction: 'pan-y',
-        cursor: 'grab',
-      }}
+      style={{ touchAction: 'pan-y', cursor: 'grab' }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -193,9 +218,7 @@ export const Oclar3D: React.FC<{
         <directionalLight position={[-6, 3, -2]} intensity={0.8} />
 
         <Suspense fallback={null}>
-          {/* 🔹 Environment apare DOAR cand ready = true */}
           {ready && <Environment preset="city" />}
-
           <Model
             url={url}
             autoRotate={autoRotate}
