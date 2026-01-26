@@ -1,7 +1,7 @@
 import React, { Suspense, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { Environment, Html, useGLTF, useEnvironment } from '@react-three/drei';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Environment, useGLTF, useEnvironment } from '@react-three/drei';
 
 type ModelProps = {
   url: string;
@@ -13,6 +13,7 @@ type ModelProps = {
   dragSensitivity?: number;
   isDraggingRef: React.MutableRefObject<boolean>;
   externalRotationY: React.MutableRefObject<number>;
+  onModelReady: () => void;
 };
 
 function Model({
@@ -23,14 +24,16 @@ function Model({
   floatIntensity = 0.08,
   floatSpeed = 0.8,
   isDraggingRef,
-  externalRotationY
+  externalRotationY,
+  onModelReady
 }: ModelProps) {
   const group = useRef<THREE.Group>(null);
   const { scene } = useGLTF(url);
-  
-  // Încărcăm textura de mediu separat pentru a o injecta manual în materiale
   const envMap = useEnvironment({ preset: 'city' });
-  
+  const [isCompiled, setIsCompiled] = useState(false);
+  const appear = useRef(0);
+
+  // 1. Pregătire Materiale (Sincronizare cu Environment)
   const cloned = useMemo(() => {
     const c = scene.clone(true);
     c.traverse((obj: any) => {
@@ -38,11 +41,11 @@ function Model({
         obj.castShadow = true;
         obj.receiveShadow = true;
         if (obj.material) {
-          // FIX CORE: Injectăm mediul și oprim scrierea în depth buffer pentru a evita negrul
+          // Forțăm reflexiile și eliminăm artefactele de adâncime
           obj.material.envMap = envMap;
           obj.material.transparent = true;
           obj.material.opacity = 0;
-          obj.material.depthWrite = false; 
+          obj.material.depthWrite = false;
           obj.material.needsUpdate = true;
         }
       }
@@ -50,55 +53,49 @@ function Model({
     return c;
   }, [scene, envMap]);
 
-  const appear = useRef(0);
-
-  useLayoutEffect(() => {
-    if (group.current) {
-      group.current.position.y = -0.3;
-    }
-  }, []);
-
-  useFrame(({ mouse, clock }) => {
+  // 2. Verificăm când motorul a făcut prima randare (Pre-warm)
+  useFrame((state) => {
     if (!group.current) return;
 
-    // 1. Appear Animation (Slide + Fade)
-    if (appear.current < 1) {
-      appear.current = THREE.MathUtils.lerp(appear.current, 1, 0.06);
-      group.current.position.y = THREE.MathUtils.lerp(-0.3, 0, appear.current);
+    // Așteptăm 2 cadre pentru ca GPU să compileze shaderele
+    if (!isCompiled) {
+      if (state.clock.elapsedTime > 0.1) {
+        setIsCompiled(true);
+        onModelReady();
+      }
+      return; 
+    }
 
+    // 3. Animație Apariție (Slide up + Fade)
+    if (appear.current < 1) {
+      appear.current = THREE.MathUtils.lerp(appear.current, 1, 0.05);
+      group.current.position.y = THREE.MathUtils.lerp(-0.4, 0, appear.current);
+      
       cloned.traverse((obj: any) => {
-        if (obj?.isMesh && obj.material) {
+        if (obj.isMesh && obj.material) {
           obj.material.opacity = appear.current;
-          
-          // Când e aproape gata, activăm depthWrite înapoi pentru randare corectă
-          if (appear.current > 0.95) {
-            obj.material.depthWrite = true;
-            obj.material.transparent = false;
-          }
+          if (appear.current > 0.9) obj.material.depthWrite = true;
         }
       });
     }
 
-    // 2. Floating Effect
-    const t = clock.getElapsedTime();
-    if (appear.current > 0.95) {
+    // 4. Plutire (după apariție)
+    const t = state.clock.getElapsedTime();
+    if (appear.current > 0.8) {
       const floatY = Math.sin(t * floatSpeed) * floatIntensity;
       group.current.position.y = THREE.MathUtils.lerp(group.current.position.y, floatY, 0.08);
     }
 
-    // 3. Mouse Tilt
+    // 5. Mouse Tilt (doar când nu este drag)
     if (!isDraggingRef.current) {
-      const targetX = mouse.y * intensity;
+      const targetX = state.mouse.y * intensity;
       group.current.rotation.x = THREE.MathUtils.lerp(group.current.rotation.x, targetX, 0.06);
+      if (autoRotate) externalRotationY.current += autoRotateSpeed;
     } else {
-      group.current.rotation.x = THREE.MathUtils.lerp(group.current.rotation.x, 0, 0.2);
+      group.current.rotation.x = THREE.MathUtils.lerp(group.current.rotation.x, 0, 0.15);
     }
 
-    // 4. Rotation Logic
-    if (autoRotate && !isDraggingRef.current) {
-      externalRotationY.current += autoRotateSpeed;
-    }
-
+    // 6. Rotație Y (Manuală + Automată)
     group.current.rotation.y = THREE.MathUtils.lerp(
       group.current.rotation.y,
       externalRotationY.current,
@@ -107,45 +104,24 @@ function Model({
   });
 
   return (
-    <group ref={group}>
+    <group ref={group} visible={isCompiled}>
       <primitive object={cloned} />
     </group>
   );
 }
 
-function Loader() {
-  return (
-    <Html center>
-      <div className="flex items-center gap-3">
-        <div className="w-6 h-6 border-4 border-neutral-200 border-t-brand-yellow rounded-full animate-spin" />
-      </div>
-    </Html>
-  );
-}
-
-export const Oclar3D: React.FC<{
-  url?: string;
-  className?: string;
-  autoRotate?: boolean;
-  autoRotateSpeed?: number;
-  intensity?: number;
-  floatIntensity?: number;
-  floatSpeed?: number;
-  dragSensitivity?: number;
-}> = ({
+export const Oclar3D: React.FC<any> = ({
   url = '/models/oclar.glb',
   className = '',
-  autoRotate = true,
-  autoRotateSpeed = 0.006,
-  intensity = 0.18,
-  floatIntensity = 0.08,
-  floatSpeed = 0.8,
   dragSensitivity = 0.005,
+  ...props
 }) => {
   const isDraggingRef = useRef(false);
   const lastPosRef = useRef({ x: 0 });
   const externalRotationY = useRef(0);
+  const [showCanvas, setShowCanvas] = useState(false);
 
+  // Drag Handlers (Păstrate exact ca în original)
   const handlePointerDown = (e: React.PointerEvent) => {
     isDraggingRef.current = true;
     lastPosRef.current = { x: e.clientX };
@@ -166,39 +142,36 @@ export const Oclar3D: React.FC<{
 
   return (
     <div
-      className={`relative ${className}`}
-      style={{ touchAction: 'pan-y', cursor: 'grab' }}
+      className={`relative w-full h-full transition-opacity duration-1000 ${className} ${
+        showCanvas ? 'opacity-100' : 'opacity-0'
+      }`}
+      style={{ touchAction: 'none', cursor: 'grab' }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
-      onPointerLeave={handlePointerUp}
     >
       <Canvas
         shadows
         dpr={[1, 2]}
         gl={{ 
-            antialias: true, 
-            alpha: true, 
-            powerPreference: 'high-performance',
-            outputColorSpace: THREE.SRGBColorSpace 
+          antialias: true, 
+          alpha: true, 
+          powerPreference: 'high-performance',
+          outputColorSpace: THREE.SRGBColorSpace // Esențial pentru culori albe corecte
         }}
-        camera={{ fov: 45, near: 0.1, far: 2000, position: [0, 0, 3.5] }}
+        camera={{ fov: 45, position: [0, 0, 3.5] }}
       >
         <ambientLight intensity={0.8} />
         <directionalLight position={[5, 8, 5]} intensity={1.5} castShadow />
-        <directionalLight position={[-6, 3, -2]} intensity={0.8} />
-
-        <Suspense fallback={<Loader />}>
+        
+        <Suspense fallback={null}>
           <Environment preset="city" />
           <Model
             url={url}
-            autoRotate={autoRotate}
-            autoRotateSpeed={autoRotateSpeed}
-            intensity={intensity}
-            floatIntensity={floatIntensity}
-            floatSpeed={floatSpeed}
+            {...props}
             isDraggingRef={isDraggingRef}
             externalRotationY={externalRotationY}
+            onModelReady={() => setShowCanvas(true)}
           />
         </Suspense>
       </Canvas>
