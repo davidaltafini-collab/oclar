@@ -8,72 +8,120 @@ const CLIENT_SECRET = process.env.ECOLET_CLIENT_SECRET;
 
 console.log('Testing Ecolet API...');
 console.log('BASE_URL:', BASE_URL);
-console.log('CLIENT_ID:', CLIENT_ID ? '✓ Set' : '✗ Missing');
-console.log('CLIENT_SECRET:', CLIENT_SECRET ? '✓ Set' : '✗ Missing');
 
-// Test 1: Autentificare
-async function testAuth() {
-    console.log('\n📝 Test 1: OAuth Authentication');
-    try {
-        const response = await fetch(`${BASE_URL}/oauth/token`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify({
-                grant_type: 'client_credentials',
-                client_id: CLIENT_ID,
-                client_secret: CLIENT_SECRET
-            })
-        });
+// Autentificare
+async function getToken() {
+    const response = await fetch(`${BASE_URL}/oauth/token`, {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+            grant_type: 'client_credentials',
+            client_id: CLIENT_ID,
+            client_secret: CLIENT_SECRET
+        })
+    });
 
-        const text = await response.text();
-        console.log('Status:', response.status);
-        console.log('Response:', text.substring(0, 500));
-
-        if (text.startsWith('<!DOCTYPE')) {
-            console.log('❌ Received HTML - endpoint greșit!');
-            return null;
-        }
-
-        const data = JSON.parse(text);
-        if (data.access_token) {
-            console.log('✅ Token obținut:', data.access_token.substring(0, 20) + '...');
-            return data.access_token;
-        } else {
-            console.log('❌ No access token in response');
-            return null;
-        }
-    } catch (error) {
-        console.log('❌ Error:', error.message);
-        return null;
-    }
+    const data = await response.json();
+    return data.access_token;
 }
 
-// Test 2: Listare shipments (dacă există)
-async function testListShipments(token) {
-    if (!token) return;
-    
-    console.log('\n📝 Test 2: List Shipments');
+// Testează diferite endpoint-uri posibile
+async function testEndpoint(token, path, method = 'GET', body = null) {
+    console.log(`\n📝 Testing: ${method} ${path}`);
     try {
-        const response = await fetch(`${BASE_URL}/shipments`, {
+        const options = {
+            method,
             headers: {
                 'Accept': 'application/json',
-                'Authorization': `Bearer ${token}`
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
             }
-        });
+        };
 
+        if (body) {
+            options.body = JSON.stringify(body);
+        }
+
+        const response = await fetch(`${BASE_URL}${path}`, options);
         const text = await response.text();
-        console.log('Status:', response.status);
-        console.log('Response:', text.substring(0, 500));
+        
+        console.log(`Status: ${response.status}`);
+        
+        if (text.startsWith('<!DOCTYPE')) {
+            console.log('❌ HTML response (wrong endpoint)');
+        } else if (text.length > 0) {
+            try {
+                const data = JSON.parse(text);
+                console.log('✅ JSON response:', JSON.stringify(data, null, 2).substring(0, 300));
+            } catch {
+                console.log('Response:', text.substring(0, 200));
+            }
+        } else {
+            console.log('Empty response');
+        }
     } catch (error) {
         console.log('❌ Error:', error.message);
     }
 }
 
-// Rulează testele
 (async () => {
-    const token = await testAuth();
-    await testListShipments(token);
+    console.log('\n🔐 Getting auth token...');
+    const token = await getToken();
+    console.log('✅ Token received');
+
+    // Testează endpoint-uri comune pentru comenzi/shipments
+    const endpoints = [
+        '/shipments',
+        '/orders',
+        '/parcels',
+        '/awb',
+        '/deliveries',
+        '/packages',
+        '/order',
+        '/shipment',
+        '/parcel'
+    ];
+
+    console.log('\n📦 Testing GET endpoints...');
+    for (const endpoint of endpoints) {
+        await testEndpoint(token, endpoint);
+    }
+
+    // Testează crearea unui shipment de test (doar să vedem ce endpoint acceptă POST)
+    console.log('\n\n📮 Testing POST endpoints with dummy data...');
+    
+    const testPayload = {
+        recipient: {
+            name: "Test User",
+            phone: "0712345678"
+        },
+        address: {
+            city: "București",
+            county: "București",
+            street: "Str. Test 1"
+        },
+        service_type: "courier"
+    };
+
+    for (const endpoint of ['/shipments', '/orders', '/order', '/parcels']) {
+        await testEndpoint(token, endpoint, 'POST', testPayload);
+    }
+
+    // Testează și endpoint-uri specifice Ecolet
+    console.log('\n\n🔍 Testing Ecolet-specific endpoints...');
+    const ecoletEndpoints = [
+        '/lockers',
+        '/easybox',
+        '/services',
+        '/me',
+        '/user',
+        '/account'
+    ];
+
+    for (const endpoint of ecoletEndpoints) {
+        await testEndpoint(token, endpoint);
+    }
 })();
