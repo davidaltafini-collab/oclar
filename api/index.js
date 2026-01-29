@@ -29,34 +29,7 @@ const SHIPPING_COSTS = {
 };
 
 // --- 1. CONFIGURARE CORS (TREBUIE PRIMUL) ---
-const ALLOWED_ORIGINS = [
-  'https://oclar.ro',
-  'https://www.oclar.ro'
-];
 
-const corsOptions = {
-    origin: function (origin, callback) {
-        // permite requesturi fără origin (curl, Stripe, server-to-server)
-        if (!origin) return callback(null, true);
-
-        if (ALLOWED_ORIGINS.includes(origin)) {
-            return callback(null, true);
-        }
-
-        return callback(new Error('Not allowed by CORS'));
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-secret', 'stripe-signature']
-};
-
-app.use(cors(corsOptions));
-app.use((req, res, next) => {
-    if (req.method === 'OPTIONS') {
-        return res.sendStatus(204);
-    }
-    next();
-});
 
 
 
