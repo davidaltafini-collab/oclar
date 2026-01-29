@@ -151,12 +151,34 @@ export async function sendOblioInvoice(orderDetails) {
     };
   }
 }
+/* =========================
+   ECOLET / ALSENDO AUTH
+========================= */
+async function getEcoletToken() {
+  const res = await fetch(`${process.env.ECOLET_BASE_URL}/oauth/token`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: process.env.ECOLET_CLIENT_ID,
+      client_secret: process.env.ECOLET_CLIENT_SECRET
+    })
+  });
 
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Ecolet auth failed: ${err}`);
+  }
+
+  const data = await res.json();
+  return data.access_token;
+}
 /**
- * Generează AWB - PLACEHOLDER pentru integrare curier
- * Acesta este un template care trebuie completat cu API-ul curierului (Fan Courier, Cargus, etc.)
+ * Generează AWB prin ECOLET (Alsendo)
  */
-export async function generateAWB(orderDetails, courierService = 'fancourier') {
+export async function generateAWB(orderDetails, courierService) {
   const {
     orderId,
     customerName,
@@ -167,60 +189,84 @@ export async function generateAWB(orderDetails, courierService = 'fancourier') {
     paymentMethod
   } = orderDetails;
 
-  // ACEST ENDPOINT TREBUIE ÎNLOCUIT CU API-UL REAL AL CURIERULUI
-  // Exemplu pentru Fan Courier: https://www.fancourier.ro/awb/
-  
   try {
-    // Template pentru integrare Fan Courier
-    if (courierService === 'fancourier') {
-      const awbData = {
-        clientId: process.env.FANCOURIER_CLIENT_ID,
-        username: process.env.FANCOURIER_USERNAME,
-        password: process.env.FANCOURIER_PASSWORD,
-        service: shippingMethod === 'easybox' ? 'FAN BOX' : 'Standard',
-        recipient: {
-          name: customerName,
-          phone: customerPhone,
-          county: address.county,
-          city: address.city,
-          address: address.line1 || address.line,
+    const token = await getEcoletToken();
+
+    /* =========================
+       PAYLOAD ECOLET
+    ========================= */
+
+    const payload = {
+      service: courierService,
+      delivery_type: shippingMethod === 'easybox' ? 'LOCKER' : 'COURIER',
+      sender: {
+        company: process.env.SENDER_COMPANY,
+        phone: process.env.SENDER_PHONE,
+        address: process.env.SENDER_ADDRESS,
+        city: process.env.SENDER_CITY,
+        postal_code: process.env.SENDER_POSTAL_CODE
+      },
+      recipient: {
+        name: customerName,
+        phone: customerPhone,
+        address: address.line1 || address.line || '',
+        city: address.city,
+        county: address.county
+      },
+      parcels: [
+        {
+          weight: Math.max(0.5, Number(orderDetails.weight || 1)),
+          cash_on_delivery:
+            paymentMethod === 'ramburs'
+              ? parseFloat(totalAmount)
+              : 0
+        }
+      ],
+      reference: `ORDER-${orderId}`
+    };
+
+
+    /* =========================
+       API CALL ECOLET
+    ========================= */
+
+    const awbRes = await fetch(
+      `${process.env.ECOLET_BASE_URL}/send-order`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
-        packages: 1,
-        weight: 0.5, // kg
-        declaredValue: parseFloat(totalAmount),
-        cashOnDelivery: paymentMethod === 'ramburs' ? parseFloat(totalAmount) : 0,
-        contents: `Comanda #${orderId}`,
-        observations: ''
-      };
+        body: JSON.stringify(payload)
+      }
+    );
 
-      // AICI TREBUIE FĂCUT REQUEST LA API-UL CURIERULUI
-      // const awbResponse = await fetch('API_URL_CURIER', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(awbData)
-      // });
-
-      console.log(`⚠️ AWB template pregătit pentru comanda #${orderId} - Necesită API curier real`);
-
-      return {
-        success: true,
-        awbNumber: `AWB-TEMPLATE-${orderId}`, // PLACEHOLDER
-        trackingUrl: `https://track.fancourier.ro/`,
-        message: 'AWB template generat - Necesită implementare API curier'
-      };
+    if (!awbRes.ok) {
+      const err = await awbRes.text();
+      throw new Error(`Ecolet AWB failed: ${err}`);
     }
 
-    // Template pentru alte servicii de curierat
+    const result = await awbRes.json();
+
+    /* =========================
+       RETURN STRUCTURĂ AȘTEPTATĂ
+    ========================= */
+
     return {
-      success: false,
-      error: 'Serviciu curier neimplementat încă'
+      success: true,
+      awbNumber: result?.data?.waybill_number,
+      labelUrl: result?.data?.label_url,
+      raw: result
     };
 
   } catch (error) {
-    console.error('❌ Eroare generare AWB:', error);
+    console.error('❌ Ecolet AWB error:', error.message);
+
     return {
       success: false,
       error: error.message
     };
   }
 }
+
