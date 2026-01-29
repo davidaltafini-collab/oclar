@@ -40,19 +40,21 @@ async function authenticate() {
         body: params.toString()
     });
 
-    const data = await response.json();
-
     if (!response.ok) {
-        console.error('❌ Ecolet auth failed:', response.status, data);
+        const text = await response.text();
+        console.error('❌ Ecolet auth failed:', response.status, text);
         throw new Error(`Ecolet auth failed: ${response.status}`);
     }
 
+    const data = await response.json();
+
     cachedToken = data.access_token;
-    tokenExpiry = Date.now() + ((data.expires_in || 31536000) - 300) * 1000;
+    tokenExpiry = Date.now() + ((data.expires_in || 3600) - 300) * 1000;
 
     console.log('✅ Ecolet authenticated');
     return cachedToken;
 }
+
 
 
 /**
