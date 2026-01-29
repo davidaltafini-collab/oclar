@@ -17,26 +17,32 @@ interface AdminProduct {
 }
 
 interface Order {
-  id: number;
-  customer_name: string;
-  customer_email: string;
-  customer_phone: string;
-  total_amount: number;
-  subtotal: number;
-  shipping_cost: number;
-  shipping_method: string;
-  discount_code?: string;
-  discount_amount: number;
-  status: string;
-  payment_method: string;
-  created_at: string;
-  items: string;
-  oblio_invoice_number?: string;
-  awb_number?: string;
-  // Câmpuri necesare pentru editare
-  county?: string;
-  city?: string;
-  address_line?: string;
+    id: number;
+    customer_name: string;
+    customer_email: string;
+    customer_phone: string;
+    total_amount: number;
+    subtotal: number;
+    shipping_cost: number;
+    shipping_method: string;
+    discount_code?: string;
+    discount_amount: number;
+    status: string;
+    payment_method: string;
+    created_at: string;
+    items: string;
+    oblio_invoice_number?: string;
+    awb_number?: string;
+    // Câmpuri necesare pentru editare
+    county?: string;
+    city?: string;
+    address_line?: string;
+    // ⭐ CÂMPURI NOI ECOLET
+    postal_code?: string;
+    locker_id?: string;
+    ecolet_shipment_id?: string;
+    label_url?: string;
+    ecolet_status?: string;
 }
 
 interface DiscountCode {
@@ -76,6 +82,10 @@ export const Admin: React.FC = () => {
 
   // Formular Comandă (Editare)
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+
+  const [ecoletLoading, setEcoletLoading] = useState(false);
+
+  const [autoSendEcolet, setAutoSendEcolet] = useState(false);
 
   // Formular Reduceri
   const [editingDiscount, setEditingDiscount] = useState<Partial<DiscountCode> | null>(null);
@@ -403,7 +413,89 @@ export const Admin: React.FC = () => {
       alert('Eroare la export');
     }
   };
+    // Handler pentru Export Comenzi la Ecolet (Draft)
+    const handleEcoletExport = async () => {
+        if (selectedOrders.length === 0) {
+            alert('Selectează cel puțin o comandă');
+            return;
+        }
 
+        if (!confirm(`Vrei să trimiți ${selectedOrders.length} comenzi la Ecolet ca draft?`)) {
+            return;
+        }
+
+        setEcoletLoading(true);
+        try {
+            const res = await fetch(`${API_URL}/admin/ecolet/export`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-admin-secret': secret
+                },
+                body: JSON.stringify({ orderIds: selectedOrders })
+            });
+
+            if (!res.ok) throw new Error('Eroare la exportul Ecolet');
+
+            const data = await res.json();
+
+            // Afișăm rezultatele
+            const successCount = data.results.filter((r: any) => r.success).length;
+            const failCount = data.results.filter((r: any) => !r.success).length;
+
+            alert(`✅ Export finalizat:\n${successCount} comenzi exportate cu succes\n${failCount} erori`);
+
+            // Reîncărcăm comenzile pentru a vedea statusul actualizat
+            fetchData('orders');
+        } catch (error) {
+            console.error('❌ Ecolet export error:', error);
+            alert('Eroare la exportul către Ecolet');
+        } finally {
+            setEcoletLoading(false);
+        }
+    };
+
+    // Handler pentru Sincronizare AWB-uri din Ecolet
+    const handleEcoletSync = async () => {
+        if (selectedOrders.length === 0) {
+            alert('Selectează cel puțin o comandă');
+            return;
+        }
+
+        if (!confirm(`Vrei să sincronizezi AWB-urile pentru ${selectedOrders.length} comenzi?`)) {
+            return;
+        }
+
+        setEcoletLoading(true);
+        try {
+            const res = await fetch(`${API_URL}/admin/ecolet/sync`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-admin-secret': secret
+                },
+                body: JSON.stringify({ orderIds: selectedOrders })
+            });
+
+            if (!res.ok) throw new Error('Eroare la sincronizarea Ecolet');
+
+            const data = await res.json();
+
+            // Afișăm rezultatele
+            const successCount = data.results.filter((r: any) => r.success).length;
+            const failCount = data.results.filter((r: any) => !r.success).length;
+
+            alert(`✅ Sincronizare finalizată:\n${successCount} AWB-uri sincronizate\n${failCount} încă în așteptare`);
+
+            // Reîncărcăm comenzile
+            fetchData('orders');
+        } catch (error) {
+            console.error('❌ Ecolet sync error:', error);
+            alert('Eroare la sincronizarea AWB-urilor');
+        } finally {
+            setEcoletLoading(false);
+        }
+    };
   // --- HANDLERS REDUCERI (NOU) ---
   const handleDiscountSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -573,56 +665,82 @@ export const Admin: React.FC = () => {
                       Aplică Filtre
                     </Button>
                   </div>
+                              <div className="flex items-center gap-2 mt-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
+                                  <input
+                                      type="checkbox"
+                                      id="auto-ecolet"
+                                      checked={autoSendEcolet}
+                                      onChange={(e) => setAutoSendEcolet(e.target.checked)}
+                                      className="w-4 h-4"
+                                  />
+                                  <label htmlFor="auto-ecolet" className="text-xs text-blue-700 cursor-pointer">
+                                      📮 Auto-send comenzi noi la Ecolet (doar UI, fără logică backend)
+                                  </label>
+                              </div>
                 </div>
 
-                {/* ACȚIUNI BULK */}
-                {selectedOrders.length > 0 && (
-                  <div className="mt-6 pt-6 border-t border-neutral-200">
-                    <p className="text-sm font-bold mb-3">
-                      {selectedOrders.length} comenzi selectate
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      <Button onClick={handleSendInvoices} disabled={loading}>
-                        📄 Trimite Facturi în Oblio
-                      </Button>
-                      <Button onClick={handleGenerateAWB} disabled={loading} variant="secondary">
-                        📦 Generează AWB
-                      </Button>
-                      <Button onClick={() => handleExport('xml')} variant="outline">
-                        💾 Export XML
-                      </Button>
-                      <Button onClick={() => handleExport('excel')} variant="outline">
-                        📊 Export Excel
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
+                          {/* ACȚIUNI BULK */}
+                          {selectedOrders.length > 0 && (
+                              <div className="flex flex-wrap gap-2">
+                                  <Button onClick={handleSendInvoices} disabled={loading}>
+                                      📄 Trimite Facturi în Oblio
+                                  </Button>
+                                  <Button onClick={handleGenerateAWB} disabled={loading} variant="secondary">
+                                      📦 Generează AWB (Vechi)
+                                  </Button>
+                                  {/* ⭐ BUTOANE NOI ECOLET */}
+                                  <Button
+                                      onClick={handleEcoletExport}
+                                      disabled={ecoletLoading}
+                                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                                  >
+                                      {ecoletLoading ? '⏳ Se exportă...' : '📮 Trimite la Ecolet (Draft)'}
+                                  </Button>
+                                  <Button
+                                      onClick={handleEcoletSync}
+                                      disabled={ecoletLoading}
+                                      className="bg-green-600 hover:bg-green-700 text-white"
+                                  >
+                                      {ecoletLoading ? '⏳ Se sincronizează...' : '🔄 Sync AWB Ecolet'}
+                                  </Button>
+                                  {/* SFÂRȘIT BUTOANE ECOLET */}
+                                  <Button onClick={() => handleExport('xml')} variant="outline">
+                                      💾 Export XML
+                                  </Button>
+                                  <Button onClick={() => handleExport('excel')} variant="outline">
+                                      📊 Export Excel
+                                  </Button>
+                              </div>
+                          )}
+                      </div>
 
               {/* TABEL COMENZI */}
               <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm text-left">
-                        <thead className="bg-neutral-50 text-neutral-500 uppercase font-bold text-[10px] tracking-wider border-b border-neutral-100">
-                            <tr>
-                                <th className="px-6 py-4">
-                                  <input 
-                                    type="checkbox" 
-                                    checked={selectedOrders.length === orders.length && orders.length > 0}
-                                    onChange={selectAllOrders}
-                                    className="w-4 h-4"
-                                  />
-                                </th>
-                                <th className="px-6 py-4">ID</th>
-                                <th className="px-6 py-4">Client</th>
-                                <th className="px-6 py-4">Prețuri</th>
-                                <th className="px-6 py-4">Metodă</th>
-                                <th className="px-6 py-4">Status</th>
-                                <th className="px-6 py-4">Livrare</th>
-                                <th className="px-6 py-4">Facturi/AWB</th>
-                                <th className="px-6 py-4">Acțiuni</th>
-                            </tr>
-                        </thead>
+                                  <thead className="bg-neutral-50 text-neutral-500 uppercase font-bold text-[10px] tracking-wider border-b border-neutral-100">
+                                      <tr>
+                                          <th className="px-6 py-4">
+                                              <input
+                                                  type="checkbox"
+                                                  checked={selectedOrders.length === orders.length && orders.length > 0}
+                                                  onChange={selectAllOrders}
+                                                  className="w-4 h-4"
+                                              />
+                                          </th>
+                                          <th className="px-6 py-4">ID</th>
+                                          <th className="px-6 py-4">Client</th>
+                                          <th className="px-6 py-4">Prețuri</th>
+                                          <th className="px-6 py-4">Metodă</th>
+                                          <th className="px-6 py-4">Status</th>
+                                          <th className="px-6 py-4">Livrare</th>
+                                          <th className="px-6 py-4">Facturi/AWB</th>
+                                          {/* ⭐ COLOANĂ NOUĂ ECOLET */}
+                                          <th className="px-6 py-4">AWB Ecolet</th>
+                                          {/* SFÂRȘIT COLOANĂ ECOLET */}
+                                          <th className="px-6 py-4">Acțiuni</th>
+                                      </tr>
+                                  </thead>
                         <tbody className="divide-y divide-neutral-100">
                             {orders.map(order => (
                                 <tr key={order.id} className="hover:bg-neutral-50 transition-colors">
@@ -673,6 +791,43 @@ export const Admin: React.FC = () => {
                                       {order.awb_number && (
                                         <div className="text-blue-600 mt-1">📦 {order.awb_number}</div>
                                       )}
+                                    </td>
+                                    <td className="px-6 py-4 text-xs">
+                                        {/* ⭐ COLOANĂ AWB ECOLET */}
+                                        {order.awb_number ? (
+                                            <div>
+                                                <div className="font-mono text-blue-600 font-bold">
+                                                    {order.label_url ? (
+                                                        <a
+                                                            href={order.label_url}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="hover:underline flex items-center gap-1"
+                                                        >
+                                                            📦 {order.awb_number}
+                                                            <span className="text-[10px]">↗</span>
+                                                        </a>
+                                                    ) : (
+                                                        <span>📦 {order.awb_number}</span>
+                                                    )}
+                                                </div>
+                                                <div className="text-[9px] text-green-600 mt-1">
+                                                    ✓ Ecolet
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="text-neutral-400 text-center">
+                                                {/* Verificăm dacă există ecolet_shipment_id pentru a arăta statusul */}
+                                                {order.ecolet_status === 'draft' ? (
+                                                    <div className="text-yellow-600">
+                                                        <div className="text-[10px]">⏳ Draft</div>
+                                                        <div className="text-[9px]">Așteaptă AWB</div>
+                                                    </div>
+                                                ) : (
+                                                    <div>-</div>
+                                                )}
+                                            </div>
+                                        )}
                                     </td>
                                     <td className="px-6 py-4">
                                         <button 

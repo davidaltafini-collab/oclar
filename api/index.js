@@ -5,6 +5,7 @@ import Stripe from 'stripe';
 import { pool } from './db.js';
 import { sendOrderEmails } from './services/email.js';
 import { sendOblioInvoice, generateAWB } from './services/oblio.js';
+import { createDraftShipment, getShipmentStatus, getShipmentLabel } from './services/ecolet.js';
 
 dotenv.config();
 
@@ -286,22 +287,24 @@ app.post('/api/create-order-ramburs', async (req, res) => {
     let connection;
     try {
         const body = req.body;
-        
+
         let shippingCostVal = 0;
         if (body.shippingCost !== undefined) shippingCostVal = parseFloat(body.shippingCost);
         else if (body.shipping_cost !== undefined) shippingCostVal = parseFloat(body.shipping_cost);
 
-        const { 
-            customerName, 
-            customerEmail, 
-            customerPhone, 
-            address, 
-            items, 
+        const {
+            customerName,
+            customerEmail,
+            customerPhone,
+            address,
+            items,
             subtotal,
             shippingMethod,
             discountCode,
             discountAmount,
-            totalAmount 
+            totalAmount,
+            postalCode,  // ⭐ NOU: cod poștal
+            lockerId     // ⭐ NOU: ID locker pentru EasyBox
         } = body;
 
         if (!customerName || !customerPhone || !address || !items || !totalAmount) {
@@ -311,11 +314,28 @@ app.post('/api/create-order-ramburs', async (req, res) => {
         connection = await pool.getConnection();
         const itemsJson = JSON.stringify(items);
 
+        // ⭐ INSERARE MODIFICATĂ CU postal_code și locker_id
         const [result] = await connection.query(
             `INSERT INTO orders 
-            (customer_name, customer_email, customer_phone, county, city, address_line, items, subtotal, shipping_method, shipping_cost, discount_code, discount_amount, total_amount, payment_method, status, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ramburs', 'pending', NOW())`,
-            [customerName, customerEmail, customerPhone, address.county, address.city, address.line, itemsJson, subtotal, shippingMethod, shippingCostVal, discountCode, discountAmount, totalAmount]
+            (customer_name, customer_email, customer_phone, county, city, address_line, postal_code, locker_id, items, subtotal, shipping_method, shipping_cost, discount_code, discount_amount, total_amount, payment_method, status, created_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ramburs', 'pending', NOW())`,
+            [
+                customerName,
+                customerEmail,
+                customerPhone,
+                address.county,
+                address.city,
+                address.line,
+                postalCode || null,  // ⭐ salvăm postal_code
+                (shippingMethod === 'easybox' ? lockerId : null), // ⭐ salvăm locker_id doar pentru EasyBox
+                itemsJson,
+                subtotal,
+                shippingMethod,
+                shippingCostVal,
+                discountCode,
+                discountAmount,
+                totalAmount
+            ]
         );
 
         if (discountCode) {
@@ -328,8 +348,8 @@ app.post('/api/create-order-ramburs', async (req, res) => {
         if (customerEmail) {
             const emailDetails = {
                 orderId: result.insertId.toString(),
-                customerName, 
-                customerEmail, 
+                customerName,
+                customerEmail,
                 customerPhone,
                 address: { line1: address.line, city: address.city, county: address.county },
                 subtotal,
@@ -337,21 +357,21 @@ app.post('/api/create-order-ramburs', async (req, res) => {
                 shippingMethod,
                 discountCode,
                 discountAmount,
-                totalAmount, 
+                totalAmount,
                 items,
                 paymentMethod: 'ramburs',
                 paymentStatus: 'pending'
             };
             await sendOrderEmails(emailDetails).catch(err => console.error('❌ Email error:', err));
         }
-        
+
         console.log('✅ Ramburs order created:', result.insertId);
         res.json({ success: true, orderId: result.insertId });
-    } catch (e) { 
+    } catch (e) {
         console.error('❌ Error creating ramburs order:', e);
-        res.status(500).json({ error: 'Eroare la procesarea comenzii' }); 
-    } finally { 
-        if(connection) connection.release(); 
+        res.status(500).json({ error: e.message || 'Failed to create order' });
+    } finally {
+        if (connection) connection.release();
     }
 });
 
@@ -750,7 +770,138 @@ app.post('/api/admin/generate-awb', async (req, res) => {
         if (connection) connection.release();
     }
 });
+// --- EXPORT COMENZI LA ECOLET (DRAFT) ---
+app.post('/api/admin/ecolet/export', async (req, res) => {
+    const adminSecret = req.headers['x-admin-secret'];
+    if (!adminSecret || adminSecret !== process.env.ADMIN_SECRET) {
+        return res.status(401).json({ error: 'Acces Neautorizat' });
+    }
 
+    const { orderIds } = req.body;
+
+    if (!orderIds || orderIds.length === 0) {
+        return res.status(400).json({ error: 'Nu există comenzi selectate' });
+    }
+
+    let connection;
+    const results = [];
+
+    try {
+        connection = await pool.getConnection();
+
+        for (const orderId of orderIds) {
+            const [orders] = await connection.query('SELECT * FROM orders WHERE id = ?', [orderId]);
+
+            if (orders.length === 0) {
+                results.push({
+                    orderId,
+                    success: false,
+                    message: 'Comanda nu există'
+                });
+                continue;
+            }
+
+            const order = orders[0];
+
+            // Apelăm serviciul Ecolet pentru a crea draft
+            const ecoletResult = await createDraftShipment(order);
+
+            if (ecoletResult.success) {
+                // Salvăm în DB ecolet_shipment_id și status
+                await connection.query(
+                    'UPDATE orders SET ecolet_shipment_id = ?, ecolet_status = ? WHERE id = ?',
+                    [ecoletResult.ecolet_shipment_id, ecoletResult.status, orderId]
+                );
+            }
+
+            results.push({
+                orderId,
+                ...ecoletResult
+            });
+        }
+
+        res.json({ success: true, results });
+
+    } catch (e) {
+        console.error('❌ Error exporting to Ecolet:', e);
+        res.status(500).json({ error: e.message });
+    } finally {
+        if (connection) connection.release();
+    }
+});
+
+// --- SINCRONIZARE AWB ECOLET ---
+app.post('/api/admin/ecolet/sync', async (req, res) => {
+    const adminSecret = req.headers['x-admin-secret'];
+    if (!adminSecret || adminSecret !== process.env.ADMIN_SECRET) {
+        return res.status(401).json({ error: 'Acces Neautorizat' });
+    }
+
+    const { orderIds } = req.body;
+
+    if (!orderIds || orderIds.length === 0) {
+        return res.status(400).json({ error: 'Nu există comenzi selectate' });
+    }
+
+    let connection;
+    const results = [];
+
+    try {
+        connection = await pool.getConnection();
+
+        for (const orderId of orderIds) {
+            const [orders] = await connection.query(
+                'SELECT * FROM orders WHERE id = ? AND ecolet_shipment_id IS NOT NULL',
+                [orderId]
+            );
+
+            if (orders.length === 0) {
+                results.push({
+                    orderId,
+                    success: false,
+                    message: 'Comanda nu are shipment Ecolet'
+                });
+                continue;
+            }
+
+            const order = orders[0];
+            const shipmentId = order.ecolet_shipment_id;
+
+            // Verificăm statusul în Ecolet
+            const statusResult = await getShipmentStatus(shipmentId);
+
+            if (statusResult.success && statusResult.awb_number) {
+                // Salvăm AWB-ul și label-ul în DB
+                await connection.query(
+                    'UPDATE orders SET awb_number = ?, label_url = ?, ecolet_status = ? WHERE id = ?',
+                    [statusResult.awb_number, statusResult.label_url, 'completed', orderId]
+                );
+
+                results.push({
+                    orderId,
+                    success: true,
+                    awb_number: statusResult.awb_number,
+                    label_url: statusResult.label_url,
+                    message: 'AWB sincronizat cu succes'
+                });
+            } else {
+                results.push({
+                    orderId,
+                    success: false,
+                    message: statusResult.message
+                });
+            }
+        }
+
+        res.json({ success: true, results });
+
+    } catch (e) {
+        console.error('❌ Error syncing Ecolet AWB:', e);
+        res.status(500).json({ error: e.message });
+    } finally {
+        if (connection) connection.release();
+    }
+});
 // --- 13. EXPORT COMENZI ---
 app.post('/api/admin/export-orders', async (req, res) => {
     const adminSecret = req.headers['x-admin-secret'];

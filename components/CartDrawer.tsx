@@ -31,6 +31,14 @@ export const CartDrawer: React.FC = () => {
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+  // ⭐ STATE PENTRU ECOLET
+  const [selectedLocker, setSelectedLocker] = useState<{
+    lockerId: string;
+    lockerName: string;
+    city: string;
+    county: string;
+  } | null>(null);
+
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
@@ -38,7 +46,15 @@ export const CartDrawer: React.FC = () => {
     county: '',
     city: '',
     address: '',
+    postalCode: '', // ⭐ NOU: cod poștal
   });
+
+  // ⭐ VALIDĂRI
+  const [validationErrors, setValidationErrors] = useState<{
+    phone?: string;
+    email?: string;
+    postalCode?: string;
+  }>({});
 
   const toNumber = (v: unknown): number => {
     if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
@@ -59,6 +75,8 @@ export const CartDrawer: React.FC = () => {
       setAppliedDiscount(null);
       setDiscountCode('');
       setDiscountError('');
+      setSelectedLocker(null);
+      setValidationErrors({});
     }
   }, [isCartOpen]);
 
@@ -67,6 +85,59 @@ export const CartDrawer: React.FC = () => {
       scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }, [step]);
+
+  // ⭐ INTEGRARE WIDGET ECOLET PENTRU EASYBOX
+  useEffect(() => {
+    if (shippingMethod === 'easybox' && step === 'details') {
+      // AICI INTEGREZI WIDGET-UL ECOLET
+      // Exemplu: încarcă script-ul Ecolet și configurează callback-ul
+      
+      // Presupunem că Ecolet oferă un script care trebuie încărcat
+      const scriptId = 'ecolet-widget-script';
+      
+      if (!document.getElementById(scriptId)) {
+        const script = document.createElement('script');
+        script.id = scriptId;
+        script.src = 'https://widget.ecolet.ro/locker-selector.js'; // URL exemplu
+        script.async = true;
+        script.onload = () => {
+          console.log('✅ Ecolet widget loaded');
+          // După ce se încarcă, inițializăm widget-ul
+          initEcoletWidget();
+        };
+        document.body.appendChild(script);
+      } else {
+        // Dacă scriptul e deja încărcat, inițializăm direct
+        initEcoletWidget();
+      }
+    }
+  }, [shippingMethod, step]);
+
+  const initEcoletWidget = () => {
+    // AICI CONFIGUREZI WIDGET-UL ECOLET
+    // Exemplu (sintaxa depinde de API-ul Ecolet):
+    
+    if (typeof window !== 'undefined' && (window as any).EcoletWidget) {
+      (window as any).EcoletWidget.init({
+        containerId: 'ecolet-locker-widget',
+        onLockerSelected: (locker: any) => {
+          console.log('✅ Locker selected:', locker);
+          setSelectedLocker({
+            lockerId: locker.id,
+            lockerName: locker.name,
+            city: locker.city,
+            county: locker.county
+          });
+          // Actualizăm și formData cu datele de la locker
+          setFormData(prev => ({
+            ...prev,
+            city: locker.city,
+            county: locker.county
+          }));
+        }
+      });
+    }
+  };
 
   if (!isCartOpen) return null;
 
@@ -122,14 +193,75 @@ export const CartDrawer: React.FC = () => {
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setFormData({ ...formData, [name]: value });
+
+    // ⭐ VALIDARE LA SCHIMBARE
+    validateField(name, value);
+  };
+
+  // ⭐ FUNCȚIE VALIDARE CÂMPURI
+  const validateField = (name: string, value: string) => {
+    const errors = { ...validationErrors };
+
+    if (name === 'phone') {
+      // Telefon: doar cifre, minim 10 caractere
+      const phoneRegex = /^[0-9]{10,}$/;
+      if (value && !phoneRegex.test(value.replace(/\s/g, ''))) {
+        errors.phone = 'Telefonul trebuie să conțină minim 10 cifre';
+      } else {
+        delete errors.phone;
+      }
+    }
+
+    if (name === 'email' && value) {
+      // Email: regex simplu
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(value)) {
+        errors.email = 'Adresă email invalidă';
+      } else {
+        delete errors.email;
+      }
+    }
+
+    if (name === 'postalCode') {
+      // Cod poștal: 6 cifre
+      const postalRegex = /^[0-9]{6}$/;
+      if (value && !postalRegex.test(value)) {
+        errors.postalCode = 'Codul poștal trebuie să aibă 6 cifre';
+      } else {
+        delete errors.postalCode;
+      }
+    }
+
+    setValidationErrors(errors);
   };
 
   const handleSubmitOrder = async (e?: React.MouseEvent) => {
     if (e) e.preventDefault();
 
-    if (!formData.fullName || !formData.phone || !formData.address || !formData.county || !formData.city) {
-      alert('Te rugam sa completezi toate campurile obligatorii.');
+    // ⭐ VALIDĂRI FINALE
+    const errors: any = {};
+
+    if (!formData.fullName) errors.fullName = 'Numele este obligatoriu';
+    if (!formData.phone) errors.phone = 'Telefonul este obligatoriu';
+    if (!formData.county) errors.county = 'Județul este obligatoriu';
+    if (!formData.city) errors.city = 'Orașul este obligatoriu';
+    if (!formData.address) errors.address = 'Adresa este obligatorie';
+
+    // Pentru curier, codul poștal este obligatoriu
+    if (shippingMethod === 'courier' && !formData.postalCode) {
+      errors.postalCode = 'Codul poștal este obligatoriu pentru livrare curier';
+    }
+
+    // Pentru EasyBox, locker-ul trebuie selectat
+    if (shippingMethod === 'easybox' && !selectedLocker) {
+      errors.locker = 'Selectează un EasyBox pentru livrare';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      alert('Te rugăm să completezi toate câmpurile obligatorii corect.');
+      setValidationErrors(errors);
       return;
     }
 
@@ -156,6 +288,7 @@ export const CartDrawer: React.FC = () => {
         if (url) window.location.href = url;
         else throw new Error('No checkout URL received');
       } else {
+        // ⭐ PAYLOAD MODIFICAT CU postal_code și lockerId
         const response = await fetch(`${API_URL}/create-order-ramburs`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -175,6 +308,8 @@ export const CartDrawer: React.FC = () => {
             discountCode: appliedDiscount?.code || null,
             discountAmount,
             totalAmount: finalTotal,
+            postalCode: formData.postalCode, // ⭐ NOU
+            lockerId: selectedLocker?.lockerId || null, // ⭐ NOU
           }),
         });
 
@@ -191,7 +326,7 @@ export const CartDrawer: React.FC = () => {
       }
     } catch (error) {
       console.error('Order error:', error);
-      alert('A aparut o eroare. Te rugam sa incerci din nou.');
+      alert('A apărut o eroare. Te rugăm să încerci din nou.');
     } finally {
       setLoading(false);
     }
@@ -212,165 +347,134 @@ export const CartDrawer: React.FC = () => {
           </button>
         </div>
 
-        {/* Content */}
-        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-6 bg-neutral-50 scroll-smooth">
+        {/* Content - Scrollable */}
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-5 space-y-4">
           {step === 'cart' ? (
             cart.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-neutral-400">
-                <p>Cosul este gol.</p>
+              <div className="flex flex-col items-center justify-center h-full text-center">
+                <div className="text-6xl mb-4">🛒</div>
+                <p className="text-neutral-500 text-lg">Coșul tău este gol</p>
               </div>
             ) : (
-              <div className="space-y-6">
-                {/* PRODUSE */}
-                {cart.map((item: any) => {
-                  const itemKey = `${item.id}-${item.selectedColor || 'default'}`;
-                  const price = toNumber(item.price);
-                  const original = toNumber(item.original_price);
-
-                  return (
-                    <div key={itemKey} className="flex gap-4 bg-white p-3 rounded-lg shadow-sm">
-                      <img
-                        src={item.imageUrl}
-                        alt={item.name}
-                        className="w-20 h-20 object-cover rounded-md"
-                      />
-
-                      <div className="flex-1">
-                        <h3 className="font-bold text-sm">{item.name}</h3>
-
-                        <div className="flex items-center gap-2">
-                          <p className="text-neutral-900 font-bold text-sm">{price.toFixed(2)} RON</p>
-
-                          {original > 0 && original > price && (
-                            <p className="text-xs text-red-500 line-through font-mono">
-                              {original.toFixed(2)} RON
-                            </p>
-                          )}
-                        </div>
-
-                        {item.selectedColor && (
-                          <div className="flex items-center gap-2 mt-1">
-                            <div
-                              className="w-4 h-4 rounded-full border border-neutral-200"
-                              style={{ backgroundColor: item.selectedColor }}
-                            />
-                            <span className="text-xs text-neutral-500">Culoare selectata</span>
-                          </div>
-                        )}
-
-                        <div className="flex items-center gap-3 mt-2">
-                          <button
-                            onClick={() => updateQuantity(item.id, item.quantity - 1, item.selectedColor)}
-                            className="w-6 h-6 flex items-center justify-center bg-neutral-100 hover:bg-neutral-200 rounded transition-colors"
-                            type="button"
-                          >
-                            -
-                          </button>
-                          <span className="font-bold">{item.quantity}</span>
-                          <button
-                            onClick={() => updateQuantity(item.id, item.quantity + 1, item.selectedColor)}
-                            className="w-6 h-6 flex items-center justify-center bg-neutral-100 hover:bg-neutral-200 rounded transition-colors"
-                            type="button"
-                          >
-                            +
-                          </button>
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={() => removeFromCart(item.id, item.selectedColor)}
-                        className="text-red-500 text-xs self-start hover:text-red-600 transition-colors"
-                        type="button"
-                      >
-                        Sterge
-                      </button>
+              <div className="space-y-4">
+                {/* Produse în coș */}
+                {cart.map((item) => (
+                  <div key={item.id} className="flex gap-4 p-4 bg-white rounded-xl border border-neutral-100 shadow-sm hover:shadow-md transition-shadow">
+                    <div className="w-20 h-20 rounded-lg overflow-hidden bg-neutral-50 shrink-0">
+                      <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
                     </div>
-                  );
-                })}
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-bold text-sm truncate">{item.name}</h3>
+                      <p className="text-xs text-neutral-500 mt-1">{item.price.toFixed(2)} RON</p>
+                      <div className="flex items-center gap-2 mt-2">
+                        <button
+                          onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                          className="w-7 h-7 flex items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200 text-sm font-bold"
+                        >
+                          −
+                        </button>
+                        <span className="text-sm font-mono w-6 text-center">{item.quantity}</span>
+                        <button
+                          onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                          className="w-7 h-7 flex items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200 text-sm font-bold"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => removeFromCart(item.id)}
+                      className="shrink-0 text-red-400 hover:text-red-600 p-2"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
 
-                {/* COD REDUCERE */}
-                <div className="bg-white p-4 rounded-lg shadow-sm">
-                  <h3 className="font-bold text-sm uppercase text-neutral-500 mb-3">Cod Reducere</h3>
-                  
-                  {appliedDiscount ? (
-                    <div className="flex items-center justify-between bg-green-50 border border-green-200 p-3 rounded-lg">
+                {/* Cod reducere */}
+                <div className="bg-white p-4 rounded-xl border border-neutral-100 shadow-sm">
+                  <label className="text-xs font-bold uppercase text-neutral-500 mb-2 block">
+                    Cod Reducere
+                  </label>
+                  {!appliedDiscount ? (
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={discountCode}
+                        onChange={(e) => setDiscountCode(e.target.value.toUpperCase())}
+                        placeholder="Introdu codul"
+                        className="flex-1 p-3 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-black"
+                      />
+                      <Button
+                        onClick={handleApplyDiscount}
+                        disabled={discountLoading}
+                        variant="outline"
+                        className="px-4"
+                      >
+                        {discountLoading ? '...' : 'Aplică'}
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
                       <div className="flex items-center gap-2">
-                        <span className="text-green-600 font-bold">✓</span>
+                        <span className="text-green-600 text-xl">✓</span>
                         <div>
-                          <p className="font-bold text-sm">{appliedDiscount.code}</p>
-                          <p className="text-xs text-green-600">-{appliedDiscount.amount.toFixed(2)} RON</p>
+                          <p className="text-sm font-bold text-green-700">{appliedDiscount.code}</p>
+                          <p className="text-xs text-green-600">-{discountAmount.toFixed(2)} RON</p>
                         </div>
                       </div>
                       <button
                         onClick={handleRemoveDiscount}
-                        className="text-red-500 text-sm hover:text-red-600"
-                        type="button"
+                        className="text-red-500 hover:text-red-700 font-bold"
                       >
-                        Elimină
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        placeholder="Introdu codul"
-                        value={discountCode}
-                        onChange={(e) => setDiscountCode(e.target.value.toUpperCase())}
-                        className="flex-1 p-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-black"
-                      />
-                      <button
-                        onClick={handleApplyDiscount}
-                        disabled={discountLoading}
-                        className="px-4 py-2 bg-black text-white text-sm font-bold rounded-lg hover:bg-neutral-800 disabled:opacity-50"
-                        type="button"
-                      >
-                        {discountLoading ? '...' : 'Aplică'}
+                        ✕
                       </button>
                     </div>
                   )}
-                  
                   {discountError && (
                     <p className="text-xs text-red-500 mt-2">{discountError}</p>
                   )}
                 </div>
 
-                {/* OPȚIUNI LIVRARE */}
-                <div className="bg-white p-4 rounded-lg shadow-sm">
-                  <h3 className="font-bold text-sm uppercase text-neutral-500 mb-3">Livrare</h3>
+                {/* Metoda livrare */}
+                <div className="bg-white p-4 rounded-xl border border-neutral-100 shadow-sm space-y-3">
+                  <h3 className="text-xs font-bold uppercase text-neutral-500">Metoda Livrare</h3>
                   
-                  <div className="space-y-2">
-                    <label className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-all ${
-                      shippingMethod === 'courier' ? 'border-black bg-neutral-50' : 'border-neutral-200 hover:border-neutral-300'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="shipping"
-                        checked={shippingMethod === 'courier'}
-                        onChange={() => setShippingMethod('courier')}
-                        className="accent-black w-4 h-4"
-                      />
-                      <div className="flex-1">
-                        <p className="font-bold text-sm">Curier la adresă</p>
-                        <p className="text-xs text-neutral-500">Livrare 1-3 zile</p>
-                      </div>
-                      <span className="font-bold">{SHIPPING_COSTS.courier.toFixed(2)} RON</span>
-                    </label>
-
-                    <label className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-all ${
-                      shippingMethod === 'easybox' ? 'border-black bg-neutral-50' : 'border-neutral-200 hover:border-neutral-300'
+                  <div className="grid grid-cols-1 gap-3">
+                    <label className={`flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all ${
+                      shippingMethod === 'easybox'
+                        ? 'border-black bg-neutral-50 shadow-inner'
+                        : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
                     }`}>
                       <input
                         type="radio"
                         name="shipping"
                         checked={shippingMethod === 'easybox'}
                         onChange={() => setShippingMethod('easybox')}
-                        className="accent-black w-4 h-4"
+                        className="accent-black w-5 h-5"
                       />
-                      <div className="flex-1">
-                        <p className="font-bold text-sm">Easy Box / Locker</p>
-                        <p className="text-xs text-neutral-500">Ridicare din locker</p>
+                      <div>
+                        <span className="font-bold block text-sm">Easy Box</span>
+                        <span className="text-xs text-neutral-500">{SHIPPING_COSTS.easybox.toFixed(2)} RON</span>
                       </div>
-                      <span className="font-bold">{SHIPPING_COSTS.easybox.toFixed(2)} RON</span>
+                    </label>
+
+                    <label className={`flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all ${
+                      shippingMethod === 'courier'
+                        ? 'border-black bg-neutral-50 shadow-inner'
+                        : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="shipping"
+                        checked={shippingMethod === 'courier'}
+                        onChange={() => setShippingMethod('courier')}
+                        className="accent-black w-5 h-5"
+                      />
+                      <div>
+                        <span className="font-bold block text-sm">Livrare Curier</span>
+                        <span className="text-xs text-neutral-500">{SHIPPING_COSTS.courier.toFixed(2)} RON</span>
+                      </div>
                     </label>
                   </div>
                 </div>
@@ -387,29 +491,43 @@ export const CartDrawer: React.FC = () => {
                 <input
                   required
                   name="fullName"
-                  placeholder="Nume Complet"
+                  placeholder="Nume Complet *"
                   value={formData.fullName}
                   onChange={handleInputChange}
                   className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm"
                 />
 
                 <div className="grid grid-cols-2 gap-3">
-                  <input
-                    name="email"
-                    type="email"
-                    placeholder="Email (optional)"
-                    value={formData.email}
-                    onChange={handleInputChange}
-                    className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm"
-                  />
-                  <input
-                    required
-                    name="phone"
-                    placeholder="Telefon"
-                    value={formData.phone}
-                    onChange={handleInputChange}
-                    className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm"
-                  />
+                  <div>
+                    <input
+                      name="email"
+                      type="email"
+                      placeholder="Email (opțional)"
+                      value={formData.email}
+                      onChange={handleInputChange}
+                      className={`w-full p-3 border rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm ${
+                        validationErrors.email ? 'border-red-500' : 'border-neutral-200'
+                      }`}
+                    />
+                    {validationErrors.email && (
+                      <p className="text-xs text-red-500 mt-1">{validationErrors.email}</p>
+                    )}
+                  </div>
+                  <div>
+                    <input
+                      required
+                      name="phone"
+                      placeholder="Telefon *"
+                      value={formData.phone}
+                      onChange={handleInputChange}
+                      className={`w-full p-3 border rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm ${
+                        validationErrors.phone ? 'border-red-500' : 'border-neutral-200'
+                      }`}
+                    />
+                    {validationErrors.phone && (
+                      <p className="text-xs text-red-500 mt-1">{validationErrors.phone}</p>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -423,7 +541,7 @@ export const CartDrawer: React.FC = () => {
                   <input
                     required
                     name="county"
-                    placeholder="Judet"
+                    placeholder="Județ *"
                     value={formData.county}
                     onChange={handleInputChange}
                     className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm"
@@ -431,7 +549,7 @@ export const CartDrawer: React.FC = () => {
                   <input
                     required
                     name="city"
-                    placeholder="Oras / Sat"
+                    placeholder="Oraș / Sat *"
                     value={formData.city}
                     onChange={handleInputChange}
                     className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm"
@@ -441,17 +559,63 @@ export const CartDrawer: React.FC = () => {
                 <textarea
                   required
                   name="address"
-                  placeholder="Strada, Numar, Bloc, Etaj..."
+                  placeholder="Strada, Număr, Bloc, Etaj... *"
                   value={formData.address}
                   onChange={handleInputChange}
                   className="w-full p-3 border border-neutral-200 rounded-lg h-20 resize-none focus:outline-none focus:border-black transition-colors text-base md:text-sm"
                 />
+
+                {/* ⭐ COD POȘTAL (pentru curier) */}
+                <div>
+                  <input
+                    required={shippingMethod === 'courier'}
+                    name="postalCode"
+                    placeholder={`Cod Poștal ${shippingMethod === 'courier' ? '*' : '(opțional)'}`}
+                    value={formData.postalCode}
+                    onChange={handleInputChange}
+                    maxLength={6}
+                    className={`w-full p-3 border rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm ${
+                      validationErrors.postalCode ? 'border-red-500' : 'border-neutral-200'
+                    }`}
+                  />
+                  {validationErrors.postalCode && (
+                    <p className="text-xs text-red-500 mt-1">{validationErrors.postalCode}</p>
+                  )}
+                  <p className="text-xs text-neutral-400 mt-1">
+                    {shippingMethod === 'courier' 
+                      ? 'Obligatoriu pentru livrare curier (6 cifre)' 
+                      : 'Opțional pentru EasyBox, necesar pentru factură'}
+                  </p>
+                </div>
               </div>
+
+              {/* ⭐ WIDGET ECOLET PENTRU EASYBOX */}
+              {shippingMethod === 'easybox' && (
+                <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
+                  <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">
+                    📦 Selectează EasyBox
+                  </h3>
+                  
+                  {/* Container pentru widget-ul Ecolet */}
+                  <div id="ecolet-locker-widget" className="border border-neutral-200 rounded-lg p-4 min-h-[200px]">
+                    {/* Widget-ul Ecolet se va încărca aici */}
+                    <p className="text-sm text-neutral-400 text-center">Se încarcă harta EasyBox...</p>
+                  </div>
+
+                  {selectedLocker && (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                      <p className="text-sm font-bold text-green-700">✓ EasyBox selectat:</p>
+                      <p className="text-xs text-green-600 mt-1">{selectedLocker.lockerName}</p>
+                      <p className="text-xs text-green-600">{selectedLocker.city}, {selectedLocker.county}</p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Plata */}
               <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
                 <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">
-                  Metoda Plata
+                  Metoda Plată
                 </h3>
 
                 <div className="grid grid-cols-1 gap-3">
@@ -479,7 +643,7 @@ export const CartDrawer: React.FC = () => {
 
                     <div>
                       <span className="font-bold block text-sm">Plata Ramburs (Cash)</span>
-                      <span className="text-xs text-neutral-500">Platesti curierului la livrare</span>
+                      <span className="text-xs text-neutral-500">Plătești curierului la livrare</span>
                     </div>
                   </label>
 
@@ -560,7 +724,7 @@ export const CartDrawer: React.FC = () => {
 
             {step === 'cart' ? (
               <Button fullWidth onClick={() => setStep('details')}>
-                Continua spre Checkout
+                Continuă spre Checkout
               </Button>
             ) : (
               <Button
@@ -571,15 +735,18 @@ export const CartDrawer: React.FC = () => {
                 className="shadow-xl"
               >
                 {loading
-                  ? 'Se proceseaza...'
+                  ? 'Se procesează...'
                   : paymentMethod === 'ramburs'
                     ? `Trimite Comanda (${finalTotal.toFixed(2)} RON)`
-                    : `Plateste cu Cardul (${finalTotal.toFixed(2)} RON)`}
+                    : `Plătește cu Cardul (${finalTotal.toFixed(2)} RON)`}
               </Button>
             )}
           </div>
         )}
       </div>
+
+      {/* ⭐ SCRIPTUL ECOLET SE VA ÎNCĂRCA DINAMIC */}
+      {/* Nu mai este nevoie de script static, se încarcă în useEffect */}
     </>
   );
 };
