@@ -26,37 +26,34 @@ async function authenticate() {
         throw new Error('Ecolet credentials missing');
     }
 
-    try {
-        const response = await fetch(`${ECOLET_BASE_URL}/oauth/token`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify({
-                grant_type: 'client_credentials',
-                client_id: ECOLET_CLIENT_ID,
-                client_secret: ECOLET_CLIENT_SECRET,
-                scope: '*'
-            })
-        });
+    const params = new URLSearchParams();
+    params.append('grant_type', 'client_credentials');
+    params.append('client_id', ECOLET_CLIENT_ID);
+    params.append('client_secret', ECOLET_CLIENT_SECRET);
 
-        if (!response.ok) {
-            throw new Error(`Auth failed: ${response.status}`);
-        }
+    const response = await fetch(`${ECOLET_BASE_URL}/oauth/token`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': 'application/json'
+        },
+        body: params.toString()
+    });
 
-        const data = await response.json();
-        cachedToken = data.access_token;
-        tokenExpiry = Date.now() + ((data.expires_in || 3600) - 300) * 1000;
+    const data = await response.json();
 
-        console.log('✅ Ecolet authenticated');
-        return cachedToken;
-
-    } catch (error) {
-        console.error('❌ Ecolet auth error:', error);
-        throw error;
+    if (!response.ok) {
+        console.error('❌ Ecolet auth failed:', response.status, data);
+        throw new Error(`Ecolet auth failed: ${response.status}`);
     }
+
+    cachedToken = data.access_token;
+    tokenExpiry = Date.now() + ((data.expires_in || 31536000) - 300) * 1000;
+
+    console.log('✅ Ecolet authenticated');
+    return cachedToken;
 }
+
 
 /**
  * Obține locality_id pentru oraș
