@@ -1,6 +1,6 @@
 /**
- * SERVICIU ECOLET - API REAL cu OAuth 2.0
- * https://panel.ecolet.ro/api/v1
+ * SERVICIU ECOLET - API Real
+ * Endpoint-uri confirmate în Swagger
  */
 
 import dotenv from 'dotenv';
@@ -10,27 +10,23 @@ const ECOLET_BASE_URL = process.env.ECOLET_BASE_URL || 'https://panel.ecolet.ro/
 const ECOLET_CLIENT_ID = process.env.ECOLET_CLIENT_ID;
 const ECOLET_CLIENT_SECRET = process.env.ECOLET_CLIENT_SECRET;
 
-// Cache pentru access token (evită autentificări repetate)
+// Cache token
 let cachedToken = null;
 let tokenExpiry = null;
 
 /**
  * Autentificare OAuth 2.0
- * Returnează access_token valid
  */
 async function authenticate() {
-    // Verifică dacă avem token valid în cache
     if (cachedToken && tokenExpiry && Date.now() < tokenExpiry) {
         return cachedToken;
     }
 
     if (!ECOLET_CLIENT_ID || !ECOLET_CLIENT_SECRET) {
-        throw new Error('Ecolet credentials missing in .env (ECOLET_CLIENT_ID, ECOLET_CLIENT_SECRET)');
+        throw new Error('Ecolet credentials missing');
     }
 
     try {
-        console.log('🔐 Authenticating with Ecolet OAuth...');
-        
         const response = await fetch(`${ECOLET_BASE_URL}/oauth/token`, {
             method: 'POST',
             headers: { 
@@ -40,194 +36,238 @@ async function authenticate() {
             body: JSON.stringify({
                 grant_type: 'client_credentials',
                 client_id: ECOLET_CLIENT_ID,
-                client_secret: ECOLET_CLIENT_SECRET
+                client_secret: ECOLET_CLIENT_SECRET,
+                scope: '*'
             })
         });
 
         if (!response.ok) {
-            const text = await response.text();
-            console.error('❌ Ecolet auth failed:', response.status, text);
-            throw new Error(`Ecolet auth failed: ${response.status}`);
+            throw new Error(`Auth failed: ${response.status}`);
         }
 
         const data = await response.json();
-        
-        if (!data.access_token) {
-            throw new Error('No access_token in Ecolet response');
-        }
-
-        // Salvează în cache (expiry - 5 minute pentru siguranță)
         cachedToken = data.access_token;
         tokenExpiry = Date.now() + ((data.expires_in || 3600) - 300) * 1000;
 
-        console.log('✅ Ecolet authenticated successfully');
+        console.log('✅ Ecolet authenticated');
         return cachedToken;
 
     } catch (error) {
-        console.error('❌ Ecolet authentication error:', error);
+        console.error('❌ Ecolet auth error:', error);
         throw error;
     }
 }
 
 /**
- * Creează un draft de expediere în Ecolet
- * NU emite AWB automat
- * 
- * @param {Object} order - Comanda din DB
- * @returns {Object} { success, ecolet_shipment_id, status, message }
+ * Obține locality_id pentru oraș
+ */
+async function getLocalityId(token, county, city) {
+    try {
+        // Normalizare județ (fără diacritice pentru URL)
+        const countyNorm = county
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/\s+/g, '-');
+
+        const response = await fetch(
+            `${ECOLET_BASE_URL}/locations/ro/${countyNorm}/localities/${city}`,
+            {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/json'
+                }
+            }
+        );
+
+        if (!response.ok) {
+            console.error(`❌ Locality not found: ${county} / ${city}`);
+            return null;
+        }
+
+        const data = await response.json();
+        
+        // API poate returna array sau object
+        if (Array.isArray(data) && data.length > 0) {
+            return data[0].id;
+        } else if (data.id) {
+            return data.id;
+        } else if (data.data && data.data.id) {
+            return data.data.id;
+        }
+
+        return null;
+
+    } catch (error) {
+        console.error('❌ Error getting locality_id:', error);
+        return null;
+    }
+}
+
+/**
+ * Creează draft parcel în Ecolet
+ * Endpoint: POST /add-parcel/save-order-to-send
  */
 export async function createDraftShipment(order) {
     try {
         const token = await authenticate();
 
-        // Parsăm datele comenzii
+        // Parse date comandă
         const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
         const shippingAddress = typeof order.shipping_address === 'string' 
             ? JSON.parse(order.shipping_address) 
             : order.shipping_address;
 
-        // Verificăm că avem datele necesare
-        if (!order.customer_phone) {
-            throw new Error('Customer phone is required for Ecolet shipment');
+        // Obține locality_id pentru destinatar
+        const receiverLocalityId = await getLocalityId(
+            token,
+            shippingAddress.county || order.county,
+            shippingAddress.city || order.city
+        );
+
+        if (!receiverLocalityId) {
+            throw new Error(`Orașul ${shippingAddress.city || order.city} nu a fost găsit în Ecolet`);
         }
 
-        // Pregătim payload-ul conform API Ecolet
-        let payload;
-
-        if (order.shipping_method === 'easybox' && order.locker_id) {
-            // LIVRARE EASYBOX (LOCKER)
-            payload = {
-                service_type: 'locker', // sau 'easybox'
-                locker_id: order.locker_id,
-                
-                // Date destinatar
-                recipient: {
-                    name: order.customer_name,
-                    phone: order.customer_phone.replace(/\s/g, ''), // elimină spații
-                    email: order.customer_email || null
-                },
-                
-                // Date colet
-                parcel: {
-                    weight: items.reduce((sum, item) => sum + (item.quantity * 0.5), 0.5), // kg
-                    length: 30, // cm - ajustează după nevoie
-                    width: 20,
-                    height: 10,
-                    contents: items.map(item => item.name).join(', ').substring(0, 100)
-                },
-                
-                // Ramburs (doar pentru plata ramburs)
-                cod_amount: order.payment_method === 'ramburs' ? parseFloat(order.total_amount) : 0,
-                
-                // Referință internă
-                reference: `ORDER-${order.id}`,
-                
-                // Notă
-                notes: `Comandă OCLAR #${order.id}`,
-                
-                // NU emite AWB automat
-                auto_generate_awb: false
-            };
-
-        } else {
-            // LIVRARE CURIER CLASIC
-            payload = {
-                service_type: 'courier', // sau 'standard'
-                
-                // Date destinatar
-                recipient: {
-                    name: order.customer_name,
-                    phone: order.customer_phone.replace(/\s/g, ''),
-                    email: order.customer_email || null
-                },
-                
-                // Adresa completă
-                address: {
-                    street: shippingAddress.line || shippingAddress.line1 || order.address_line,
-                    city: shippingAddress.city || order.city,
-                    county: shippingAddress.county || order.county,
-                    postal_code: order.postal_code,
-                    country: 'RO'
-                },
-                
-                // Date colet
-                parcel: {
-                    weight: items.reduce((sum, item) => sum + (item.quantity * 0.5), 0.5), // kg
+        // PAYLOAD EXACT DIN SWAGGER
+        const payload = {
+            sender: {
+                name: process.env.ECOLET_SENDER_NAME || "OCLAR Store",
+                country: "ro",
+                county: process.env.ECOLET_SENDER_COUNTY || "Bucuresti",
+                locality_id: parseInt(process.env.ECOLET_SENDER_LOCALITY_ID || "323"), // București = 323
+                locality: process.env.ECOLET_SENDER_CITY || "Bucuresti",
+                postal_code: process.env.ECOLET_SENDER_POSTAL || "011318",
+                street_name: process.env.ECOLET_SENDER_STREET || "Str. Example",
+                street_number: process.env.ECOLET_SENDER_NUMBER || "1",
+                block: process.env.ECOLET_SENDER_BLOCK || null,
+                entrance: process.env.ECOLET_SENDER_ENTRANCE || null,
+                floor: process.env.ECOLET_SENDER_FLOOR || null,
+                flat: process.env.ECOLET_SENDER_FLAT || null,
+                contact_person: process.env.ECOLET_SENDER_CONTACT || "OCLAR",
+                email: process.env.ECOLET_SENDER_EMAIL || "office@oclar.ro",
+                phone: process.env.ECOLET_SENDER_PHONE || "0712345678",
+                has_map_point: false,
+                map_point_id: null
+            },
+            receiver: {
+                name: order.customer_name,
+                country: "ro",
+                county: shippingAddress.county || order.county,
+                locality_id: receiverLocalityId,
+                locality: shippingAddress.city || order.city,
+                postal_code: order.postal_code || null,
+                street_name: (shippingAddress.line || order.address_line || "").split(',')[0].trim(),
+                street_number: "1", // default
+                block: null,
+                entrance: null,
+                floor: null,
+                flat: null,
+                contact_person: order.customer_name,
+                email: order.customer_email || null,
+                phone: order.customer_phone.replace(/\s/g, ''),
+                has_map_point: order.shipping_method === 'easybox' && order.locker_id ? true : false,
+                map_point_id: order.locker_id || null
+            },
+            parcel: {
+                type: "package",
+                weight: items.reduce((sum, item) => sum + (item.quantity * 0.5), 1), // kg
+                dimensions: {
                     length: 30,
                     width: 20,
-                    height: 10,
-                    contents: items.map(item => item.name).join(', ').substring(0, 100)
+                    height: 10
                 },
-                
-                // Ramburs
-                cod_amount: order.payment_method === 'ramburs' ? parseFloat(order.total_amount) : 0,
-                
-                // Referință
-                reference: `ORDER-${order.id}`,
-                
-                // Notă
-                notes: `Comandă OCLAR #${order.id}`,
-                
-                // NU emite AWB automat
-                auto_generate_awb: false
-            };
-        }
+                shape: "standard",
+                declared_value: null,
+                amount: 1,
+                content: items.map(i => i.name).join(', ').substring(0, 100),
+                observations: `Comandă OCLAR #${order.id}`
+            },
+            additional_services: {
+                cod: {
+                    status: order.payment_method === 'ramburs',
+                    amount: order.payment_method === 'ramburs' ? parseFloat(order.total_amount) : 0
+                },
+                open_package: { status: false },
+                rod: { status: false },
+                rop: { status: false },
+                saturday_delivery: { status: false },
+                sms_notify: { status: false },
+                swap: { status: false },
+                epod: { status: false }
+            },
+            courier: {
+                service: process.env.ECOLET_DEFAULT_SERVICE || "dpd_standard",
+                pickup: {
+                    type: "courier",
+                    date: new Date(Date.now() + 86400000).toISOString().split('T')[0], // mâine
+                    time: "13:00"
+                },
+                contract_id: parseInt(process.env.ECOLET_CONTRACT_ID || "4")
+            },
+            shipment_details: {
+                uit_code: null,
+                sender_forklift: false,
+                receiver_forklift: false
+            },
+            coupon: {
+                code: null
+            }
+        };
 
         console.log('📦 Creating Ecolet draft for order', order.id);
 
-        // Apel API Ecolet - endpoint-ul poate fi /shipments sau /orders
-        // Încearcă mai întâi /shipments
-        const response = await fetch(`${ECOLET_BASE_URL}/shipments`, {
+        // REQUEST EXACT
+        const response = await fetch(`${ECOLET_BASE_URL}/add-parcel/save-order-to-send`, {
             method: 'POST',
             headers: {
+                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'Authorization': `Bearer ${token}`
+                'Accept': 'application/json'
             },
             body: JSON.stringify(payload)
         });
 
         const text = await response.text();
         
-        // Verifică dacă primim HTML (eroare de endpoint)
-        if (text.startsWith('<!DOCTYPE') || text.startsWith('<html')) {
-            console.error('❌ Received HTML instead of JSON. Wrong endpoint?');
-            console.error('Response:', text.substring(0, 200));
-            throw new Error('Ecolet API returned HTML - check endpoint URL');
+        if (!response.ok) {
+            console.error('❌ Ecolet API error:', response.status, text);
+            
+            // Parse error
+            let errorMsg = 'Failed to create draft';
+            try {
+                const errorData = JSON.parse(text);
+                errorMsg = errorData.message || errorData.error || JSON.stringify(errorData);
+            } catch {}
+
+            throw new Error(errorMsg);
         }
 
         let data;
         try {
             data = JSON.parse(text);
-        } catch (e) {
-            console.error('❌ Failed to parse response:', text);
-            throw new Error('Invalid JSON response from Ecolet API');
+        } catch {
+            throw new Error('Invalid response from Ecolet');
         }
 
-        if (!response.ok) {
-            console.error('❌ Ecolet API error:', response.status, data);
-            throw new Error(data.message || data.error || 'Failed to create draft shipment');
+        // Extract order ID
+        const orderId = data.id || data.order_id || data.data?.id;
+
+        if (!orderId) {
+            console.error('❌ No order ID in response:', data);
+            throw new Error('No order ID returned');
         }
 
-        // ID-ul shipment-ului poate fi în data.id sau data.shipment_id
-        const shipmentId = data.id || data.shipment_id || data.data?.id;
-
-        if (!shipmentId) {
-            console.error('❌ No shipment ID in response:', data);
-            throw new Error('No shipment ID returned from Ecolet');
-        }
-
-        console.log('✅ Ecolet draft created:', shipmentId);
+        console.log('✅ Ecolet draft created:', orderId);
 
         return {
             success: true,
-            ecolet_shipment_id: shipmentId,
+            ecolet_shipment_id: orderId.toString(),
             status: 'draft',
-            message: 'Draft creat cu succes în Ecolet'
+            message: 'Draft creat în Ecolet'
         };
 
     } catch (error) {
-        console.error('❌ Ecolet createDraftShipment error:', error);
+        console.error('❌ createDraftShipment error:', error);
         return {
             success: false,
             ecolet_shipment_id: null,
@@ -238,53 +278,32 @@ export async function createDraftShipment(order) {
 }
 
 /**
- * Verifică statusul unei expedieri și obține AWB-ul dacă este disponibil
- * 
- * @param {string} shipmentId - ID-ul expedieri din Ecolet
- * @returns {Object} { success, awb_number, label_url, status, message }
+ * Obține detalii comandă și AWB
+ * Endpoint: GET /order/{id}
  */
 export async function getShipmentStatus(shipmentId) {
     try {
         const token = await authenticate();
 
-        const response = await fetch(`${ECOLET_BASE_URL}/shipments/${shipmentId}`, {
-            method: 'GET',
+        const response = await fetch(`${ECOLET_BASE_URL}/order/${shipmentId}`, {
             headers: {
-                'Accept': 'application/json',
-                'Authorization': `Bearer ${token}`
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json'
             }
         });
 
-        const text = await response.text();
-        
-        if (text.startsWith('<!DOCTYPE') || text.startsWith('<html')) {
-            console.error('❌ Received HTML instead of JSON');
-            throw new Error('Ecolet API returned HTML - check endpoint URL');
-        }
-
-        let data;
-        try {
-            data = JSON.parse(text);
-        } catch (e) {
-            console.error('❌ Failed to parse response:', text);
-            throw new Error('Invalid JSON response from Ecolet API');
-        }
-
         if (!response.ok) {
-            throw new Error(data.message || `Failed to fetch shipment status: ${response.status}`);
+            throw new Error(`Failed to get order: ${response.status}`);
         }
 
-        // Verificăm dacă AWB-ul a fost generat
-        // Câmpul poate fi awb_number, tracking_number, awb, etc.
-        const awbNumber = data.awb_number || data.tracking_number || data.awb || data.data?.awb_number;
-        const labelUrl = data.label_url || data.label || data.pdf_url || data.data?.label_url;
-        const status = data.status || data.state || 'draft';
+        const result = await response.json();
+        const data = result.data || result;
 
-        if (awbNumber && (status === 'completed' || status === 'active' || status === 'confirmed')) {
+        if (data.awb && data.status !== 'new') {
             return {
                 success: true,
-                awb_number: awbNumber,
-                label_url: labelUrl || null,
+                awb_number: data.awb,
+                label_url: `${ECOLET_BASE_URL}/order/${shipmentId}/download-waybill`,
                 status: 'completed',
                 message: 'AWB disponibil'
             };
@@ -293,13 +312,13 @@ export async function getShipmentStatus(shipmentId) {
                 success: false,
                 awb_number: null,
                 label_url: null,
-                status: status,
-                message: `AWB încă nedisponibil (status: ${status})`
+                status: data.status || 'draft',
+                message: 'AWB încă nedisponibil'
             };
         }
 
     } catch (error) {
-        console.error('❌ Ecolet getShipmentStatus error:', error);
+        console.error('❌ getShipmentStatus error:', error);
         return {
             success: false,
             awb_number: null,
@@ -311,54 +330,21 @@ export async function getShipmentStatus(shipmentId) {
 }
 
 /**
- * Obține link-ul către label-ul PDF al AWB-ului
- * 
- * @param {string} shipmentId - ID-ul expedieri
- * @returns {Object} { success, label_url, message }
+ * Obține link label AWB
+ * Endpoint: GET /order/{id}/download-waybill
  */
 export async function getShipmentLabel(shipmentId) {
     try {
         const token = await authenticate();
 
-        const response = await fetch(`${ECOLET_BASE_URL}/shipments/${shipmentId}/label`, {
-            method: 'GET',
-            headers: {
-                'Accept': 'application/json',
-                'Authorization': `Bearer ${token}`
-            }
-        });
-
-        const text = await response.text();
-        
-        if (text.startsWith('<!DOCTYPE') || text.startsWith('<html')) {
-            throw new Error('Ecolet API returned HTML - check endpoint URL');
-        }
-
-        let data;
-        try {
-            data = JSON.parse(text);
-        } catch (e) {
-            throw new Error('Invalid JSON response from Ecolet API');
-        }
-
-        if (!response.ok) {
-            throw new Error(data.message || 'Failed to fetch label');
-        }
-
-        const labelUrl = data.label_url || data.url || data.pdf_url || data.data?.url;
-
-        if (!labelUrl) {
-            throw new Error('No label URL in response');
-        }
-
         return {
             success: true,
-            label_url: labelUrl,
-            message: 'Label obținut cu succes'
+            label_url: `${ECOLET_BASE_URL}/order/${shipmentId}/download-waybill?access_token=${token}`,
+            message: 'Label disponibil'
         };
 
     } catch (error) {
-        console.error('❌ Ecolet getShipmentLabel error:', error);
+        console.error('❌ getShipmentLabel error:', error);
         return {
             success: false,
             label_url: null,
