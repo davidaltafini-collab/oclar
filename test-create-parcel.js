@@ -2,48 +2,32 @@ import fetch from 'node-fetch';
 import dotenv from 'dotenv';
 dotenv.config();
 
-// 1. Definim variabilele o singură dată
 const BASE_URL = process.env.ECOLET_BASE_URL || 'https://panel.ecolet.ro/api/v1';
 const CLIENT_ID = process.env.ECOLET_CLIENT_ID;
 const CLIENT_SECRET = process.env.ECOLET_CLIENT_SECRET;
 
-// 2. Debugging - Verificăm ce citește scriptul (fără să afișăm secretele complet)
-console.log('🔍 DEBUG CREDENTIALS:');
-console.log(`- CLIENT_ID Type: ${typeof CLIENT_ID}`);
-console.log(`- CLIENT_ID Value: ${CLIENT_ID ? `'${CLIENT_ID}'` : 'UNDEFINED'}`);
-console.log(`- CLIENT_SECRET Set: ${CLIENT_SECRET ? 'YES' : 'NO'}`);
-console.log(`- CLIENT_SECRET Length: ${CLIENT_SECRET ? CLIENT_SECRET.length : 0}`);
-console.log('-------------------\n');
+// Debug
+console.log('🔍 Config:', {
+    baseUrl: BASE_URL,
+    clientIdSet: !!CLIENT_ID,
+    clientSecretSet: !!CLIENT_SECRET
+});
 
 async function getToken() {
     console.log('🔄 Authenticating...');
-    
-    // Curățăm valorile de spații accidentale
-    const cleanClientId = CLIENT_ID ? CLIENT_ID.trim() : '';
-    const cleanSecret = CLIENT_SECRET ? CLIENT_SECRET.trim() : '';
-
-    if (!cleanClientId || !cleanSecret) {
-        throw new Error('❌ Missing credentials in .env file');
-    }
-
     const params = new URLSearchParams();
     params.append('grant_type', 'client_credentials');
-    params.append('client_id', cleanClientId);
-    params.append('client_secret', cleanSecret);
+    params.append('client_id', CLIENT_ID ? CLIENT_ID.trim() : '');
+    params.append('client_secret', CLIENT_SECRET ? CLIENT_SECRET.trim() : '');
 
     const response = await fetch(`${BASE_URL}/oauth/token`, {
         method: 'POST',
-        headers: { 
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Accept': 'application/json' 
-        },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: params.toString()
     });
 
     if (!response.ok) {
-        const text = await response.text();
-        console.error('❌ Auth Error Response:', text);
-        throw new Error(`Auth failed with status: ${response.status}`);
+        throw new Error(`Auth failed: ${response.status} - ${await response.text()}`);
     }
 
     const data = await response.json();
@@ -53,9 +37,8 @@ async function getToken() {
 async function testCreateParcel() {
     try {
         const token = await getToken();
-        console.log('✅ Token received:', token ? token.substring(0, 10) + '...' : 'NULL');
+        console.log('✅ Token received\n');
 
-        // Test payload conform Swagger
         const testPayload = {
             sender: {
                 name: "OCLAR Store",
@@ -124,11 +107,15 @@ async function testCreateParcel() {
             coupon: { code: null }
         };
 
-        console.log('\n📝 Test: POST /add-parcel/save-order-to-send');
+        console.log('📝 Test: POST /add-parcel/save-order-to-send');
         
-        const response = await fetch(`${BASE_URL}/add-parcel/save-order-to-send`, {
+        // SOLUȚIA: Adăugăm token-ul direct în URL
+        const url = `${BASE_URL}/add-parcel/save-order-to-send?access_token=${token}`;
+        
+        const response = await fetch(url, {
             method: 'POST',
             headers: {
+                // Păstrăm și header-ul standard, dar query param-ul are prioritate adesea
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json',
                 'Accept': 'application/json'
