@@ -1,7 +1,15 @@
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
 dotenv.config();
+const CLIENT_ID = process.env.ECOLET_CLIENT_ID;
+const CLIENT_SECRET = process.env.ECOLET_CLIENT_SECRET;
 
+console.log('🔍 DEBUG CREDENTIALS:');
+console.log(`- CLIENT_ID Type: ${typeof CLIENT_ID}`);
+console.log(`- CLIENT_ID Value: ${CLIENT_ID ? `'${CLIENT_ID}'` : 'UNDEFINED'}`); // Afiseaza intre ghilimele pentru a vedea spatii
+console.log(`- CLIENT_SECRET Set: ${CLIENT_SECRET ? 'YES' : 'NO'}`);
+console.log(`- CLIENT_SECRET Length: ${CLIENT_SECRET ? CLIENT_SECRET.length : 0}`);
+console.log('-------------------\n');
 const BASE_URL = process.env.ECOLET_BASE_URL || 'https://panel.ecolet.ro/api/v1';
 const CLIENT_ID = process.env.ECOLET_CLIENT_ID;
 const CLIENT_SECRET = process.env.ECOLET_CLIENT_SECRET;
