@@ -2,78 +2,121 @@ import fetch from 'node-fetch';
 import dotenv from 'dotenv';
 dotenv.config();
 
-const BASE_URL = process.env.ECOLET_BASE_URL;
+const BASE_URL = process.env.ECOLET_BASE_URL || 'https://panel.ecolet.ro/api/v1';
 const CLIENT_ID = process.env.ECOLET_CLIENT_ID;
 const CLIENT_SECRET = process.env.ECOLET_CLIENT_SECRET;
 
 async function getToken() {
+    console.log('🔄 Authenticating...');
+    const params = new URLSearchParams();
+    params.append('grant_type', 'client_credentials');
+    params.append('client_id', CLIENT_ID);
+    params.append('client_secret', CLIENT_SECRET);
+    // params.append('scope', '*'); // Uneori nu este necesar, depinde de implementare
+
     const response = await fetch(`${BASE_URL}/oauth/token`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            grant_type: 'client_credentials',
-            client_id: CLIENT_ID,
-            client_secret: CLIENT_SECRET,
-            scope: '*'
-        })
+        headers: { 
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': 'application/json' 
+        },
+        body: params.toString()
     });
+
+    if (!response.ok) {
+        const text = await response.text();
+        console.error('❌ Auth Error:', text);
+        throw new Error(`Auth failed: ${response.status}`);
+    }
+
     const data = await response.json();
     return data.access_token;
 }
 
 async function testCreateParcel() {
-    const token = await getToken();
-    console.log('✅ Token received\n');
-
-    // Test 1: Reload form (validare + prețuri)
-    console.log('📝 Test 1: POST /add-parcel/reload-form');
-    
-    const testPayload = {
-        // Ghicim structura - o să ajustăm după ce vezi schema
-        recipient_name: "Test User",
-        recipient_phone: "0712345678",
-        recipient_email: "test@example.com",
-        city: "București",
-        county: "București",
-        address: "Str. Test 1",
-        postal_code: "123456",
-        service_type: "courier",
-        weight: 1,
-        length: 30,
-        width: 20,
-        height: 10,
-        cod_amount: 0,
-        reference: "TEST-ORDER-123"
-    };
-
     try {
-        const response = await fetch(`${BASE_URL}/add-parcel/reload-form`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
+        const token = await getToken();
+        console.log('✅ Token received:', token ? token.substring(0, 10) + '...' : 'NULL');
+
+        // Test 1: Reload form (validare + prețuri)
+        // Structura trebuie să fie identică cu cea din Swagger
+        const testPayload = {
+            sender: {
+                name: "OCLAR Store",
+                country: "ro",
+                county: "Bucuresti",
+                locality_id: 323, // ID FIX pentru București (vezi Swagger)
+                locality: "Bucuresti",
+                postal_code: "011318",
+                street_name: "Str. Testare",
+                street_number: "1",
+                contact_person: "Admin Oclar",
+                email: "office@oclar.ro",
+                phone: "0712345678",
+                has_map_point: false,
+                map_point_id: null
             },
-            body: JSON.stringify(testPayload)
-        });
+            receiver: {
+                name: "Client Test",
+                country: "ro",
+                county: "Bucuresti",
+                locality_id: 323, // ID FIX pentru test (București)
+                locality: "Bucuresti",
+                postal_code: "011318",
+                street_name: "Bucuresti-Ploiesti",
+                street_number: "172",
+                contact_person: "Client Test",
+                email: "client@test.ro",
+                phone: "0722123123",
+                has_map_point: false,
+                map_point_id: null
+            },
+            parcel: {
+                type: "package",
+                weight: 1,
+                dimensions: {
+                    length: 10,
+                    width: 15,
+                    height: 10
+                },
+                shape: "standard",
+                declared_value: null,
+                amount: 1,
+                content: "Ochelari Test",
+                observations: "Test integration"
+            },
+            additional_services: {
+                cod: {
+                    status: false, // Fără ramburs la test
+                    amount: 0
+                },
+                open_package: { status: false },
+                rod: { status: false },
+                rop: { status: false },
+                saturday_delivery: { status: false },
+                sms_notify: { status: false },
+                swap: { status: false },
+                epod: { status: false }
+            },
+            courier: {
+                service: "dpd_standard", // Sau cargus_standard, sameday_courier_standard
+                pickup: {
+                    type: "courier",
+                    date: new Date(Date.now() + 86400000).toISOString().split('T')[0], // Mâine
+                    time: "13:00"
+                },
+                contract_id: 4 // De obicei 4 este default, dar verifică în contul Ecolet
+            },
+            shipment_details: {
+                uit_code: null,
+                sender_forklift: false,
+                receiver_forklift: false
+            },
+            coupon: { code: null }
+        };
 
-        const text = await response.text();
-        console.log('Status:', response.status);
-        console.log('Response:', text.substring(0, 500));
-
-        if (response.status === 200 || response.status === 422) {
-            console.log('\n✅ Endpoint funcționează!');
-            if (response.status === 422) {
-                console.log('ℹ️  Validation error - trebuie să ajustăm payload-ul');
-            }
-        }
-    } catch (error) {
-        console.log('Error:', error.message);
-    }
-
-    // Test 2: Save order to send (draft)
-    console.log('\n\n📝 Test 2: POST /add-parcel/save-order-to-send');
-    try {
+        console.log('\n📝 Test 2: POST /add-parcel/save-order-to-send');
+        
         const response = await fetch(`${BASE_URL}/add-parcel/save-order-to-send`, {
             method: 'POST',
             headers: {
@@ -86,13 +129,17 @@ async function testCreateParcel() {
 
         const text = await response.text();
         console.log('Status:', response.status);
-        console.log('Response:', text.substring(0, 500));
-
-        if (response.status === 200 || response.status === 422) {
-            console.log('\n✅ Endpoint funcționează!');
+        
+        // Încercăm să parsăm răspunsul pentru a vedea detaliile
+        try {
+            const jsonResponse = JSON.parse(text);
+            console.log('Response:', JSON.stringify(jsonResponse, null, 2));
+        } catch (e) {
+            console.log('Response Text:', text);
         }
+
     } catch (error) {
-        console.log('Error:', error.message);
+        console.log('❌ Critical Error:', error.message);
     }
 }
 
