@@ -1,26 +1,35 @@
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
 dotenv.config();
-const CLIENT_ID = process.env.ECOLET_CLIENT_ID;
-const CLIENT_SECRET = process.env.ECOLET_CLIENT_SECRET;
 
-console.log('🔍 DEBUG CREDENTIALS:');
-console.log(`- CLIENT_ID Type: ${typeof CLIENT_ID}`);
-console.log(`- CLIENT_ID Value: ${CLIENT_ID ? `'${CLIENT_ID}'` : 'UNDEFINED'}`); // Afiseaza intre ghilimele pentru a vedea spatii
-console.log(`- CLIENT_SECRET Set: ${CLIENT_SECRET ? 'YES' : 'NO'}`);
-console.log(`- CLIENT_SECRET Length: ${CLIENT_SECRET ? CLIENT_SECRET.length : 0}`);
-console.log('-------------------\n');
+// 1. Definim variabilele o singură dată
 const BASE_URL = process.env.ECOLET_BASE_URL || 'https://panel.ecolet.ro/api/v1';
 const CLIENT_ID = process.env.ECOLET_CLIENT_ID;
 const CLIENT_SECRET = process.env.ECOLET_CLIENT_SECRET;
 
+// 2. Debugging - Verificăm ce citește scriptul (fără să afișăm secretele complet)
+console.log('🔍 DEBUG CREDENTIALS:');
+console.log(`- CLIENT_ID Type: ${typeof CLIENT_ID}`);
+console.log(`- CLIENT_ID Value: ${CLIENT_ID ? `'${CLIENT_ID}'` : 'UNDEFINED'}`);
+console.log(`- CLIENT_SECRET Set: ${CLIENT_SECRET ? 'YES' : 'NO'}`);
+console.log(`- CLIENT_SECRET Length: ${CLIENT_SECRET ? CLIENT_SECRET.length : 0}`);
+console.log('-------------------\n');
+
 async function getToken() {
     console.log('🔄 Authenticating...');
+    
+    // Curățăm valorile de spații accidentale
+    const cleanClientId = CLIENT_ID ? CLIENT_ID.trim() : '';
+    const cleanSecret = CLIENT_SECRET ? CLIENT_SECRET.trim() : '';
+
+    if (!cleanClientId || !cleanSecret) {
+        throw new Error('❌ Missing credentials in .env file');
+    }
+
     const params = new URLSearchParams();
     params.append('grant_type', 'client_credentials');
-    params.append('client_id', CLIENT_ID);
-    params.append('client_secret', CLIENT_SECRET);
-    // params.append('scope', '*'); // Uneori nu este necesar, depinde de implementare
+    params.append('client_id', cleanClientId);
+    params.append('client_secret', cleanSecret);
 
     const response = await fetch(`${BASE_URL}/oauth/token`, {
         method: 'POST',
@@ -33,8 +42,8 @@ async function getToken() {
 
     if (!response.ok) {
         const text = await response.text();
-        console.error('❌ Auth Error:', text);
-        throw new Error(`Auth failed: ${response.status}`);
+        console.error('❌ Auth Error Response:', text);
+        throw new Error(`Auth failed with status: ${response.status}`);
     }
 
     const data = await response.json();
@@ -46,14 +55,13 @@ async function testCreateParcel() {
         const token = await getToken();
         console.log('✅ Token received:', token ? token.substring(0, 10) + '...' : 'NULL');
 
-        // Test 1: Reload form (validare + prețuri)
-        // Structura trebuie să fie identică cu cea din Swagger
+        // Test payload conform Swagger
         const testPayload = {
             sender: {
                 name: "OCLAR Store",
                 country: "ro",
                 county: "Bucuresti",
-                locality_id: 323, // ID FIX pentru București (vezi Swagger)
+                locality_id: 323,
                 locality: "Bucuresti",
                 postal_code: "011318",
                 street_name: "Str. Testare",
@@ -68,7 +76,7 @@ async function testCreateParcel() {
                 name: "Client Test",
                 country: "ro",
                 county: "Bucuresti",
-                locality_id: 323, // ID FIX pentru test (București)
+                locality_id: 323,
                 locality: "Bucuresti",
                 postal_code: "011318",
                 street_name: "Bucuresti-Ploiesti",
@@ -82,11 +90,7 @@ async function testCreateParcel() {
             parcel: {
                 type: "package",
                 weight: 1,
-                dimensions: {
-                    length: 10,
-                    width: 15,
-                    height: 10
-                },
+                dimensions: { length: 10, width: 15, height: 10 },
                 shape: "standard",
                 declared_value: null,
                 amount: 1,
@@ -94,10 +98,7 @@ async function testCreateParcel() {
                 observations: "Test integration"
             },
             additional_services: {
-                cod: {
-                    status: false, // Fără ramburs la test
-                    amount: 0
-                },
+                cod: { status: false, amount: 0 },
                 open_package: { status: false },
                 rod: { status: false },
                 rop: { status: false },
@@ -107,13 +108,13 @@ async function testCreateParcel() {
                 epod: { status: false }
             },
             courier: {
-                service: "dpd_standard", // Sau cargus_standard, sameday_courier_standard
+                service: "dpd_standard",
                 pickup: {
                     type: "courier",
-                    date: new Date(Date.now() + 86400000).toISOString().split('T')[0], // Mâine
+                    date: new Date(Date.now() + 86400000).toISOString().split('T')[0],
                     time: "13:00"
                 },
-                contract_id: 4 // De obicei 4 este default, dar verifică în contul Ecolet
+                contract_id: 4
             },
             shipment_details: {
                 uit_code: null,
@@ -123,7 +124,7 @@ async function testCreateParcel() {
             coupon: { code: null }
         };
 
-        console.log('\n📝 Test 2: POST /add-parcel/save-order-to-send');
+        console.log('\n📝 Test: POST /add-parcel/save-order-to-send');
         
         const response = await fetch(`${BASE_URL}/add-parcel/save-order-to-send`, {
             method: 'POST',
@@ -138,16 +139,14 @@ async function testCreateParcel() {
         const text = await response.text();
         console.log('Status:', response.status);
         
-        // Încercăm să parsăm răspunsul pentru a vedea detaliile
         try {
-            const jsonResponse = JSON.parse(text);
-            console.log('Response:', JSON.stringify(jsonResponse, null, 2));
-        } catch (e) {
+            console.log('Response:', JSON.stringify(JSON.parse(text), null, 2));
+        } catch {
             console.log('Response Text:', text);
         }
 
     } catch (error) {
-        console.log('❌ Critical Error:', error.message);
+        console.log('❌ Error:', error.message);
     }
 }
 
