@@ -2,135 +2,126 @@ import fetch from 'node-fetch';
 import dotenv from 'dotenv';
 dotenv.config();
 
-const BASE_URL = process.env.ECOLET_BASE_URL;
+const BASE_URL = process.env.ECOLET_BASE_URL || 'https://panel.ecolet.ro/api/v1';
 const CLIENT_ID = process.env.ECOLET_CLIENT_ID;
 const CLIENT_SECRET = process.env.ECOLET_CLIENT_SECRET;
 
-// Autentificare
-async function getToken() {
-    const response = await fetch(`${BASE_URL}/oauth/token`, {
+async function runDiagnostics() {
+    console.log('🔍 Starting Ecolet Diagnostics...');
+    console.log(`📡 Connecting to: ${BASE_URL}`);
+
+    // PASUL 1: AUTENTIFICARE
+    console.log('\n1️⃣  Step 1: Getting Token...');
+    const authParams = new URLSearchParams();
+    authParams.append('grant_type', 'client_credentials');
+    authParams.append('client_id', CLIENT_ID ? CLIENT_ID.trim() : '');
+    authParams.append('client_secret', CLIENT_SECRET ? CLIENT_SECRET.trim() : '');
+    // Uneori scope-ul ajută, chiar dacă e steluță
+    authParams.append('scope', '*'); 
+
+    const authRes = await fetch(`${BASE_URL}/oauth/token`, {
         method: 'POST',
-        headers: { 
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: authParams.toString()
+    });
+
+    if (!authRes.ok) {
+        console.error('❌ Authentication Failed:', await authRes.text());
+        return;
+    }
+
+    const authData = await authRes.json();
+    const token = authData.access_token;
+    console.log('✅ Token Received!');
+    console.log(`🔑 Token Type: ${authData.token_type || 'Bearer'}`);
+    console.log(`⏳ Expires in: ${authData.expires_in}`);
+
+    // PASUL 2: TEST GET (CITIRE)
+    // Încercăm să citim ID-ul pentru București. Dacă asta merge, token-ul e bun.
+    console.log('\n2️⃣  Step 2: Testing Read Access (GET /locations)...');
+    
+    // Header standard OAuth
+    const headers = {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'Oclar-Test-Script/1.0' // Uneori serverele blochează requesturi fără User-Agent
+    };
+
+    const getRes = await fetch(`${BASE_URL}/locations/ro/bucuresti/localities/bucuresti`, {
+        method: 'GET',
+        headers: headers
+    });
+
+    const getText = await getRes.text();
+    console.log(`Status: ${getRes.status}`);
+    
+    if (getRes.status === 200) {
+        console.log('✅ READ Access Confirmed! (Token works)');
+    } else {
+        console.error('❌ READ Access Failed!');
+        console.error('Response:', getText);
+        console.log('⚠️  If Step 2 fails, the POST in Step 3 will definitely fail.');
+        // Nu ne oprim, încercăm și POST doar ca să vedem eroarea
+    }
+
+    // PASUL 3: TEST POST (CREARE DRAFT)
+    console.log('\n3️⃣  Step 3: Testing Write Access (POST /add-parcel)...');
+    
+    const payload = {
+        sender: {
+            name: "OCLAR TEST",
+            country: "ro",
+            county: "Bucuresti",
+            locality_id: 323,
+            locality: "Bucuresti",
+            postal_code: "011318",
+            street_name: "Str. Testare",
+            street_number: "1",
+            contact_person: "Test",
+            email: "office@oclar.ro",
+            phone: "0712345678"
         },
-        body: JSON.stringify({
-            grant_type: 'client_credentials',
-            client_id: CLIENT_ID,
-            client_secret: CLIENT_SECRET,
-            scope: '*' // încearcă să obții toate permisiunile
-        })
-    });
-
-    const data = await response.json();
-    console.log('🔑 Full token response:', JSON.stringify(data, null, 2));
-    return data.access_token;
-}
-
-async function testWithDifferentAuth(path) {
-    console.log(`\n📝 Testing: ${path}`);
-    
-    const token = await getToken();
-    
-    // Test 1: Bearer în header (standard)
-    console.log('  1️⃣ Bearer in Authorization header');
-    let response = await fetch(`${BASE_URL}${path}`, {
-        headers: {
-            'Accept': 'application/json',
-            'Authorization': `Bearer ${token}`
-        }
-    });
-    console.log(`     Status: ${response.status}`);
-    let text = await response.text();
-    if (text) console.log(`     Response: ${text.substring(0, 100)}`);
-
-    // Test 2: Token în query params
-    console.log('  2️⃣ Token in query params');
-    response = await fetch(`${BASE_URL}${path}?access_token=${token}`, {
-        headers: { 'Accept': 'application/json' }
-    });
-    console.log(`     Status: ${response.status}`);
-    text = await response.text();
-    if (text) console.log(`     Response: ${text.substring(0, 100)}`);
-
-    // Test 3: Token în body (pentru POST)
-    if (path === '/order' || path === '/orders') {
-        console.log('  3️⃣ POST with token in body');
-        response = await fetch(`${BASE_URL}${path}`, {
-            method: 'POST',
-            headers: { 
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
+        receiver: {
+            name: "Client Test",
+            country: "ro",
+            county: "Bucuresti",
+            locality_id: 323,
+            locality: "Bucuresti",
+            postal_code: "011318",
+            street_name: "Bucuresti",
+            street_number: "1",
+            contact_person: "Client",
+            email: "client@test.ro",
+            phone: "0722123123"
+        },
+        parcel: {
+            type: "package",
+            weight: 1,
+            dimensions: { length: 10, width: 10, height: 10 },
+            content: "TEST"
+        },
+        additional_services: { cod: { status: false, amount: 0 } },
+        courier: {
+            service: "dpd_standard",
+            pickup: {
+                type: "courier",
+                date: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+                time: "13:00"
             },
-            body: JSON.stringify({
-                access_token: token,
-                recipient_name: "Test",
-                recipient_phone: "0712345678",
-                city: "București"
-            })
-        });
-        console.log(`     Status: ${response.status}`);
-        text = await response.text();
-        if (text) console.log(`     Response: ${text.substring(0, 200)}`);
-    }
+            contract_id: 4 // Poate fi diferit pe contul tau!
+        }
+    };
+
+    const postRes = await fetch(`${BASE_URL}/add-parcel/save-order-to-send`, {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(payload)
+    });
+
+    const postText = await postRes.text();
+    console.log(`Status: ${postRes.status}`);
+    console.log('Response:', postText);
 }
 
-// Testează și alte variante de base URL
-async function testAlternativeURLs() {
-    const token = await getToken();
-    
-    const alternatives = [
-        'https://panel.ecolet.ro/api/v2/order',
-        'https://panel.ecolet.ro/api/order',
-        'https://api.ecolet.ro/v1/order',
-        'https://api.ecolet.ro/order',
-        'https://panel.ecolet.ro/api/v1/client/orders',
-        'https://panel.ecolet.ro/api/v1/courier/orders'
-    ];
-
-    console.log('\n🌐 Testing alternative URLs...');
-    for (const url of alternatives) {
-        try {
-            const response = await fetch(url, {
-                headers: {
-                    'Accept': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-            console.log(`${url} → ${response.status}`);
-            if (response.status !== 404) {
-                const text = await response.text();
-                console.log(`   Response: ${text.substring(0, 150)}`);
-            }
-        } catch (error) {
-            console.log(`${url} → Error: ${error.message}`);
-        }
-    }
-}
-
-(async () => {
-    console.log('🔍 Advanced Ecolet API Testing\n');
-    
-    // Endpoint-uri care au returnат 401 (există, dar auth nu merge)
-    const prometingEndpoints = ['/order', '/services'];
-    
-    for (const endpoint of prometingEndpoints) {
-        await testWithDifferentAuth(endpoint);
-    }
-
-    await testAlternativeURLs();
-
-    // Încearcă să descifrezi structura token-ului JWT
-    console.log('\n\n🔐 JWT Token Analysis:');
-    const token = await getToken();
-    const parts = token.split('.');
-    if (parts.length === 3) {
-        try {
-            const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
-            console.log('Token payload:', JSON.stringify(payload, null, 2));
-        } catch (e) {
-            console.log('Could not decode token');
-        }
-    }
-})();
+runDiagnostics();
