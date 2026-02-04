@@ -168,7 +168,7 @@ export const CartDrawer: React.FC = () => {
     // Încearcă să ia API key-ul din mai multe surse
     const apiKey = import.meta.env.VITE_GOOGLE_MAPS_KEY || 
                    (window as any).__GOOGLE_MAPS_KEY__ ||
-                   'AIzaSyChhpbHhr-YTe8HpnWpsvrHlQiBbBEcZPA'; // Hardcoded fallback pentru development
+    
     
     if (!apiKey || apiKey === 'undefined') {
       console.error('❌ VITE_GOOGLE_MAPS_KEY is not defined in .env file');
