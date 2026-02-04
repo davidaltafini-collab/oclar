@@ -2,12 +2,12 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import Stripe from 'stripe';
-import { pool } from './db.js';
+import { pool } from './db.js'; // Asta se execută prima!
 import { sendOrderEmails } from './services/email.js';
 import { sendOblioInvoice, generateAWB } from './services/oblio.js';
 import { createDraftShipment, getShipmentStatus, getShipmentLabel } from './services/ecolet.js';
 
-dotenv.config();
+dotenv.config(); // Încarcă variabilele pentru acest fișier
 
 const app = express();
 
