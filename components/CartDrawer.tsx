@@ -74,7 +74,7 @@ export const CartDrawer: React.FC = () => {
     phone: '',
     county: '',
     city: '',
-    address: '',
+    address: '', // Va conține adresa completă pentru DB
     postalCode: '',
     street_name: '',
     street_number: '',
@@ -97,7 +97,7 @@ export const CartDrawer: React.FC = () => {
     return 0;
   };
 
-  // ⭐ HELPERE PENTRU NORMALIZARE DATE GOOGLE
+  // ⭐ HELPERE PENTRU NORMALIZARE
   const normalizeName = (name: string) => {
     if (!name) return '';
     let clean = name.replace('Județul', '').replace('County', '').trim();
@@ -111,7 +111,7 @@ export const CartDrawer: React.FC = () => {
       return city;
   };
 
-  // ⭐ INITIALIZARE GOOGLE MAPS API
+  // ⭐ INITIALIZARE GOOGLE MAPS API (FIX REACT 19)
   useEffect(() => {
     if (loaderRef.current && apiKey) {
       loaderRef.current.key = apiKey;
@@ -131,6 +131,7 @@ export const CartDrawer: React.FC = () => {
         const addressComponents = place.addressComponents || [];
         let street = '', number = '', city = '', county = '', postal = '';
 
+        // Parsare componente adresă
         addressComponents.forEach((component: any) => {
           const types = component.types;
           if (types.includes("route")) street = component.longText;
@@ -141,10 +142,14 @@ export const CartDrawer: React.FC = () => {
           if (types.includes("postal_code")) postal = component.longText;
         });
 
+        // Fallback dacă Google nu dă strada exactă
         if (!street && place.formattedAddress) {
            const parts = place.formattedAddress.split(',');
            if (parts.length > 0) street = parts[0];
         }
+
+        // Construim linia de adresă completă pentru backend
+        const fullAddressLine = `${street || ''} Nr. ${number || ''}`.trim();
 
         setFormData(prev => ({
           ...prev,
@@ -153,7 +158,7 @@ export const CartDrawer: React.FC = () => {
           city: city,
           county: county,
           postalCode: postal,
-          address: place.formattedAddress
+          address: fullAddressLine // Actualizăm câmpul 'address' folosit de logica ta veche
         }));
         
         if (postal) validateField('postalCode', postal);
@@ -209,6 +214,7 @@ export const CartDrawer: React.FC = () => {
       (window as any).EcoletWidget.init({
         containerId: 'ecolet-locker-widget',
         onLockerSelected: (locker: any) => {
+          console.log('✅ Locker selected:', locker);
           setSelectedLocker({
             lockerId: locker.id,
             lockerName: locker.name,
@@ -281,6 +287,7 @@ export const CartDrawer: React.FC = () => {
     validateField(name, value);
   };
 
+  // ⭐ LOGICA ORIGINALĂ PENTRU COMANDĂ
   const handleSubmitOrder = async (e?: React.MouseEvent) => {
     if (e) e.preventDefault();
     const errors: any = {};
@@ -289,9 +296,10 @@ export const CartDrawer: React.FC = () => {
     if (!formData.county) errors.county = 'Județul este obligatoriu';
     if (!formData.city) errors.city = 'Orașul este obligatoriu';
 
+    // Pentru curier, validăm adresa Google
     if (shippingMethod === 'courier') {
          if (!formData.street_name) errors.address = 'Selectează adresa din sugestiile Google';
-         if (!formData.postalCode) errors.postalCode = 'Adresa selectată nu are cod poștal';
+         // Permitem lipsa codului postal, dar e bine sa fie
     } else {
          if (!formData.address && !formData.street_name) errors.address = 'Adresa este obligatorie';
     }
@@ -309,21 +317,19 @@ export const CartDrawer: React.FC = () => {
     setLoading(true);
 
     try {
-      const addressObject = {
-        line: `${formData.street_name} Nr. ${formData.street_number}, ${formData.details || ''}`.trim(),
-        street_name: formData.street_name,
-        street_number: formData.street_number,
-        details: formData.details,
-        city: formData.city,
-        county: formData.county,
-        postalCode: formData.postalCode
-      };
+      // Calculăm adresa finală pentru DB, incluzând detaliile manuale
+      const finalAddressLine = `${formData.street_name} Nr. ${formData.street_number}, ${formData.details}`.trim();
 
       const orderPayload = {
             customerName: formData.fullName,
             customerEmail: formData.email || null,
             customerPhone: formData.phone,
-            address: addressObject,
+            // Aici structura de adresă cerută de backend-ul tău
+            address: {
+                county: formData.county,
+                city: formData.city,
+                line: finalAddressLine
+            },
             items: cart,
             subtotal,
             shippingMethod,
@@ -373,6 +379,7 @@ export const CartDrawer: React.FC = () => {
 
   if (!isCartOpen) return null;
 
+  // Calcul final
   const subtotal = toNumber(cartTotal);
   const shippingCost = SHIPPING_COSTS[shippingMethod];
   const discountAmount = appliedDiscount ? appliedDiscount.amount : 0;
@@ -475,7 +482,7 @@ export const CartDrawer: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Adresa Livrare - GOOGLE MAPS + PANOU OPTIMIZAT */}
+                {/* Adresa Livrare - GOOGLE MAPS + PANOU SIMETRIC */}
                 <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
                   <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">ADRESA LIVRARE</h3>
                   
@@ -491,18 +498,34 @@ export const CartDrawer: React.FC = () => {
                       />
                   </div>
 
-                  {/* 2. PANOU INFORMATIV COMPACT (GRID) */}
-                  <div className="bg-gray-100 p-3 rounded-lg border border-gray-200 text-xs text-gray-700 grid grid-cols-12 gap-2">
-                      {/* Rând 1: Județ + Oraș */}
-                      <div className="col-span-6"><span className="font-bold text-gray-500 block">Județ</span>{formData.county || '–'}</div>
-                      <div className="col-span-6"><span className="font-bold text-gray-500 block">Oraș</span>{formData.city || '–'}</div>
+                  {/* 2. PANOU INFORMATIV SIMETRIC (GRID) */}
+                  <div className="bg-gray-100 p-3 rounded-lg border border-gray-200 text-xs text-gray-700 grid grid-cols-12 gap-3 items-center">
                       
-                      {/* Rând 2: Stradă + Număr */}
-                      <div className="col-span-9"><span className="font-bold text-gray-500 block">Stradă</span>{formData.street_name || '–'}</div>
-                      <div className="col-span-3"><span className="font-bold text-gray-500 block">Nr.</span>{formData.street_number || '–'}</div>
+                      {/* Rând 1: Județ (stânga) și Oraș (dreapta) */}
+                      <div className="col-span-6 border-b border-gray-200 pb-2">
+                        <span className="text-[10px] text-gray-400 uppercase block mb-0.5">Județ</span>
+                        <div className="font-bold truncate">{formData.county || '–'}</div>
+                      </div>
+                      <div className="col-span-6 border-b border-gray-200 pb-2 text-right">
+                        <span className="text-[10px] text-gray-400 uppercase block mb-0.5">Oraș</span>
+                        <div className="font-bold truncate">{formData.city || '–'}</div>
+                      </div>
                       
-                      {/* Rând 3: Cod Poștal */}
-                      <div className="col-span-12 pt-1 border-t border-gray-200"><span className="font-bold text-gray-500 inline-block mr-2">Cod Poștal:</span> {formData.postalCode || '–'}</div>
+                      {/* Rând 2: Stradă (lat) și Număr (îngust) */}
+                      <div className="col-span-8 border-b border-gray-200 pb-2">
+                        <span className="text-[10px] text-gray-400 uppercase block mb-0.5">Stradă</span>
+                        <div className="font-bold truncate">{formData.street_name || '–'}</div>
+                      </div>
+                      <div className="col-span-4 border-b border-gray-200 pb-2 text-right">
+                        <span className="text-[10px] text-gray-400 uppercase block mb-0.5">Nr.</span>
+                        <div className="font-bold">{formData.street_number || '–'}</div>
+                      </div>
+                      
+                      {/* Rând 3: Cod Poștal (Centrat sau stânga) */}
+                      <div className="col-span-12">
+                        <span className="text-[10px] text-gray-400 uppercase block mb-0.5">Cod Poștal</span>
+                        <div className="font-bold font-mono tracking-wider">{formData.postalCode || '–'}</div>
+                      </div>
                   </div>
 
                   {/* 3. DETALII EDITABILE */}
@@ -510,11 +533,11 @@ export const CartDrawer: React.FC = () => {
                     <label className="text-xs text-neutral-500 ml-1 mb-1 block">Detalii (Bl, Sc, Ap)</label>
                     <input
                       name="details"
-                      placeholder="Bloc, Scara, Etaj, Ap..."
+                      placeholder="Scara A, Etaj 2, Ap 10..."
                       value={formData.details}
                       onChange={(e) => {
                         const val = e.target.value;
-                        setFormData(prev => ({ ...prev, details: val, address: `${prev.street_name} Nr. ${prev.street_number}, ${val}` }));
+                        setFormData(prev => ({ ...prev, details: val }));
                       }}
                       className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors"
                     />
@@ -558,8 +581,8 @@ export const CartDrawer: React.FC = () => {
         {/* Footer COMPACT */}
         {cart.length > 0 && (
           <div className="p-4 border-t border-neutral-100 bg-white shrink-0">
-            {/* Detalii prețuri reduse */}
-            <div className="space-y-1 mb-2 text-xs">
+            {/* Detalii prețuri - Text mai mic */}
+            <div className="space-y-1 mb-3 text-xs">
               <div className="flex justify-between text-neutral-600"><span>Subtotal</span><span>{subtotal.toFixed(2)} RON</span></div>
               <div className="flex justify-between text-neutral-600"><span>Transport</span><span>{shippingCost.toFixed(2)} RON</span></div>
               {appliedDiscount && <div className="flex justify-between text-green-600 font-bold"><span>Reducere</span><span>-{discountAmount.toFixed(2)} RON</span></div>}
@@ -574,7 +597,7 @@ export const CartDrawer: React.FC = () => {
             {step === 'cart' ? (
               <Button fullWidth onClick={() => setStep('details')}>Continuă</Button>
             ) : (
-              <Button fullWidth onClick={handleSubmitOrder} disabled={loading} type="button" className="shadow-xl">{loading ? 'Se procesează...' : `Plătește ${finalTotal.toFixed(2)} RON`}</Button>
+              <Button fullWidth onClick={handleSubmitOrder} disabled={loading} type="button" className="shadow-xl">{loading ? 'Se procesează...' : paymentMethod === 'ramburs' ? `Trimite Comanda (${finalTotal.toFixed(2)} RON)` : `Plătește cu Cardul (${finalTotal.toFixed(2)} RON)`}</Button>
             )}
           </div>
         )}
@@ -586,7 +609,7 @@ export const CartDrawer: React.FC = () => {
         gmpx-place-picker input { padding: 0.75rem !important; border-radius: 0.5rem !important; border: 1px solid #e5e5e5 !important; width: 100% !important; font-size: 0.875rem !important; box-sizing: border-box !important; background-color: white !important; height: auto !important; }
         gmpx-place-picker input:focus { outline: none !important; border-color: black !important; }
         
-        /* FIX ZOOM MOBIL: Forțează font-size 16px pe ecrane mici */
+        /* FIX ZOOM MOBIL: Font size minim 16px pe input-uri */
         @media screen and (max-width: 768px) {
           input, select, textarea, gmpx-place-picker::part(input) {
             font-size: 16px !important;
