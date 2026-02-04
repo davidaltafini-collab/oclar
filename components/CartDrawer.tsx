@@ -1,9 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { usePlacesWidget } from "react-google-autocomplete"; // ⭐ IMPORT NOU
 import { useCart } from '../context/CartContext';
 import { Button } from './Button';
 import { API_URL } from '../constants';
 import { ROMANIAN_COUNTIES } from '../constants';
+
+// ⭐ IMPORTURI GOOGLE WEB COMPONENTS (SOLUȚIA PREMIUM)
+import '@googlemaps/extended-component-library/api_loader.js';
+import '@googlemaps/extended-component-library/place_picker.js';
+
+// ⭐ DEFINIȚII TYPESCRIPT PENTRU ELEMENTELE GOOGLE NO
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      'gmpx-api-loader': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & { key: string; "solution-channel"?: string };
+      'gmpx-place-picker': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & { placeholder?: string; ref?: any; style?: React.CSSProperties };
+    }
+  }
+}
 
 type CheckoutStep = 'cart' | 'details';
 type PaymentMethod = 'card' | 'ramburs';
@@ -32,6 +45,9 @@ export const CartDrawer: React.FC = () => {
   const [discountError, setDiscountError] = useState('');
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  
+  // ⭐ REFERINȚĂ PENTRU NOUL PICKER GOOGLE
+  const pickerRef = useRef<any>(null);
 
   // ⭐ STATE PENTRU ECOLET
   const [selectedLocker, setSelectedLocker] = useState<{
@@ -76,49 +92,6 @@ export const CartDrawer: React.FC = () => {
       return googleCity;
   };
 
-  // ⭐ CONFIGURARE GOOGLE PLACES WIDGET
-  const { ref: materialRef } = usePlacesWidget({
-    apiKey: import.meta.env.VITE_GOOGLE_MAPS_KEY, // Asigură-te că ai cheia în .env
-    onPlaceSelected: (place) => {
-      // 1. Extragem componentele adresei
-      const addressComponents = place.address_components;
-      let street = '', number = '', city = '', county = '', postal = '';
-
-      if (addressComponents) {
-        addressComponents.forEach((component: any) => {
-          const types = component.types;
-          if (types.includes("route")) street = component.long_name;
-          if (types.includes("street_number")) number = component.long_name;
-          if (types.includes("locality")) city = normalizeCity(component.long_name);
-          // Fallback oraș (uneori apare la sector/admin level 2)
-          if (!city && types.includes("administrative_area_level_2")) city = normalizeCity(component.long_name);
-          if (types.includes("administrative_area_level_1")) county = normalizeCounty(component.long_name);
-          if (types.includes("postal_code")) postal = component.long_name;
-        });
-      }
-
-      // 2. Actualizăm formularul cu datele de la Google
-      setFormData(prev => ({
-        ...prev,
-        street_name: street,
-        street_number: number,
-        city: city,
-        county: county, 
-        postalCode: postal,
-        // Reconstruim adresa completă pentru Ecolet/Curier
-        address: `${street} Nr. ${number}, ${prev.details}`
-      }));
-      
-      // 3. Validăm codul poștal dacă a fost găsit
-      if (postal) validateField('postalCode', postal);
-    },
-    options: {
-      types: ["address"], // Caută doar adrese exacte
-      componentRestrictions: { country: "ro" }, // Restricționează la România
-    },
-    language: "ro"
-  });
-
   const toNumber = (v: unknown): number => {
     if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
     if (typeof v === 'string') {
@@ -146,6 +119,51 @@ export const CartDrawer: React.FC = () => {
   useEffect(() => {
     if (step === 'details' && scrollContainerRef.current) {
       scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [step]);
+
+  // ⭐ LISTENER PENTRU GOOGLE PICKER (NOUL MOD DE LUCRU)
+  useEffect(() => {
+    const picker = pickerRef.current;
+    if (picker && step === 'details') {
+        const handlePlaceChange = () => {
+            const place = picker.value;
+            if (!place || !place.addressComponents) return;
+
+            const addressComponents = place.addressComponents;
+            let street = '', number = '', city = '', county = '', postal = '';
+
+            // Extragem componentele din noul format Google
+            addressComponents.forEach((component: any) => {
+                const types = component.types;
+                if (types.includes("route")) street = component.longText;
+                if (types.includes("street_number")) number = component.longText;
+                if (types.includes("locality")) city = normalizeCity(component.longText);
+                // Fallback oraș
+                if (!city && types.includes("administrative_area_level_2")) city = normalizeCity(component.longText);
+                if (types.includes("administrative_area_level_1")) county = normalizeCounty(component.longText);
+                if (types.includes("postal_code")) postal = component.longText;
+            });
+
+            // Actualizăm formularul cu datele sparte
+            setFormData(prev => ({
+                ...prev,
+                street_name: street,
+                street_number: number,
+                city: city,
+                county: county,
+                postalCode: postal,
+                address: place.formattedAddress // Adresa frumoasă
+            }));
+            
+            // Validăm codul poștal automat
+            if (postal) validateField('postalCode', postal);
+        };
+
+        picker.addEventListener('gmpx-placechange', handlePlaceChange);
+        return () => {
+            if (picker) picker.removeEventListener('gmpx-placechange', handlePlaceChange);
+        };
     }
   }, [step]);
 
@@ -398,6 +416,9 @@ export const CartDrawer: React.FC = () => {
 
   return (
     <>
+      {/* ⭐ LOAD GOOGLE API LOADER */}
+      <gmpx-api-loader key={import.meta.env.VITE_GOOGLE_MAPS_KEY} solution-channel="GMP_GE_mapsandplacesautocomplete_v2"></gmpx-api-loader>
+
       <div className="fixed inset-0 bg-black/60 z-50 backdrop-blur-sm" onClick={toggleCart} />
 
       <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-2xl flex flex-col animate-slide-in-right">
@@ -599,98 +620,55 @@ export const CartDrawer: React.FC = () => {
                     Adresa Livrare
                   </h3>
                   
-                  {/* ⭐ CÂMPUL STRADĂ CU GOOGLE AUTOCOMPLETE */}
+                  {/* ⭐ CÂMPUL STRADĂ CU GOOGLE AUTOCOMPLETE (NOU) */}
                   <div className="col-span-2">
-                      <label className="text-xs text-neutral-400 ml-1 mb-1 block">Caută strada (Google):</label>
-                      <input
-                        ref={materialRef} // <-- AICI ESTE REFERINȚA CĂTRE GOOGLE PLACES
-                        required
-                        name="street_name"
-                        placeholder="Începe să scrii numele străzii..."
-                        defaultValue={formData.street_name}
-                        onChange={(e) => {
-                             // Permite și editare manuală dacă userul modifică textul după autocompletare
-                             const val = e.target.value;
-                             setFormData(prev => ({
-                               ...prev,
-                               street_name: val,
-                               address: `${val} Nr. ${prev.street_number}, ${prev.details}`
-                             }));
-                        }}
-                        className="w-full p-3 border border-blue-200 bg-blue-50/30 rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm"
-                      />
+                      <label className="text-xs text-blue-600 font-bold ml-1 mb-1 block">Caută Adresa (Stradă și Număr)</label>
+                      {/* PICKER-UL GOOGLE OFICIAL */}
+                      <gmpx-place-picker 
+                        ref={pickerRef} 
+                        placeholder="Ex: Strada Libertății 4" 
+                        id="place-picker"
+                        style={{ width: '100%' }}
+                      ></gmpx-place-picker>
                   </div>
 
-                  {/* Număr stradă */}
-                  <div className="grid grid-cols-3 gap-3">
-                     <div className="col-span-1">
-                      <label className="text-xs text-neutral-400 ml-1 mb-1 block">Număr:</label>
-                      <input
-                        required
-                        name="street_number"
-                        placeholder="Nr. *"
-                        value={formData.street_number}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setFormData(prev => ({
-                            ...prev,
-                            street_number: val,
-                            address: `${prev.street_name} Nr. ${val}, ${prev.details}`
-                          }));
-                        }}
-                        className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors"
-                      />
-                    </div>
-                     <div className="col-span-2">
-                       <label className="text-xs text-neutral-400 ml-1 mb-1 block">Detalii (Bl, Sc, Ap):</label>
-                       <input
-                        name="details"
-                        placeholder="Bloc, Scara, Etaj, Ap..."
-                        value={formData.details}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setFormData(prev => ({
-                            ...prev,
-                            details: val,
-                            address: `${prev.street_name} Nr. ${prev.street_number}, ${val}`
-                          }));
-                        }}
-                        className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors"
-                      />
-                     </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    {/* JUDEȚ - Auto-completat dar editabil */}
-                    <div className="relative">
-                      <select
-                        required
-                        name="county"
-                        value={formData.county}
-                        onChange={handleInputChange}
-                        className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm appearance-none bg-white"
-                      >
-                        <option value="">Județ *</option>
-                        {ROMANIAN_COUNTIES.map((judet) => (
-                          <option key={judet} value={judet}>
-                            {judet}
-                          </option>
-                        ))}
-                      </select>
-                      <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none">
-                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                  {/* Date Extrase (Doar pentru verificare vizuală) */}
+                  <div className="grid grid-cols-2 gap-2 bg-gray-50 p-2 rounded border border-gray-100">
+                      <div>
+                          <label className="text-[10px] text-gray-400 block">Județ</label>
+                          <div className="text-sm font-bold">{formData.county || '-'}</div>
                       </div>
-                    </div>
+                      <div>
+                          <label className="text-[10px] text-gray-400 block">Oraș</label>
+                          <div className="text-sm font-bold">{formData.city || '-'}</div>
+                      </div>
+                      <div>
+                          <label className="text-[10px] text-gray-400 block">Stradă</label>
+                          <div className="text-sm font-bold">{formData.street_name || '-'}</div>
+                      </div>
+                      <div>
+                          <label className="text-[10px] text-gray-400 block">Număr</label>
+                          <div className="text-sm font-bold">{formData.street_number || '-'}</div>
+                      </div>
+                  </div>
 
-                    {/* ORAȘ - Auto-completat dar editabil */}
+                  {/* Detalii Manuale */}
+                  <div className="col-span-2">
+                    <label className="text-xs text-neutral-400 ml-1 mb-1 block">Detalii Suplimentare (Bl, Sc, Ap):</label>
                     <input
-                      required
-                      name="city"
-                      placeholder="Oraș / Sat *"
-                      value={formData.city}
-                      onChange={handleInputChange}
-                      className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm"
-                    />
+                    name="details"
+                    placeholder="Bloc, Scara, Etaj, Ap, Interfon..."
+                    value={formData.details}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFormData(prev => ({
+                        ...prev,
+                        details: val,
+                        address: `${prev.street_name} Nr. ${prev.street_number}, ${val}`
+                      }));
+                    }}
+                    className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors"
+                  />
                   </div>
 
                   {/* COD POȘTAL - Auto-completat */}
@@ -867,9 +845,20 @@ export const CartDrawer: React.FC = () => {
         )}
       </div>
 
-      {/* ⭐ SCRIPTUL ECOLET SE VA ÎNCĂRCA DINAMIC */}
+      {/* ⭐ STILURI PENTRU COMPONENTELE GOOGLE */}
       <style>{`
         .pac-container { z-index: 99999 !important; }
+        gmpx-place-picker input {
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            border: 1px solid #e5e5e5;
+            width: 100%;
+            font-size: 0.875rem;
+        }
+        gmpx-place-picker input:focus {
+            outline: none;
+            border-color: black;
+        }
       `}</style>
     </>
   );
