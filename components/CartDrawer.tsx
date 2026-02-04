@@ -297,11 +297,15 @@ export const CartDrawer: React.FC = () => {
     if (!formData.phone) errors.phone = 'Telefonul este obligatoriu';
     if (!formData.county) errors.county = 'Județul este obligatoriu';
     if (!formData.city) errors.city = 'Orașul este obligatoriu';
-    if (!formData.address) errors.address = 'Adresa este obligatorie';
 
-    // Pentru curier, codul poștal este obligatoriu
-    if (shippingMethod === 'courier' && !formData.postalCode) {
-      errors.postalCode = 'Codul poștal este obligatoriu pentru livrare curier';
+    // Validare specifică pentru Curier (avem nevoie de stradă și număr separate)
+    if (shippingMethod === 'courier') {
+      if (!formData.street_name) errors.address = 'Numele străzii este obligatoriu';
+      if (!formData.street_number) errors.address = 'Numărul străzii este obligatoriu';
+      if (!formData.postalCode) errors.postalCode = 'Codul poștal este obligatoriu pentru livrare curier';
+    } else {
+      // Fallback simplu
+      if (!formData.address && !formData.street_name) errors.address = 'Adresa este obligatorie';
     }
 
     // Pentru EasyBox, locker-ul trebuie selectat
@@ -318,18 +322,46 @@ export const CartDrawer: React.FC = () => {
     setLoading(true);
 
     try {
+      // ⭐ SECRETUL: Construim obiectul de adresă "inteligent"
+      // Aici combinăm datele separate ca să le trimitem la Ecolet curat
+      const addressObject = {
+        // Linia completă pentru factură/afișare (ex: "Str. Libertății Nr. 10, Bl. 2")
+        line: `${formData.street_name} Nr. ${formData.street_number}, ${formData.details || ''}`,
+
+        // Componentele separate pentru API Ecolet
+        street_name: formData.street_name,
+        street_number: formData.street_number,
+        details: formData.details, // Bloc, Scara, Ap (va merge în Observații)
+
+        city: formData.city,
+        county: formData.county,
+        postalCode: formData.postalCode
+      };
+
+      // Payload comun (datele trimise la server)
+      const orderPayload = {
+        customerName: formData.fullName,
+        customerEmail: formData.email || null,
+        customerPhone: formData.phone,
+
+        address: addressObject, // <--- TRIMITERE OBIECT STRUCTURAT
+
+        items: cart,
+        subtotal,
+        shippingMethod,
+        shippingCost,
+        discountCode: appliedDiscount?.code || null,
+        discountAmount,
+        totalAmount: finalTotal,
+        postalCode: formData.postalCode,
+        lockerId: selectedLocker?.lockerId || null,
+      };
+
       if (paymentMethod === 'card') {
         const response = await fetch(`${API_URL}/create-checkout-session`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            items: cart,
-            subtotal,
-            shippingMethod,
-            shippingCost,
-            discountCode: appliedDiscount?.code || null,
-            discountAmount
-          }),
+          body: JSON.stringify(orderPayload), // Folosim același payload și la card
         });
 
         if (!response.ok) throw new Error('Failed to create checkout session');
@@ -338,29 +370,11 @@ export const CartDrawer: React.FC = () => {
         if (url) window.location.href = url;
         else throw new Error('No checkout URL received');
       } else {
-        // ⭐ PAYLOAD
+        // ⭐ RAMBURS
         const response = await fetch(`${API_URL}/create-order-ramburs`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            customerName: formData.fullName,
-            customerEmail: formData.email || null,
-            customerPhone: formData.phone,
-            address: {
-              county: formData.county,
-              city: formData.city,
-              line: formData.address,
-            },
-            items: cart,
-            subtotal,
-            shippingMethod,
-            shippingCost,
-            discountCode: appliedDiscount?.code || null,
-            discountAmount,
-            totalAmount: finalTotal,
-            postalCode: formData.postalCode,
-            lockerId: selectedLocker?.lockerId || null,
-          }),
+          body: JSON.stringify(orderPayload), // Aici se trimit datele corecte
         });
 
         if (!response.ok) throw new Error('Failed to create order');
@@ -731,8 +745,8 @@ export const CartDrawer: React.FC = () => {
                   <div className="grid grid-cols-1 gap-3">
                     <label
                       className={`relative flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all duration-200 ${paymentMethod === 'ramburs'
-                          ? 'border-black bg-neutral-50 shadow-inner'
-                          : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
+                        ? 'border-black bg-neutral-50 shadow-inner'
+                        : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
                         }`}
                     >
                       <input
@@ -758,8 +772,8 @@ export const CartDrawer: React.FC = () => {
 
                     <label
                       className={`relative flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all duration-200 ${paymentMethod === 'card'
-                          ? 'border-black bg-neutral-50 shadow-inner'
-                          : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
+                        ? 'border-black bg-neutral-50 shadow-inner'
+                        : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
                         }`}
                     >
                       <input
@@ -854,6 +868,9 @@ export const CartDrawer: React.FC = () => {
       </div>
 
       {/* ⭐ SCRIPTUL ECOLET SE VA ÎNCĂRCA DINAMIC */}
+      <style>{`
+        .pac-container { z-index: 99999 !important; }
+      `}</style>
     </>
   );
 };
