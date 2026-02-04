@@ -4,17 +4,17 @@ import { Button } from './Button';
 import { API_URL } from '../constants';
 import { ROMANIAN_COUNTIES } from '../constants';
 
-/* ✅ GOOGLE MAPS (Extended Component Library) */
+// ⭐ IMPORTURI OFICIALE GOOGLE MAPS
 import '@googlemaps/extended-component-library/place_picker.js';
 import '@googlemaps/extended-component-library/api_loader.js';
 
-/* ✅ Typescript typing for custom elements */
+// ⭐ DEFINIȚII TYPESCRIPT
 declare global {
   namespace JSX {
     interface IntrinsicElements {
-      'gmpx-place-picker': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
-        placeholder?: string;
-        ref?: any;
+      'gmpx-place-picker': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & { 
+        placeholder?: string; 
+        ref?: any; 
         style?: React.CSSProperties;
         'for-country'?: string;
       };
@@ -30,8 +30,8 @@ type PaymentMethod = 'card' | 'ramburs';
 type ShippingMethod = 'easybox' | 'courier';
 
 const SHIPPING_COSTS = {
-  easybox: 15.0,
-  courier: 25.0
+  easybox: 15.00,
+  courier: 25.00
 };
 
 export const CartDrawer: React.FC = () => {
@@ -41,8 +41,8 @@ export const CartDrawer: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('ramburs');
   const [shippingMethod, setShippingMethod] = useState<ShippingMethod>('courier');
-
-  // Discount state
+   
+  // Discount
   const [discountCode, setDiscountCode] = useState('');
   const [appliedDiscount, setAppliedDiscount] = useState<{
     code: string;
@@ -53,7 +53,14 @@ export const CartDrawer: React.FC = () => {
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // ⭐ STATE PENTRU ECOLET
+  // ⭐ REF-URI GOOGLE MAPS
+  const pickerRef = useRef<any>(null);
+  const loaderRef = useRef<any>(null);
+  
+  // API Key
+  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_KEY || (window as any).__GOOGLE_MAPS_KEY__;
+
+  // State Ecolet
   const [selectedLocker, setSelectedLocker] = useState<{
     lockerId: string;
     lockerName: string;
@@ -68,24 +75,16 @@ export const CartDrawer: React.FC = () => {
     county: '',
     city: '',
     address: '',
-
     postalCode: '',
-
     street_name: '',
     street_number: '',
-    details: ''
+    details: '' 
   });
-
-  // ⭐ VALIDĂRI
+  
   const [validationErrors, setValidationErrors] = useState<{
     phone?: string;
     email?: string;
     postalCode?: string;
-    fullName?: string;
-    county?: string;
-    city?: string;
-    address?: string;
-    locker?: string;
   }>({});
 
   const toNumber = (v: unknown): number => {
@@ -97,14 +96,73 @@ export const CartDrawer: React.FC = () => {
     return 0;
   };
 
-  /* ✅ GOOGLE MAPS refs + key */
-  const pickerRef = useRef<any>(null);
-  const loaderRef = useRef<any>(null);
-  const apiKey =
-    (import.meta as any)?.env?.VITE_GOOGLE_MAPS_KEY ||
-    (window as any).__GOOGLE_MAPS_KEY__;
+  // Helper normalizare nume
+  const normalizeName = (name: string) => {
+    if (!name) return '';
+    let clean = name.replace('Județul', '').replace('County', '').trim();
+    if (clean === 'Bucharest' || clean === 'București') return 'Bucuresti';
+    return clean.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); 
+  };
 
-  // Resetam starea cand se inchide cosul
+  // ⭐ INITIALIZARE GOOGLE MAPS API
+  useEffect(() => {
+    if (loaderRef.current && apiKey) {
+      loaderRef.current.key = apiKey;
+      loaderRef.current.libraries = ['places'];
+      loaderRef.current.region = 'RO'; 
+    }
+  }, [apiKey, step]);
+
+  // ⭐ LISTENER ADRESĂ (AUTO-COMPLETARE)
+  useEffect(() => {
+    const picker = pickerRef.current;
+    if (picker && step === 'details') {
+      const handlePlaceChange = () => {
+        const place = picker.value;
+        if (!place) return;
+
+        const addressComponents = place.addressComponents || [];
+        let street = '', number = '', city = '', county = '', postal = '';
+
+        addressComponents.forEach((component: any) => {
+          const types = component.types;
+          
+          if (types.includes("route")) street = component.longText;
+          if (types.includes("street_number")) number = component.longText;
+          if (types.includes("locality")) city = normalizeName(component.longText);
+          if (!city && types.includes("administrative_area_level_2")) city = normalizeName(component.longText);
+          if (types.includes("administrative_area_level_1")) county = normalizeName(component.longText);
+          if (types.includes("postal_code")) postal = component.longText;
+        });
+
+        // Fallback dacă Google nu dă strada exactă (de ex. la puncte de interes)
+        if (!street && place.formattedAddress) {
+           const parts = place.formattedAddress.split(',');
+           if (parts.length > 0) street = parts[0];
+        }
+
+        // Actualizăm formularul
+        setFormData(prev => ({
+          ...prev,
+          street_name: street,
+          street_number: number,
+          city: city,
+          county: county,
+          postalCode: postal,
+          address: place.formattedAddress
+        }));
+        
+        if (postal) validateField('postalCode', postal);
+      };
+
+      picker.addEventListener('gmpx-placechange', handlePlaceChange);
+      return () => {
+        if (picker) picker.removeEventListener('gmpx-placechange', handlePlaceChange);
+      };
+    }
+  }, [step]);
+
+  // Resetare stare
   useEffect(() => {
     if (!isCartOpen) {
       setStep('cart');
@@ -125,115 +183,16 @@ export const CartDrawer: React.FC = () => {
     }
   }, [step]);
 
-  /* ✅ Google loader init */
-  useEffect(() => {
-    if (step !== 'details') return;
-    if (!loaderRef.current) return;
-    if (!apiKey) return;
-
-    loaderRef.current.key = apiKey;
-    loaderRef.current.libraries = ['places'];
-    loaderRef.current.region = 'RO';
-  }, [apiKey, step]);
-
-  /* ✅ HELPERS normalize */
-  const normalizeCounty = (googleCounty: string) => {
-    if (!googleCounty) return '';
-    let clean = googleCounty.replace('Județul', '').replace('County', '').replace('Region', '').trim();
-    if (clean === 'Bucharest' || clean === 'București') return 'Bucuresti';
-    return clean.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  };
-
-  const normalizeCity = (googleCity: string) => {
-    if (!googleCity) return '';
-    if (googleCity === 'Bucharest' || googleCity === 'București') return 'Bucuresti';
-    return googleCity;
-  };
-
-  const buildAddressLine = (street: string, number: string, details: string) => {
-    const base = [street?.trim(), number?.trim() ? `Nr. ${number.trim()}` : ''].filter(Boolean).join(' ');
-    const det = details?.trim();
-    if (!base && det) return det;
-    if (base && det) return `${base}, ${det}`;
-    return base;
-  };
-
-  /* ✅ Google Place Picker listener: extracts county/city/street/number/postal */
-  useEffect(() => {
-    const picker = pickerRef.current;
-    if (!picker) return;
-    if (step !== 'details') return;
-
-    const handlePlaceChange = () => {
-      const place = picker.value;
-      if (!place) return;
-
-      const addressComponents = place.addressComponents || [];
-      let street = '';
-      let number = '';
-      let city = '';
-      let county = '';
-      let postal = '';
-
-      addressComponents.forEach((component: any) => {
-        const types = component.types || [];
-
-        if (types.includes('route')) street = component.longText;
-        if (types.includes('street_number')) number = component.longText;
-
-        // city
-        if (types.includes('locality')) city = normalizeCity(component.longText);
-        // fallback sometimes
-        if (!city && types.includes('administrative_area_level_2')) city = normalizeCity(component.longText);
-
-        // county
-        if (types.includes('administrative_area_level_1')) county = normalizeCounty(component.longText);
-
-        // ✅ postal code
-        if (types.includes('postal_code')) postal = component.longText;
-      });
-
-      // fallback street from formattedAddress if missing route
-      if (!street && place.formattedAddress) {
-        const parts = String(place.formattedAddress).split(',');
-        if (parts.length > 0) street = parts[0].trim();
-      }
-
-      setFormData(prev => {
-        const mergedAddress = buildAddressLine(street, number, prev.details);
-        return {
-          ...prev,
-          street_name: street,
-          street_number: number,
-          city: city,
-          county: county,
-          postalCode: postal,
-          address: mergedAddress || place.formattedAddress || prev.address
-        };
-      });
-
-      if (postal) validateField('postalCode', postal);
-    };
-
-    picker.addEventListener('gmpx-placechange', handlePlaceChange);
-    return () => {
-      picker.removeEventListener('gmpx-placechange', handlePlaceChange);
-    };
-  }, [step]);
-
-  // ⭐ INTEGRARE WIDGET ECOLET PENTRU EASYBOX
+  // Ecolet Widget
   useEffect(() => {
     if (shippingMethod === 'easybox' && step === 'details') {
       const scriptId = 'ecolet-widget-script';
-
       if (!document.getElementById(scriptId)) {
         const script = document.createElement('script');
         script.id = scriptId;
-        script.src = 'https://widget.ecolet.ro/locker-selector.js'; // URL exemplu (cel folosit de tine)
+        script.src = 'https://widget.ecolet.ro/locker-selector.js'; 
         script.async = true;
-        script.onload = () => {
-          initEcoletWidget();
-        };
+        script.onload = () => initEcoletWidget();
         document.body.appendChild(script);
       } else {
         initEcoletWidget();
@@ -252,34 +211,37 @@ export const CartDrawer: React.FC = () => {
             city: locker.city,
             county: locker.county
           });
-
-          // dacă user e pe easybox, updatează city/county din locker
-          setFormData(prev => ({
-            ...prev,
-            city: locker.city || prev.city,
-            county: locker.county || prev.county
-          }));
+          setFormData(prev => ({ ...prev, city: locker.city, county: locker.county }));
         }
       });
     }
   };
 
-  if (!isCartOpen) return null;
+  const validateField = (name: string, value: string) => {
+    const errors = { ...validationErrors };
+    if (name === 'phone') {
+      const phoneRegex = /^[0-9]{10,}$/;
+      if (value && !phoneRegex.test(value.replace(/\s/g, ''))) errors.phone = 'Telefonul trebuie să conțină minim 10 cifre';
+      else delete errors.phone;
+    }
+    if (name === 'email' && value) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(value)) errors.email = 'Adresă email invalidă';
+      else delete errors.email;
+    }
+    if (name === 'postalCode') {
+      const postalRegex = /^[0-9]{6}$/;
+      if (value && !postalRegex.test(value)) errors.postalCode = 'Codul poștal trebuie să aibă 6 cifre';
+      else delete errors.postalCode;
+    }
+    setValidationErrors(errors);
+  };
 
-  // CALCULE PREȚURI
-  const subtotal = toNumber(cartTotal);
-  const shippingCost = SHIPPING_COSTS[shippingMethod];
-  const discountAmount = appliedDiscount ? appliedDiscount.amount : 0;
-  const totalBeforeDiscount = subtotal + shippingCost;
-  const finalTotal = totalBeforeDiscount - discountAmount;
-
-  // APLICARE COD REDUCERE
   const handleApplyDiscount = async () => {
     if (!discountCode.trim()) {
       setDiscountError('Introdu un cod');
       return;
     }
-
     setDiscountLoading(true);
     setDiscountError('');
 
@@ -289,14 +251,9 @@ export const CartDrawer: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: discountCode.trim(), subtotal })
       });
-
       const data = await response.json();
-
       if (data.valid) {
-        setAppliedDiscount({
-          code: data.code,
-          amount: data.discountAmount
-        });
+        setAppliedDiscount({ code: data.code, amount: data.discountAmount });
         setDiscountError('');
       } else {
         setDiscountError(data.message || 'Cod invalid');
@@ -315,77 +272,33 @@ export const CartDrawer: React.FC = () => {
     setDiscountError('');
   };
 
-  const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
-  ) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
-
-    // ⭐ VALIDARE LA SCHIMBARE
     validateField(name, value);
-  };
-
-  // ⭐ FUNCȚIE VALIDARE CÂMPURI
-  const validateField = (name: string, value: string) => {
-    const errors = { ...validationErrors };
-
-    if (name === 'phone') {
-      const phoneRegex = /^[0-9]{10,}$/;
-      if (value && !phoneRegex.test(value.replace(/\s/g, ''))) {
-        errors.phone = 'Telefonul trebuie să conțină minim 10 cifre';
-      } else {
-        delete errors.phone;
-      }
-    }
-
-    if (name === 'email' && value) {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(value)) {
-        errors.email = 'Adresă email invalidă';
-      } else {
-        delete errors.email;
-      }
-    }
-
-    if (name === 'postalCode') {
-      const postalRegex = /^[0-9]{6}$/;
-      if (value && !postalRegex.test(value)) {
-        errors.postalCode = 'Codul poștal trebuie să aibă 6 cifre';
-      } else {
-        delete errors.postalCode;
-      }
-    }
-
-    setValidationErrors(errors);
   };
 
   const handleSubmitOrder = async (e?: React.MouseEvent) => {
     if (e) e.preventDefault();
-
-    // ⭐ VALIDĂRI FINALE
     const errors: any = {};
-
     if (!formData.fullName) errors.fullName = 'Numele este obligatoriu';
     if (!formData.phone) errors.phone = 'Telefonul este obligatoriu';
-
-    // pentru courier/easybox: county/city sunt obligatorii (din Google sau locker)
     if (!formData.county) errors.county = 'Județul este obligatoriu';
     if (!formData.city) errors.city = 'Orașul este obligatoriu';
 
-    // pentru curier: avem nevoie de stradă + număr (din Google)
     if (shippingMethod === 'courier') {
-      if (!formData.street_name) errors.address = 'Strada este obligatorie (selectează din hartă)';
-      if (!formData.street_number) errors.address = 'Numărul este obligatoriu (selectează din hartă)';
-      if (!formData.postalCode) errors.postalCode = 'Codul poștal este obligatoriu pentru livrare curier';
+         if (!formData.street_name) errors.address = 'Selectează adresa din sugestiile Google';
+         if (!formData.postalCode) errors.postalCode = 'Adresa selectată nu are cod poștal';
+    } else {
+         if (!formData.address && !formData.street_name) errors.address = 'Adresa este obligatorie';
     }
 
-    // pentru easybox: adresa poate fi minimă, dar tot trebuie city/county + locker
     if (shippingMethod === 'easybox' && !selectedLocker) {
       errors.locker = 'Selectează un EasyBox pentru livrare';
     }
 
     if (Object.keys(errors).length > 0) {
-      alert('Te rugăm să completezi toate câmpurile obligatorii corect.');
+      alert('Te rugăm să completezi toate câmpurile obligatorii.');
       setValidationErrors(errors);
       return;
     }
@@ -393,56 +306,21 @@ export const CartDrawer: React.FC = () => {
     setLoading(true);
 
     try {
-      const addressLine = buildAddressLine(formData.street_name, formData.street_number, formData.details);
+      const addressObject = {
+        line: `${formData.street_name} Nr. ${formData.street_number}, ${formData.details || ''}`.trim(),
+        street_name: formData.street_name,
+        street_number: formData.street_number,
+        details: formData.details,
+        city: formData.city,
+        county: formData.county,
+        postalCode: formData.postalCode
+      };
 
-      if (paymentMethod === 'card') {
-        const response = await fetch(`${API_URL}/create-checkout-session`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            items: cart,
-            subtotal,
-            shippingMethod,
-            shippingCost,
-            discountCode: appliedDiscount?.code || null,
-            discountAmount,
-
-            // dacă backendul tău are nevoie, le trimiți și aici
-            customer: {
-              fullName: formData.fullName,
-              email: formData.email || null,
-              phone: formData.phone
-            },
-            address: {
-              county: formData.county,
-              city: formData.city,
-              line: addressLine || formData.address || '',
-              postalCode: formData.postalCode || null
-            },
-            lockerId: selectedLocker?.lockerId || null
-          })
-        });
-
-        if (!response.ok) throw new Error('Failed to create checkout session');
-
-        const { url } = await response.json();
-        if (url) window.location.href = url;
-        else throw new Error('No checkout URL received');
-      } else {
-        const response = await fetch(`${API_URL}/create-order-ramburs`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+      const orderPayload = {
             customerName: formData.fullName,
             customerEmail: formData.email || null,
             customerPhone: formData.phone,
-
-            address: {
-              county: formData.county,
-              city: formData.city,
-              line: addressLine || formData.address || ''
-            },
-
+            address: addressObject,
             items: cart,
             subtotal,
             shippingMethod,
@@ -450,14 +328,29 @@ export const CartDrawer: React.FC = () => {
             discountCode: appliedDiscount?.code || null,
             discountAmount,
             totalAmount: finalTotal,
+            postalCode: formData.postalCode,
+            lockerId: selectedLocker?.lockerId || null,
+      };
 
-            postalCode: formData.postalCode, // ✅ inclus
-            lockerId: selectedLocker?.lockerId || null // ✅ inclus
-          })
+      if (paymentMethod === 'card') {
+        const response = await fetch(`${API_URL}/create-checkout-session`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(orderPayload),
+        });
+
+        if (!response.ok) throw new Error('Failed to create checkout session');
+        const { url } = await response.json();
+        if (url) window.location.href = url;
+        else throw new Error('No checkout URL received');
+      } else {
+        const response = await fetch(`${API_URL}/create-order-ramburs`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(orderPayload),
         });
 
         if (!response.ok) throw new Error('Failed to create order');
-
         const result = await response.json();
 
         if (result?.success) {
@@ -475,6 +368,15 @@ export const CartDrawer: React.FC = () => {
     }
   };
 
+  if (!isCartOpen) return null;
+
+  // Calcul final
+  const subtotal = toNumber(cartTotal);
+  const shippingCost = SHIPPING_COSTS[shippingMethod];
+  const discountAmount = appliedDiscount ? appliedDiscount.amount : 0;
+  const totalBeforeDiscount = subtotal + shippingCost;
+  const finalTotal = totalBeforeDiscount - discountAmount;
+
   return (
     <>
       <div className="fixed inset-0 bg-black/60 z-50 backdrop-blur-sm" onClick={toggleCart} />
@@ -490,7 +392,7 @@ export const CartDrawer: React.FC = () => {
           </button>
         </div>
 
-        {/* Content - Scrollable */}
+        {/* Content */}
         <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-5 space-y-4">
           {step === 'cart' ? (
             cart.length === 0 ? (
@@ -500,12 +402,8 @@ export const CartDrawer: React.FC = () => {
               </div>
             ) : (
               <div className="space-y-4">
-                {/* Produse în coș */}
                 {cart.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex gap-4 p-4 bg-white rounded-xl border border-neutral-100 shadow-sm hover:shadow-md transition-shadow"
-                  >
+                  <div key={item.id} className="flex gap-4 p-4 bg-white rounded-xl border border-neutral-100 shadow-sm hover:shadow-md transition-shadow">
                     <div className="w-20 h-20 rounded-lg overflow-hidden bg-neutral-50 shrink-0">
                       <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
                     </div>
@@ -513,421 +411,209 @@ export const CartDrawer: React.FC = () => {
                       <h3 className="font-bold text-sm truncate">{item.name}</h3>
                       <p className="text-xs text-neutral-500 mt-1">{item.price.toFixed(2)} RON</p>
                       <div className="flex items-center gap-2 mt-2">
-                        <button
-                          onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                          className="w-7 h-7 flex items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200 text-sm font-bold"
-                        >
-                          −
-                        </button>
+                        <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="w-7 h-7 flex items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200 text-sm font-bold">−</button>
                         <span className="text-sm font-mono w-6 text-center">{item.quantity}</span>
-                        <button
-                          onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                          className="w-7 h-7 flex items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200 text-sm font-bold"
-                        >
-                          +
-                        </button>
+                        <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="w-7 h-7 flex items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200 text-sm font-bold">+</button>
                       </div>
                     </div>
-                    <button onClick={() => removeFromCart(item.id)} className="shrink-0 text-red-400 hover:text-red-600 p-2">
-                      ✕
-                    </button>
+                    <button onClick={() => removeFromCart(item.id)} className="shrink-0 text-red-400 hover:text-red-600 p-2">✕</button>
                   </div>
                 ))}
 
-                {/* Cod reducere */}
+                {/* Cod Reducere */}
                 <div className="bg-white p-4 rounded-xl border border-neutral-100 shadow-sm">
                   <label className="text-xs font-bold uppercase text-neutral-500 mb-2 block">Cod Reducere</label>
                   {!appliedDiscount ? (
                     <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={discountCode}
-                        onChange={(e) => setDiscountCode(e.target.value.toUpperCase())}
-                        placeholder="Introdu codul"
-                        className="flex-1 p-3 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-black"
-                      />
-                      <Button onClick={handleApplyDiscount} disabled={discountLoading} variant="outline" className="px-4">
-                        {discountLoading ? '...' : 'Aplică'}
-                      </Button>
+                      <input type="text" value={discountCode} onChange={(e) => setDiscountCode(e.target.value.toUpperCase())} placeholder="Introdu codul" className="flex-1 p-3 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-black" />
+                      <Button onClick={handleApplyDiscount} disabled={discountLoading} variant="outline" className="px-4">{discountLoading ? '...' : 'Aplică'}</Button>
                     </div>
                   ) : (
                     <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
                       <div className="flex items-center gap-2">
                         <span className="text-green-600 text-xl">✓</span>
-                        <div>
-                          <p className="text-sm font-bold text-green-700">{appliedDiscount.code}</p>
-                          <p className="text-xs text-green-600">-{discountAmount.toFixed(2)} RON</p>
-                        </div>
+                        <div><p className="text-sm font-bold text-green-700">{appliedDiscount.code}</p><p className="text-xs text-green-600">-{discountAmount.toFixed(2)} RON</p></div>
                       </div>
-                      <button onClick={handleRemoveDiscount} className="text-red-500 hover:text-red-700 font-bold">
-                        ✕
-                      </button>
+                      <button onClick={handleRemoveDiscount} className="text-red-500 hover:text-red-700 font-bold">✕</button>
                     </div>
                   )}
                   {discountError && <p className="text-xs text-red-500 mt-2">{discountError}</p>}
                 </div>
 
-                {/* Metoda livrare */}
+                {/* Metoda Livrare */}
                 <div className="bg-white p-4 rounded-xl border border-neutral-100 shadow-sm space-y-3">
                   <h3 className="text-xs font-bold uppercase text-neutral-500">Metoda Livrare</h3>
-
                   <div className="grid grid-cols-1 gap-3">
-                    <label
-                      className={`flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all ${
-                        shippingMethod === 'easybox'
-                          ? 'border-black bg-neutral-50 shadow-inner'
-                          : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="shipping"
-                        checked={shippingMethod === 'easybox'}
-                        onChange={() => setShippingMethod('easybox')}
-                        className="accent-black w-5 h-5"
-                      />
-                      <div>
-                        <span className="font-bold block text-sm">Easy Box</span>
-                        <span className="text-xs text-neutral-500">{SHIPPING_COSTS.easybox.toFixed(2)} RON</span>
-                      </div>
+                    <label className={`flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all ${shippingMethod === 'easybox' ? 'border-black bg-neutral-50 shadow-inner' : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'}`}>
+                      <input type="radio" name="shipping" checked={shippingMethod === 'easybox'} onChange={() => setShippingMethod('easybox')} className="accent-black w-5 h-5" />
+                      <div><span className="font-bold block text-sm">Easy Box</span><span className="text-xs text-neutral-500">{SHIPPING_COSTS.easybox.toFixed(2)} RON</span></div>
                     </label>
-
-                    <label
-                      className={`flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all ${
-                        shippingMethod === 'courier'
-                          ? 'border-black bg-neutral-50 shadow-inner'
-                          : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="shipping"
-                        checked={shippingMethod === 'courier'}
-                        onChange={() => setShippingMethod('courier')}
-                        className="accent-black w-5 h-5"
-                      />
-                      <div>
-                        <span className="font-bold block text-sm">Livrare Curier</span>
-                        <span className="text-xs text-neutral-500">{SHIPPING_COSTS.courier.toFixed(2)} RON</span>
-                      </div>
+                    <label className={`flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all ${shippingMethod === 'courier' ? 'border-black bg-neutral-50 shadow-inner' : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'}`}>
+                      <input type="radio" name="shipping" checked={shippingMethod === 'courier'} onChange={() => setShippingMethod('courier')} className="accent-black w-5 h-5" />
+                      <div><span className="font-bold block text-sm">Livrare Curier</span><span className="text-xs text-neutral-500">{SHIPPING_COSTS.courier.toFixed(2)} RON</span></div>
                     </label>
                   </div>
                 </div>
               </div>
             )
           ) : (
-            <form id="checkout-form" className="space-y-4" onSubmit={(e) => e.preventDefault()}>
-              {/* Date Contact */}
-              <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
-                <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">Date Contact</h3>
-
-                <input
-                  required
-                  name="fullName"
-                  placeholder="Nume Complet *"
-                  value={formData.fullName}
-                  onChange={handleInputChange}
-                  className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm"
-                />
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <input
-                      name="email"
-                      type="email"
-                      placeholder="Email (opțional)"
-                      value={formData.email}
-                      onChange={handleInputChange}
-                      className={`w-full p-3 border rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm ${
-                        validationErrors.email ? 'border-red-500' : 'border-neutral-200'
-                      }`}
-                    />
-                    {validationErrors.email && <p className="text-xs text-red-500 mt-1">{validationErrors.email}</p>}
-                  </div>
-                  <div>
-                    <input
-                      required
-                      name="phone"
-                      placeholder="Telefon *"
-                      value={formData.phone}
-                      onChange={handleInputChange}
-                      className={`w-full p-3 border rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm ${
-                        validationErrors.phone ? 'border-red-500' : 'border-neutral-200'
-                      }`}
-                    />
-                    {validationErrors.phone && <p className="text-xs text-red-500 mt-1">{validationErrors.phone}</p>}
+              <form id="checkout-form" className="space-y-4" onSubmit={(e) => e.preventDefault()}>
+                {/* Date Contact */}
+                <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
+                  <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">Date Contact</h3>
+                  <input required name="fullName" placeholder="Nume Complet *" value={formData.fullName} onChange={handleInputChange} className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm" />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <input name="email" type="email" placeholder="Email (opțional)" value={formData.email} onChange={handleInputChange} className={`w-full p-3 border rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm ${validationErrors.email ? 'border-red-500' : 'border-neutral-200'}`} />
+                      {validationErrors.email && <p className="text-xs text-red-500 mt-1">{validationErrors.email}</p>}
+                    </div>
+                    <div>
+                      <input required name="phone" placeholder="Telefon *" value={formData.phone} onChange={handleInputChange} className={`w-full p-3 border rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm ${validationErrors.phone ? 'border-red-500' : 'border-neutral-200'}`} />
+                      {validationErrors.phone && <p className="text-xs text-red-500 mt-1">{validationErrors.phone}</p>}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Adresa Livrare - Google Maps only */}
-              <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
-                <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">Adresa Livrare</h3>
+                {/* Adresa Livrare - GOOGLE MAPS LOCKED */}
+                <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
+                  <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">Adresa Livrare</h3>
+                  
+                  {step === 'details' && apiKey && (<gmpx-api-loader ref={loaderRef} />)}
 
-                {/* ✅ Google API Loader */}
-                {step === 'details' && apiKey && <gmpx-api-loader ref={loaderRef} />}
+                  {/* SEARCH BAR GOOGLE */}
+                  <div className="mb-3">
+                      <label className="text-xs text-blue-600 font-bold ml-1 mb-1 block">🔍 Caută Adresa (Stradă și Număr)</label>
+                      <gmpx-place-picker ref={pickerRef} placeholder="Ex: Strada Libertății 4, București" style={{ width: '100%' }} />
+                  </div>
 
-                {/* ✅ Place picker */}
-                <div className="space-y-2">
-                  <label className="text-xs text-blue-600 font-bold ml-1 block">🔍 Caută adresa (Google Maps)</label>
-                  <gmpx-place-picker
-                    ref={pickerRef}
-                    placeholder="Ex: Strada Libertății 4, București"
-                    style={{ width: '100%' }}
-                  />
-                </div>
+                  {/* CÂMPURI READ-ONLY PENTRU VERIFICARE */}
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Județ (Acum INPUT read-only, populat de Google) */}
+                    <div>
+                      <label className="text-[10px] text-gray-500 uppercase font-bold ml-1">Județ</label>
+                      <input 
+                        readOnly
+                        value={formData.county}
+                        className="w-full p-3 bg-gray-100 border border-neutral-200 rounded-lg text-gray-600 cursor-not-allowed focus:outline-none"
+                      />
+                    </div>
+                    {/* Oraș */}
+                    <div>
+                      <label className="text-[10px] text-gray-500 uppercase font-bold ml-1">Oraș</label>
+                      <input 
+                        readOnly
+                        value={formData.city}
+                        className="w-full p-3 bg-gray-100 border border-neutral-200 rounded-lg text-gray-600 cursor-not-allowed focus:outline-none"
+                      />
+                    </div>
+                  </div>
 
-                {/* ✅ Autopopulated fields preview */}
-                {(formData.county || formData.city || formData.street_name || formData.street_number || formData.postalCode) && (
-                  <div className="grid grid-cols-2 gap-2 bg-gray-50 p-3 rounded border border-gray-100">
-                    <div>
-                      <label className="text-[10px] text-gray-400 block">Județ</label>
-                      <div className="text-sm font-bold">{formData.county || '-'}</div>
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-gray-400 block">Oraș</label>
-                      <div className="text-sm font-bold">{formData.city || '-'}</div>
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-gray-400 block">Stradă</label>
-                      <div className="text-sm font-bold">{formData.street_name || '-'}</div>
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-gray-400 block">Număr</label>
-                      <div className="text-sm font-bold">{formData.street_number || '-'}</div>
-                    </div>
+                  <div className="grid grid-cols-3 gap-3">
                     <div className="col-span-2">
-                      <label className="text-[10px] text-gray-400 block">Cod poștal</label>
-                      <div className="text-sm font-bold">{formData.postalCode || '-'}</div>
+                       <label className="text-[10px] text-gray-500 uppercase font-bold ml-1">Stradă</label>
+                      <input 
+                        readOnly
+                        value={formData.street_name}
+                        className="w-full p-3 bg-gray-100 border border-neutral-200 rounded-lg text-gray-600 cursor-not-allowed focus:outline-none"
+                      />
                     </div>
+                    <div className="col-span-1">
+                      <label className="text-[10px] text-gray-500 uppercase font-bold ml-1">Număr</label>
+                      <input 
+                        readOnly
+                        value={formData.street_number}
+                        className="w-full p-3 bg-gray-100 border border-neutral-200 rounded-lg text-gray-600 cursor-not-allowed focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* DETALII EDITABILE */}
+                  <div>
+                    <label className="text-xs text-neutral-500 ml-1 mb-1 block">Detalii (Bloc, Scara, Etaj, Ap)</label>
+                    <input
+                      name="details"
+                      placeholder="Introdu manual detalii despre bloc/apartament..."
+                      value={formData.details}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFormData(prev => ({ ...prev, details: val, address: `${prev.street_name} Nr. ${prev.street_number}, ${val}` }));
+                      }}
+                      className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors"
+                    />
+                  </div>
+
+                  {/* COD POȘTAL READ-ONLY */}
+                  <div>
+                    <label className="text-[10px] text-gray-500 uppercase font-bold ml-1">Cod Poștal (Auto)</label>
+                    <input
+                      readOnly
+                      value={formData.postalCode}
+                      className={`w-full p-3 bg-gray-100 border rounded-lg text-gray-600 cursor-not-allowed focus:outline-none ${validationErrors.postalCode ? 'border-red-500' : 'border-neutral-200'}`}
+                    />
+                    {validationErrors.postalCode && <p className="text-xs text-red-500 mt-1">{validationErrors.postalCode}</p>}
+                    <p className="text-xs text-neutral-400 mt-1">{shippingMethod === 'courier' ? 'Se completează automat din Google Maps' : 'Opțional'}</p>
+                  </div>
+                </div>
+
+                {shippingMethod === 'easybox' && (
+                  <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
+                    <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">📦 Selectează EasyBox</h3>
+                    <div id="ecolet-locker-widget" className="border border-neutral-200 rounded-lg p-4 min-h-[200px]"><p className="text-sm text-neutral-400 text-center">Se încarcă harta EasyBox...</p></div>
+                    {selectedLocker && (
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                        <p className="text-sm font-bold text-green-700">✓ EasyBox selectat:</p>
+                        <p className="text-xs text-green-600 mt-1">{selectedLocker.lockerName}</p>
+                        <p className="text-xs text-green-600">{selectedLocker.city}, {selectedLocker.county}</p>
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {/* Detalii suplimentare */}
-                <input
-                  name="details"
-                  placeholder="Bloc, Scara, Etaj, Ap (Opțional)"
-                  value={formData.details}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setFormData(prev => ({
-                      ...prev,
-                      details: val,
-                      address: buildAddressLine(prev.street_name, prev.street_number, val) || prev.address
-                    }));
-                  }}
-                  className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm"
-                />
-
-                {/* Cod poștal (auto, dar editabil dacă lipsește) */}
-                <div>
-                  <input
-                    required={shippingMethod === 'courier'}
-                    name="postalCode"
-                    placeholder={`Cod Poștal ${shippingMethod === 'courier' ? '*' : '(opțional)'}`}
-                    value={formData.postalCode}
-                    onChange={handleInputChange}
-                    maxLength={6}
-                    className={`w-full p-3 border rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm ${
-                      validationErrors.postalCode ? 'border-red-500' : 'border-neutral-200'
-                    }`}
-                  />
-                  {validationErrors.postalCode && <p className="text-xs text-red-500 mt-1">{validationErrors.postalCode}</p>}
-                  <p className="text-xs text-neutral-400 mt-1">
-                    {shippingMethod === 'courier'
-                      ? 'Obligatoriu pentru livrare curier (6 cifre). Dacă Google nu îl completează, îl introduci manual.'
-                      : 'Opțional pentru EasyBox, necesar pentru factură.'}
-                  </p>
-                </div>
-              </div>
-
-              {shippingMethod === 'easybox' && (
+                {/* Plata */}
                 <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
-                  <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">📦 Selectează EasyBox</h3>
-
-                  <div id="ecolet-locker-widget" className="border border-neutral-200 rounded-lg p-4 min-h-[200px]">
-                    <p className="text-sm text-neutral-400 text-center">Se încarcă harta EasyBox...</p>
+                  <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">Metoda Plată</h3>
+                  <div className="grid grid-cols-1 gap-3">
+                    <label className={`flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all duration-200 ${paymentMethod === 'ramburs' ? 'border-black bg-neutral-50 shadow-inner' : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'}`}>
+                      <input type="radio" name="payment" checked={paymentMethod === 'ramburs'} onChange={() => setPaymentMethod('ramburs')} className="accent-black w-5 h-5" />
+                      <div className="p-2 bg-white rounded-full border border-neutral-100 shadow-sm shrink-0"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg></div>
+                      <div><span className="font-bold block text-sm">Plata Ramburs (Cash)</span><span className="text-xs text-neutral-500">Plătești curierului la livrare</span></div>
+                    </label>
+                    <label className={`relative flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all duration-200 ${paymentMethod === 'card' ? 'border-black bg-neutral-50 shadow-inner' : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'}`}>
+                      <input type="radio" name="payment" checked={paymentMethod === 'card'} onChange={() => setPaymentMethod('card')} className="accent-black w-5 h-5" />
+                      <div className="p-2 bg-white rounded-full border border-neutral-100 shadow-sm shrink-0"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2" /><line x1="1" y1="10" x2="23" y2="10" /></svg></div>
+                      <div><span className="font-bold block text-sm">Card Online</span><span className="text-xs text-neutral-500">Securizat prin Stripe</span></div>
+                    </label>
                   </div>
-
-                  {selectedLocker && (
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                      <p className="text-sm font-bold text-green-700">✓ EasyBox selectat:</p>
-                      <p className="text-xs text-green-600 mt-1">{selectedLocker.lockerName}</p>
-                      <p className="text-xs text-green-600">
-                        {selectedLocker.city}, {selectedLocker.county}
-                      </p>
-                    </div>
-                  )}
                 </div>
-              )}
-
-              {/* Plata */}
-              <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
-                <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">Metoda Plată</h3>
-
-                <div className="grid grid-cols-1 gap-3">
-                  <label
-                    className={`relative flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all duration-200 ${
-                      paymentMethod === 'ramburs'
-                        ? 'border-black bg-neutral-50 shadow-inner'
-                        : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="payment"
-                      checked={paymentMethod === 'ramburs'}
-                      onChange={() => setPaymentMethod('ramburs')}
-                      className="accent-black w-5 h-5"
-                    />
-
-                    <div className="p-2 bg-white rounded-full border border-neutral-100 shadow-sm shrink-0">
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="24"
-                        height="24"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="#16a34a"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <line x1="12" y1="1" x2="12" y2="23" />
-                        <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-                      </svg>
-                    </div>
-
-                    <div>
-                      <span className="font-bold block text-sm">Plata Ramburs (Cash)</span>
-                      <span className="text-xs text-neutral-500">Plătești curierului la livrare</span>
-                    </div>
-                  </label>
-
-                  <label
-                    className={`relative flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all duration-200 ${
-                      paymentMethod === 'card'
-                        ? 'border-black bg-neutral-50 shadow-inner'
-                        : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="payment"
-                      checked={paymentMethod === 'card'}
-                      onChange={() => setPaymentMethod('card')}
-                      className="accent-black w-5 h-5"
-                    />
-
-                    <div className="p-2 bg-white rounded-full border border-neutral-100 shadow-sm shrink-0">
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="24"
-                        height="24"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="#2563eb"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
-                        <line x1="1" y1="10" x2="23" y2="10" />
-                      </svg>
-                    </div>
-
-                    <div>
-                      <span className="font-bold block text-sm">Card Online</span>
-                      <span className="text-xs text-neutral-500">Securizat prin Stripe</span>
-                    </div>
-                  </label>
-                </div>
-              </div>
-            </form>
+              </form>
           )}
         </div>
 
-        {/* Footer cu prețuri */}
+        {/* Footer */}
         {cart.length > 0 && (
           <div className="p-6 border-t border-neutral-100 bg-white shrink-0">
-            {/* Detalii prețuri */}
             <div className="space-y-2 mb-4 text-sm">
-              <div className="flex justify-between text-neutral-600">
-                <span>Subtotal produse</span>
-                <span>{subtotal.toFixed(2)} RON</span>
-              </div>
-
-              <div className="flex justify-between text-neutral-600">
-                <span>Transport ({shippingMethod === 'easybox' ? 'Easy Box' : 'Curier'})</span>
-                <span>{shippingCost.toFixed(2)} RON</span>
-              </div>
-
-              {appliedDiscount && (
-                <div className="flex justify-between text-green-600 font-bold">
-                  <span>Reducere ({appliedDiscount.code})</span>
-                  <span>-{discountAmount.toFixed(2)} RON</span>
-                </div>
-              )}
-
-              {appliedDiscount && (
-                <div className="flex justify-between text-neutral-400 line-through text-xs pt-2 border-t border-neutral-100">
-                  <span>Fără reducere</span>
-                  <span>{totalBeforeDiscount.toFixed(2)} RON</span>
-                </div>
-              )}
+              <div className="flex justify-between text-neutral-600"><span>Subtotal produse</span><span>{subtotal.toFixed(2)} RON</span></div>
+              <div className="flex justify-between text-neutral-600"><span>Transport ({shippingMethod === 'easybox' ? 'Easy Box' : 'Curier'})</span><span>{shippingCost.toFixed(2)} RON</span></div>
+              {appliedDiscount && <div className="flex justify-between text-green-600 font-bold"><span>Reducere ({appliedDiscount.code})</span><span>-{discountAmount.toFixed(2)} RON</span></div>}
+              {appliedDiscount && <div className="flex justify-between text-neutral-400 line-through text-xs pt-2 border-t border-neutral-100"><span>Fără reducere</span><span>{totalBeforeDiscount.toFixed(2)} RON</span></div>}
             </div>
-
-            {/* Total final */}
-            <div className="flex justify-between items-center mb-4 pb-4 border-b-2 border-black">
-              <span className="text-sm text-neutral-500 uppercase font-bold">Total de plată</span>
-              <span className="text-2xl font-black">{finalTotal.toFixed(2)} RON</span>
-            </div>
-
-            {appliedDiscount && (
-              <p className="text-center text-sm text-green-600 mb-4">
-                ✓ Ai economisit <strong>{discountAmount.toFixed(2)} RON</strong>!
-              </p>
-            )}
-
+            <div className="flex justify-between items-center mb-4 pb-4 border-b-2 border-black"><span className="text-sm text-neutral-500 uppercase font-bold">Total de plată</span><span className="text-2xl font-black">{finalTotal.toFixed(2)} RON</span></div>
+            {appliedDiscount && <p className="text-center text-sm text-green-600 mb-4">✓ Ai economisit <strong>{discountAmount.toFixed(2)} RON</strong>!</p>}
             {step === 'cart' ? (
-              <Button fullWidth onClick={() => setStep('details')}>
-                Continuă spre Checkout
-              </Button>
+              <Button fullWidth onClick={() => setStep('details')}>Continuă spre Checkout</Button>
             ) : (
-              <Button
-                fullWidth
-                onClick={handleSubmitOrder}
-                disabled={loading}
-                type="button"
-                className="shadow-xl"
-              >
-                {loading
-                  ? 'Se procesează...'
-                  : paymentMethod === 'ramburs'
-                    ? `Trimite Comanda (${finalTotal.toFixed(2)} RON)`
-                    : `Plătește cu Cardul (${finalTotal.toFixed(2)} RON)`}
-              </Button>
+              <Button fullWidth onClick={handleSubmitOrder} disabled={loading} type="button" className="shadow-xl">{loading ? 'Se procesează...' : paymentMethod === 'ramburs' ? `Trimite Comanda (${finalTotal.toFixed(2)} RON)` : `Plătește cu Cardul (${finalTotal.toFixed(2)} RON)`}</Button>
             )}
           </div>
         )}
       </div>
 
-      {/* ✅ CSS pentru z-index + styling place picker */}
       <style>{`
         .pac-container { z-index: 99999 !important; }
         gmpx-place-picker { display: block; width: 100%; }
-        gmpx-place-picker input {
-          padding: 0.75rem !important;
-          border-radius: 0.5rem !important;
-          border: 1px solid #e5e5e5 !important;
-          width: 100% !important;
-          font-size: 0.875rem !important;
-          box-sizing: border-box !important;
-        }
-        gmpx-place-picker input:focus {
-          outline: none !important;
-          border-color: black !important;
-        }
+        gmpx-place-picker input { padding: 0.75rem !important; border-radius: 0.5rem !important; border: 1px solid #e5e5e5 !important; width: 100% !important; font-size: 0.875rem !important; box-sizing: border-box !important; background-color: white !important; height: auto !important; }
+        gmpx-place-picker input:focus { outline: none !important; border-color: black !important; }
       `}</style>
     </>
   );
