@@ -97,7 +97,7 @@ export const CartDrawer: React.FC = () => {
     return 0;
   };
 
-  // ⭐ HELPERE NORMALIZARE
+  // ⭐ HELPERE PENTRU NORMALIZARE DATE GOOGLE
   const normalizeName = (name: string) => {
     if (!name) return '';
     let clean = name.replace('Județul', '').replace('County', '').trim();
@@ -120,7 +120,7 @@ export const CartDrawer: React.FC = () => {
     }
   }, [apiKey, step]);
 
-  // ⭐ LISTENER ADRESĂ (AUTO-COMPLETARE)
+  // ⭐ LISTENER PENTRU SELECTARE ADRESĂ
   useEffect(() => {
     const picker = pickerRef.current;
     if (picker && step === 'details') {
@@ -131,10 +131,8 @@ export const CartDrawer: React.FC = () => {
         const addressComponents = place.addressComponents || [];
         let street = '', number = '', city = '', county = '', postal = '';
 
-        // Iterăm prin componentele adresei
         addressComponents.forEach((component: any) => {
           const types = component.types;
-          
           if (types.includes("route")) street = component.longText;
           if (types.includes("street_number")) number = component.longText;
           if (types.includes("locality")) city = normalizeCity(component.longText);
@@ -143,13 +141,11 @@ export const CartDrawer: React.FC = () => {
           if (types.includes("postal_code")) postal = component.longText;
         });
 
-        // Fallback dacă Google nu dă strada exactă
         if (!street && place.formattedAddress) {
            const parts = place.formattedAddress.split(',');
            if (parts.length > 0) street = parts[0];
         }
 
-        // Actualizăm formularul
         setFormData(prev => ({
           ...prev,
           street_name: street,
@@ -170,7 +166,7 @@ export const CartDrawer: React.FC = () => {
     }
   }, [step]);
 
-  // Resetare stare
+  // Resetam starea
   useEffect(() => {
     if (!isCartOpen) {
       setStep('cart');
@@ -191,7 +187,7 @@ export const CartDrawer: React.FC = () => {
     }
   }, [step]);
 
-  // Ecolet Widget
+  // ECOLET
   useEffect(() => {
     if (shippingMethod === 'easybox' && step === 'details') {
       const scriptId = 'ecolet-widget-script';
@@ -229,12 +225,12 @@ export const CartDrawer: React.FC = () => {
     const errors = { ...validationErrors };
     if (name === 'phone') {
       const phoneRegex = /^[0-9]{10,}$/;
-      if (value && !phoneRegex.test(value.replace(/\s/g, ''))) errors.phone = 'Telefonul trebuie să conțină minim 10 cifre';
+      if (value && !phoneRegex.test(value.replace(/\s/g, ''))) errors.phone = 'Minim 10 cifre';
       else delete errors.phone;
     }
     if (name === 'email' && value) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(value)) errors.email = 'Adresă email invalidă';
+      if (!emailRegex.test(value)) errors.email = 'Email invalid';
       else delete errors.email;
     }
     if (name === 'postalCode') {
@@ -252,7 +248,6 @@ export const CartDrawer: React.FC = () => {
     }
     setDiscountLoading(true);
     setDiscountError('');
-
     try {
       const response = await fetch(`${API_URL}/validate-discount`, {
         method: 'POST',
@@ -306,7 +301,7 @@ export const CartDrawer: React.FC = () => {
     }
 
     if (Object.keys(errors).length > 0) {
-      alert('Te rugăm să completezi toate câmpurile obligatorii.');
+      alert('Te rugăm să completezi câmpurile obligatorii.');
       setValidationErrors(errors);
       return;
     }
@@ -378,7 +373,6 @@ export const CartDrawer: React.FC = () => {
 
   if (!isCartOpen) return null;
 
-  // Calcul final
   const subtotal = toNumber(cartTotal);
   const shippingCost = SHIPPING_COSTS[shippingMethod];
   const discountAmount = appliedDiscount ? appliedDiscount.amount : 0;
@@ -393,11 +387,9 @@ export const CartDrawer: React.FC = () => {
         {/* Header */}
         <div className="p-5 border-b border-neutral-100 flex items-center justify-between bg-white shrink-0">
           <h2 className="text-xl font-bold uppercase tracking-tight">
-            {step === 'cart' ? 'Cosul Tau' : 'Detalii Livrare'}
+            {step === 'cart' ? 'Coșul Tău' : 'Detalii Livrare'}
           </h2>
-          <button onClick={toggleCart} className="p-2 hover:bg-neutral-100 rounded-full transition-colors">
-            ✕
-          </button>
+          <button onClick={toggleCart} className="p-2 hover:bg-neutral-100 rounded-full transition-colors">✕</button>
         </div>
 
         {/* Content */}
@@ -410,6 +402,7 @@ export const CartDrawer: React.FC = () => {
               </div>
             ) : (
               <div className="space-y-4">
+                {/* Listă produse */}
                 {cart.map((item) => (
                   <div key={item.id} className="flex gap-4 p-4 bg-white rounded-xl border border-neutral-100 shadow-sm hover:shadow-md transition-shadow">
                     <div className="w-20 h-20 rounded-lg overflow-hidden bg-neutral-50 shrink-0">
@@ -433,7 +426,7 @@ export const CartDrawer: React.FC = () => {
                   <label className="text-xs font-bold uppercase text-neutral-500 mb-2 block">Cod Reducere</label>
                   {!appliedDiscount ? (
                     <div className="flex gap-2">
-                      <input type="text" value={discountCode} onChange={(e) => setDiscountCode(e.target.value.toUpperCase())} placeholder="Introdu codul" className="flex-1 p-3 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-black" />
+                      <input type="text" value={discountCode} onChange={(e) => setDiscountCode(e.target.value.toUpperCase())} placeholder="COD" className="flex-1 p-3 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-black" />
                       <Button onClick={handleApplyDiscount} disabled={discountLoading} variant="outline" className="px-4">{discountLoading ? '...' : 'Aplică'}</Button>
                     </div>
                   ) : (
@@ -482,7 +475,7 @@ export const CartDrawer: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Adresa Livrare - GOOGLE MAPS + PANOU GRI */}
+                {/* Adresa Livrare - GOOGLE MAPS + PANOU OPTIMIZAT */}
                 <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
                   <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">ADRESA LIVRARE</h3>
                   
@@ -498,14 +491,18 @@ export const CartDrawer: React.FC = () => {
                       />
                   </div>
 
-                  {/* 2. PANOU INFORMATIV GRI (READ ONLY) */}
-                  <div className="bg-gray-100 p-4 rounded-lg border border-gray-200 text-sm text-gray-700 space-y-1">
-                      <div><span className="font-bold text-gray-600">Județ:</span> {formData.county || '–'}</div>
-                      <div><span className="font-bold text-gray-600">Oraș:</span> {formData.city || '–'}</div>
-                      <div><span className="font-bold text-gray-600">Stradă:</span> {formData.street_name || '–'}</div>
-                      <div><span className="font-bold text-gray-600">Număr:</span> {formData.street_number || '–'}</div>
-                      {/* Adăugat Cod Poștal aici în panou */}
-                      <div><span className="font-bold text-gray-600">Cod Poștal:</span> {formData.postalCode || '–'}</div>
+                  {/* 2. PANOU INFORMATIV COMPACT (GRID) */}
+                  <div className="bg-gray-100 p-3 rounded-lg border border-gray-200 text-xs text-gray-700 grid grid-cols-12 gap-2">
+                      {/* Rând 1: Județ + Oraș */}
+                      <div className="col-span-6"><span className="font-bold text-gray-500 block">Județ</span>{formData.county || '–'}</div>
+                      <div className="col-span-6"><span className="font-bold text-gray-500 block">Oraș</span>{formData.city || '–'}</div>
+                      
+                      {/* Rând 2: Stradă + Număr */}
+                      <div className="col-span-9"><span className="font-bold text-gray-500 block">Stradă</span>{formData.street_name || '–'}</div>
+                      <div className="col-span-3"><span className="font-bold text-gray-500 block">Nr.</span>{formData.street_number || '–'}</div>
+                      
+                      {/* Rând 3: Cod Poștal */}
+                      <div className="col-span-12 pt-1 border-t border-gray-200"><span className="font-bold text-gray-500 inline-block mr-2">Cod Poștal:</span> {formData.postalCode || '–'}</div>
                   </div>
 
                   {/* 3. DETALII EDITABILE */}
@@ -558,21 +555,26 @@ export const CartDrawer: React.FC = () => {
           )}
         </div>
 
-        {/* Footer */}
+        {/* Footer COMPACT */}
         {cart.length > 0 && (
-          <div className="p-6 border-t border-neutral-100 bg-white shrink-0">
-            <div className="space-y-2 mb-4 text-sm">
-              <div className="flex justify-between text-neutral-600"><span>Subtotal produse</span><span>{subtotal.toFixed(2)} RON</span></div>
-              <div className="flex justify-between text-neutral-600"><span>Transport ({shippingMethod === 'easybox' ? 'Easy Box' : 'Curier'})</span><span>{shippingCost.toFixed(2)} RON</span></div>
-              {appliedDiscount && <div className="flex justify-between text-green-600 font-bold"><span>Reducere ({appliedDiscount.code})</span><span>-{discountAmount.toFixed(2)} RON</span></div>}
-              {appliedDiscount && <div className="flex justify-between text-neutral-400 line-through text-xs pt-2 border-t border-neutral-100"><span>Fără reducere</span><span>{totalBeforeDiscount.toFixed(2)} RON</span></div>}
+          <div className="p-4 border-t border-neutral-100 bg-white shrink-0">
+            {/* Detalii prețuri reduse */}
+            <div className="space-y-1 mb-2 text-xs">
+              <div className="flex justify-between text-neutral-600"><span>Subtotal</span><span>{subtotal.toFixed(2)} RON</span></div>
+              <div className="flex justify-between text-neutral-600"><span>Transport</span><span>{shippingCost.toFixed(2)} RON</span></div>
+              {appliedDiscount && <div className="flex justify-between text-green-600 font-bold"><span>Reducere</span><span>-{discountAmount.toFixed(2)} RON</span></div>}
             </div>
-            <div className="flex justify-between items-center mb-4 pb-4 border-b-2 border-black"><span className="text-sm text-neutral-500 uppercase font-bold">Total de plată</span><span className="text-2xl font-black">{finalTotal.toFixed(2)} RON</span></div>
-            {appliedDiscount && <p className="text-center text-sm text-green-600 mb-4">✓ Ai economisit <strong>{discountAmount.toFixed(2)} RON</strong>!</p>}
+
+            {/* Total final */}
+            <div className="flex justify-between items-center mb-3 pb-2 border-b border-black">
+              <span className="text-xs text-neutral-500 uppercase font-bold">Total</span>
+              <span className="text-xl font-black">{finalTotal.toFixed(2)} RON</span>
+            </div>
+
             {step === 'cart' ? (
-              <Button fullWidth onClick={() => setStep('details')}>Continuă spre Checkout</Button>
+              <Button fullWidth onClick={() => setStep('details')}>Continuă</Button>
             ) : (
-              <Button fullWidth onClick={handleSubmitOrder} disabled={loading} type="button" className="shadow-xl">{loading ? 'Se procesează...' : paymentMethod === 'ramburs' ? `Trimite Comanda (${finalTotal.toFixed(2)} RON)` : `Plătește cu Cardul (${finalTotal.toFixed(2)} RON)`}</Button>
+              <Button fullWidth onClick={handleSubmitOrder} disabled={loading} type="button" className="shadow-xl">{loading ? 'Se procesează...' : `Plătește ${finalTotal.toFixed(2)} RON`}</Button>
             )}
           </div>
         )}
@@ -581,18 +583,15 @@ export const CartDrawer: React.FC = () => {
       <style>{`
         .pac-container { z-index: 99999 !important; }
         gmpx-place-picker { display: block; width: 100%; }
-        /* Stilizare input intern Google */
-        gmpx-place-picker input {
-          padding: 0.75rem !important;
-          border-radius: 0.5rem !important;
-          border: 1px solid #e5e5e5 !important;
-          width: 100% !important;
-          font-size: 0.875rem !important;
-          box-sizing: border-box !important;
-          background-color: white !important;
-          height: auto !important;
-        }
+        gmpx-place-picker input { padding: 0.75rem !important; border-radius: 0.5rem !important; border: 1px solid #e5e5e5 !important; width: 100% !important; font-size: 0.875rem !important; box-sizing: border-box !important; background-color: white !important; height: auto !important; }
         gmpx-place-picker input:focus { outline: none !important; border-color: black !important; }
+        
+        /* FIX ZOOM MOBIL: Forțează font-size 16px pe ecrane mici */
+        @media screen and (max-width: 768px) {
+          input, select, textarea, gmpx-place-picker::part(input) {
+            font-size: 16px !important;
+          }
+        }
       `}</style>
     </>
   );
