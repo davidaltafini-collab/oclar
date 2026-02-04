@@ -3,16 +3,25 @@ import { useCart } from '../context/CartContext';
 import { Button } from './Button';
 import { API_URL, ROMANIAN_COUNTIES } from '../constants';
 
-// ⭐ IMPORTURI GOOGLE WEB COMPONENTS (SOLUȚIA PREMIUM)
+// ⭐ IMPORTURI GOOGLE WEB COMPONENTS
 import '@googlemaps/extended-component-library/api_loader.js';
 import '@googlemaps/extended-component-library/place_picker.js';
 
-// ⭐ DEFINIȚII TYPESCRIPT PENTRU ELEMENTELE GOOGLE NO
+// ⭐ DEFINIȚII TYPESCRIPT PENTRU ELEMENTELE GOOGLE
 declare global {
   namespace JSX {
     interface IntrinsicElements {
-      'gmpx-api-loader': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & { key: string; "solution-channel"?: string };
-      'gmpx-place-picker': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & { placeholder?: string; ref?: any; style?: React.CSSProperties };
+      'gmpx-api-loader': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & { 
+        key: string; 
+        "solution-channel"?: string;
+        "loading"?: string;
+      };
+      'gmpx-place-picker': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & { 
+        placeholder?: string; 
+        ref?: any; 
+        style?: React.CSSProperties;
+        country?: string;
+      };
     }
   }
 }
@@ -45,8 +54,11 @@ export const CartDrawer: React.FC = () => {
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   
-  // ⭐ REFERINȚĂ PENTRU NOUL PICKER GOOGLE
+  // ⭐ REFERINȚĂ PENTRU PICKER GOOGLE
   const pickerRef = useRef<any>(null);
+  
+  // ⭐ STATE PENTRU GOOGLE MAPS API
+  const [googleMapsLoaded, setGoogleMapsLoaded] = useState(false);
 
   // ⭐ STATE PENTRU ECOLET
   const [selectedLocker, setSelectedLocker] = useState<{
@@ -81,7 +93,6 @@ export const CartDrawer: React.FC = () => {
     if (!googleCounty) return '';
     let clean = googleCounty.replace('Județul', '').replace('County', '').trim();
     if (clean === 'Bucharest' || clean === 'București') return 'Bucuresti';
-    // Eliminare diacritice pentru matching cu lista Ecolet
     return clean.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); 
   };
 
@@ -99,6 +110,41 @@ export const CartDrawer: React.FC = () => {
     }
     return 0;
   };
+
+  // ⭐ VERIFICARE ÎNCĂRCARE GOOGLE MAPS API
+  useEffect(() => {
+    const checkGoogleMapsLoaded = () => {
+      if (typeof window !== 'undefined' && (window as any).google?.maps) {
+        console.log('✅ Google Maps API loaded successfully');
+        setGoogleMapsLoaded(true);
+        return true;
+      }
+      return false;
+    };
+
+    // Verificare imediată
+    if (checkGoogleMapsLoaded()) return;
+
+    // Verificare periodică (cu timeout pentru siguranță)
+    const interval = setInterval(() => {
+      if (checkGoogleMapsLoaded()) {
+        clearInterval(interval);
+      }
+    }, 500);
+
+    // Cleanup după 10 secunde
+    const timeout = setTimeout(() => {
+      clearInterval(interval);
+      if (!googleMapsLoaded) {
+        console.warn('⚠️ Google Maps API took too long to load');
+      }
+    }, 10000);
+
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, []);
 
   // Resetam starea cand se inchide cosul
   useEffect(() => {
@@ -121,30 +167,34 @@ export const CartDrawer: React.FC = () => {
     }
   }, [step]);
 
-  // ⭐ LISTENER PENTRU GOOGLE PICKER (NOUL MOD DE LUCRU)
+  // ⭐ LISTENER PENTRU GOOGLE PICKER
   useEffect(() => {
     const picker = pickerRef.current;
-    if (picker && step === 'details') {
+    if (picker && step === 'details' && googleMapsLoaded) {
         const handlePlaceChange = () => {
             const place = picker.value;
-            if (!place || !place.addressComponents) return;
+            if (!place || !place.addressComponents) {
+                console.warn('⚠️ No address components found');
+                return;
+            }
+
+            console.log('📍 Place selected:', place);
 
             const addressComponents = place.addressComponents;
             let street = '', number = '', city = '', county = '', postal = '';
 
-            // Extragem componentele din noul format Google
             addressComponents.forEach((component: any) => {
                 const types = component.types;
                 if (types.includes("route")) street = component.longText;
                 if (types.includes("street_number")) number = component.longText;
                 if (types.includes("locality")) city = normalizeCity(component.longText);
-                // Fallback oraș
                 if (!city && types.includes("administrative_area_level_2")) city = normalizeCity(component.longText);
                 if (types.includes("administrative_area_level_1")) county = normalizeCounty(component.longText);
                 if (types.includes("postal_code")) postal = component.longText;
             });
 
-            // Actualizăm formularul cu datele sparte
+            console.log('✅ Parsed address:', { street, number, city, county, postal });
+
             setFormData(prev => ({
                 ...prev,
                 street_name: street,
@@ -152,19 +202,21 @@ export const CartDrawer: React.FC = () => {
                 city: city,
                 county: county,
                 postalCode: postal,
-                address: place.formattedAddress // Adresa frumoasă
+                address: place.formattedAddress
             }));
             
-            // Validăm codul poștal automat
             if (postal) validateField('postalCode', postal);
         };
 
         picker.addEventListener('gmpx-placechange', handlePlaceChange);
+        
         return () => {
-            if (picker) picker.removeEventListener('gmpx-placechange', handlePlaceChange);
+            if (picker) {
+                picker.removeEventListener('gmpx-placechange', handlePlaceChange);
+            }
         };
     }
-  }, [step]);
+  }, [step, googleMapsLoaded]);
 
   // ⭐ INTEGRARE WIDGET ECOLET PENTRU EASYBOX
   useEffect(() => {
@@ -265,8 +317,6 @@ export const CartDrawer: React.FC = () => {
   ) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
-
-    // ⭐ VALIDARE LA SCHIMBARE
     validateField(name, value);
   };
 
@@ -315,17 +365,14 @@ export const CartDrawer: React.FC = () => {
     if (!formData.county) errors.county = 'Județul este obligatoriu';
     if (!formData.city) errors.city = 'Orașul este obligatoriu';
 
-    // Validare specifică pentru Curier (avem nevoie de stradă și număr separate)
     if (shippingMethod === 'courier') {
       if (!formData.street_name) errors.address = 'Numele străzii este obligatoriu';
       if (!formData.street_number) errors.address = 'Numărul străzii este obligatoriu';
       if (!formData.postalCode) errors.postalCode = 'Codul poștal este obligatoriu pentru livrare curier';
     } else {
-      // Fallback simplu
       if (!formData.address && !formData.street_name) errors.address = 'Adresa este obligatorie';
     }
 
-    // Pentru EasyBox, locker-ul trebuie selectat
     if (shippingMethod === 'easybox' && !selectedLocker) {
       errors.locker = 'Selectează un EasyBox pentru livrare';
     }
@@ -339,30 +386,21 @@ export const CartDrawer: React.FC = () => {
     setLoading(true);
 
     try {
-      // ⭐ SECRETUL: Construim obiectul de adresă "inteligent"
-      // Aici combinăm datele separate ca să le trimitem la Ecolet curat
       const addressObject = {
-        // Linia completă pentru factură/afișare (ex: "Str. Libertății Nr. 10, Bl. 2")
-        line: `${formData.street_name} Nr. ${formData.street_number}, ${formData.details || ''}`,
-
-        // Componentele separate pentru API Ecolet
+        line: `${formData.street_name} Nr. ${formData.street_number}, ${formData.details || ''}`.trim(),
         street_name: formData.street_name,
         street_number: formData.street_number,
-        details: formData.details, // Bloc, Scara, Ap (va merge în Observații)
-
+        details: formData.details,
         city: formData.city,
         county: formData.county,
         postalCode: formData.postalCode
       };
 
-      // Payload comun (datele trimise la server)
       const orderPayload = {
         customerName: formData.fullName,
         customerEmail: formData.email || null,
         customerPhone: formData.phone,
-
-        address: addressObject, // <--- TRIMITERE OBIECT STRUCTURAT
-
+        address: addressObject,
         items: cart,
         subtotal,
         shippingMethod,
@@ -378,7 +416,7 @@ export const CartDrawer: React.FC = () => {
         const response = await fetch(`${API_URL}/create-checkout-session`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(orderPayload), // Folosim același payload și la card
+          body: JSON.stringify(orderPayload),
         });
 
         if (!response.ok) throw new Error('Failed to create checkout session');
@@ -387,11 +425,10 @@ export const CartDrawer: React.FC = () => {
         if (url) window.location.href = url;
         else throw new Error('No checkout URL received');
       } else {
-        // ⭐ RAMBURS
         const response = await fetch(`${API_URL}/create-order-ramburs`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(orderPayload), // Aici se trimit datele corecte
+          body: JSON.stringify(orderPayload),
         });
 
         if (!response.ok) throw new Error('Failed to create order');
@@ -415,8 +452,12 @@ export const CartDrawer: React.FC = () => {
 
   return (
     <>
-      {/* ⭐ LOAD GOOGLE API LOADER */}
-      <gmpx-api-loader key={import.meta.env.VITE_GOOGLE_MAPS_KEY} solution-channel="GMP_GE_mapsandplacesautocomplete_v2"></gmpx-api-loader>
+      {/* ⭐ LOAD GOOGLE API LOADER - VERSIUNE ÎMBUNĂTĂȚITĂ */}
+      <gmpx-api-loader 
+        key={import.meta.env.VITE_GOOGLE_MAPS_KEY} 
+        solution-channel="GMP_GE_mapsandplacesautocomplete_v2"
+        loading="async"
+      />
 
       <div className="fixed inset-0 bg-black/60 z-50 backdrop-blur-sm" onClick={toggleCart} />
 
@@ -589,8 +630,7 @@ export const CartDrawer: React.FC = () => {
                         placeholder="Email (opțional)"
                         value={formData.email}
                         onChange={handleInputChange}
-                        className={`w-full p-3 border rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm ${validationErrors.email ? 'border-red-500' : 'border-neutral-200'
-                          }`}
+                        className={`w-full p-3 border rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm ${validationErrors.email ? 'border-red-500' : 'border-neutral-200'}`}
                       />
                       {validationErrors.email && (
                         <p className="text-xs text-red-500 mt-1">{validationErrors.email}</p>
@@ -603,8 +643,7 @@ export const CartDrawer: React.FC = () => {
                         placeholder="Telefon *"
                         value={formData.phone}
                         onChange={handleInputChange}
-                        className={`w-full p-3 border rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm ${validationErrors.phone ? 'border-red-500' : 'border-neutral-200'
-                          }`}
+                        className={`w-full p-3 border rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm ${validationErrors.phone ? 'border-red-500' : 'border-neutral-200'}`}
                       />
                       {validationErrors.phone && (
                         <p className="text-xs text-red-500 mt-1">{validationErrors.phone}</p>
@@ -613,25 +652,33 @@ export const CartDrawer: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Adresa Livrare (MODIFICAT PENTRU GOOGLE PLACES) */}
+                {/* Adresa Livrare */}
                 <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
                   <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">
                     Adresa Livrare
                   </h3>
                   
-                  {/* ⭐ CÂMPUL STRADĂ CU GOOGLE AUTOCOMPLETE (NOU) */}
-                  <div className="col-span-2">
-                      <label className="text-xs text-blue-600 font-bold ml-1 mb-1 block">Caută Adresa (Stradă și Număr)</label>
-                      {/* PICKER-UL GOOGLE OFICIAL */}
+                  {/* ⭐ CÂMPUL STRADĂ CU GOOGLE AUTOCOMPLETE */}
+                  {googleMapsLoaded ? (
+                    <div className="col-span-2">
+                      <label className="text-xs text-blue-600 font-bold ml-1 mb-1 block">
+                        🔍 Caută Adresa (Stradă și Număr)
+                      </label>
                       <gmpx-place-picker 
                         ref={pickerRef} 
-                        placeholder="Ex: Strada Libertății 4" 
+                        placeholder="Ex: Strada Libertății 4, București" 
                         id="place-picker"
+                        country="ro"
                         style={{ width: '100%' }}
-                      ></gmpx-place-picker>
-                  </div>
+                      />
+                    </div>
+                  ) : (
+                    <div className="col-span-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                      <p className="text-sm text-yellow-700">⏳ Se încarcă Google Maps...</p>
+                    </div>
+                  )}
 
-                  {/* Date Extrase (Doar pentru verificare vizuală) */}
+                  {/* Date Extrase */}
                   <div className="grid grid-cols-2 gap-2 bg-gray-50 p-2 rounded border border-gray-100">
                       <div>
                           <label className="text-[10px] text-gray-400 block">Județ</label>
@@ -655,22 +702,22 @@ export const CartDrawer: React.FC = () => {
                   <div className="col-span-2">
                     <label className="text-xs text-neutral-400 ml-1 mb-1 block">Detalii Suplimentare (Bl, Sc, Ap):</label>
                     <input
-                    name="details"
-                    placeholder="Bloc, Scara, Etaj, Ap, Interfon..."
-                    value={formData.details}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setFormData(prev => ({
-                        ...prev,
-                        details: val,
-                        address: `${prev.street_name} Nr. ${prev.street_number}, ${val}`
-                      }));
-                    }}
-                    className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors"
-                  />
+                      name="details"
+                      placeholder="Bloc, Scara, Etaj, Ap, Interfon..."
+                      value={formData.details}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFormData(prev => ({
+                          ...prev,
+                          details: val,
+                          address: `${prev.street_name} Nr. ${prev.street_number}, ${val}`
+                        }));
+                      }}
+                      className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors"
+                    />
                   </div>
 
-                  {/* COD POȘTAL - Auto-completat */}
+                  {/* COD POȘTAL */}
                   <div>
                     <input
                       required={shippingMethod === 'courier'}
@@ -679,8 +726,7 @@ export const CartDrawer: React.FC = () => {
                       value={formData.postalCode}
                       onChange={handleInputChange}
                       maxLength={6}
-                      className={`w-full p-3 border rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm ${validationErrors.postalCode ? 'border-red-500' : 'border-neutral-200'
-                        }`}
+                      className={`w-full p-3 border rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm ${validationErrors.postalCode ? 'border-red-500' : 'border-neutral-200'}`}
                     />
                     {validationErrors.postalCode && (
                       <p className="text-xs text-red-500 mt-1">{validationErrors.postalCode}</p>
@@ -720,12 +766,7 @@ export const CartDrawer: React.FC = () => {
                   </h3>
 
                   <div className="grid grid-cols-1 gap-3">
-                    <label
-                      className={`relative flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all duration-200 ${paymentMethod === 'ramburs'
-                        ? 'border-black bg-neutral-50 shadow-inner'
-                        : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
-                        }`}
-                    >
+                    <label className={`relative flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all duration-200 ${paymentMethod === 'ramburs' ? 'border-black bg-neutral-50 shadow-inner' : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'}`}>
                       <input
                         type="radio"
                         name="payment"
@@ -733,26 +774,19 @@ export const CartDrawer: React.FC = () => {
                         onChange={() => setPaymentMethod('ramburs')}
                         className="accent-black w-5 h-5"
                       />
-
                       <div className="p-2 bg-white rounded-full border border-neutral-100 shadow-sm shrink-0">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <line x1="12" y1="1" x2="12" y2="23" />
                           <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
                         </svg>
                       </div>
-
                       <div>
                         <span className="font-bold block text-sm">Plata Ramburs (Cash)</span>
                         <span className="text-xs text-neutral-500">Plătești curierului la livrare</span>
                       </div>
                     </label>
 
-                    <label
-                      className={`relative flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all duration-200 ${paymentMethod === 'card'
-                        ? 'border-black bg-neutral-50 shadow-inner'
-                        : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
-                        }`}
-                    >
+                    <label className={`relative flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all duration-200 ${paymentMethod === 'card' ? 'border-black bg-neutral-50 shadow-inner' : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'}`}>
                       <input
                         type="radio"
                         name="payment"
@@ -760,14 +794,12 @@ export const CartDrawer: React.FC = () => {
                         onChange={() => setPaymentMethod('card')}
                         className="accent-black w-5 h-5"
                       />
-
                       <div className="p-2 bg-white rounded-full border border-neutral-100 shadow-sm shrink-0">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
                           <line x1="1" y1="10" x2="23" y2="10" />
                         </svg>
                       </div>
-
                       <div>
                         <span className="font-bold block text-sm">Card Online</span>
                         <span className="text-xs text-neutral-500">Securizat prin Stripe</span>
@@ -782,7 +814,6 @@ export const CartDrawer: React.FC = () => {
         {/* Footer cu prețuri */}
         {cart.length > 0 && (
           <div className="p-6 border-t border-neutral-100 bg-white shrink-0">
-            {/* Detalii prețuri */}
             <div className="space-y-2 mb-4 text-sm">
               <div className="flex justify-between text-neutral-600">
                 <span>Subtotal produse</span>
@@ -809,7 +840,6 @@ export const CartDrawer: React.FC = () => {
               )}
             </div>
 
-            {/* Total final */}
             <div className="flex justify-between items-center mb-4 pb-4 border-b-2 border-black">
               <span className="text-sm text-neutral-500 uppercase font-bold">Total de plată</span>
               <span className="text-2xl font-black">{finalTotal.toFixed(2)} RON</span>
@@ -829,7 +859,7 @@ export const CartDrawer: React.FC = () => {
               <Button
                 fullWidth
                 onClick={handleSubmitOrder}
-                disabled={loading}
+                disabled={loading || !googleMapsLoaded}
                 type="button"
                 className="shadow-xl"
               >
@@ -846,17 +876,24 @@ export const CartDrawer: React.FC = () => {
 
       {/* ⭐ STILURI PENTRU COMPONENTELE GOOGLE */}
       <style>{`
-        .pac-container { z-index: 99999 !important; }
+        .pac-container { 
+          z-index: 99999 !important; 
+        }
+        gmpx-place-picker {
+          display: block;
+          width: 100%;
+        }
         gmpx-place-picker input {
-            padding: 0.75rem;
-            border-radius: 0.5rem;
-            border: 1px solid #e5e5e5;
-            width: 100%;
-            font-size: 0.875rem;
+          padding: 0.75rem !important;
+          border-radius: 0.5rem !important;
+          border: 1px solid #e5e5e5 !important;
+          width: 100% !important;
+          font-size: 0.875rem !important;
+          box-sizing: border-box !important;
         }
         gmpx-place-picker input:focus {
-            outline: none;
-            border-color: black;
+          outline: none !important;
+          border-color: black !important;
         }
       `}</style>
     </>
