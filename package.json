@@ -22,6 +22,7 @@
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-router-dom": "^7.10.1",
+    "react-google-autocomplete": "^...",
     "stripe": "^20.1.0",
     "three": "^0.182.0",
     "typescript": "~5.8.2",
