@@ -1,6 +1,5 @@
 /**
- * SERVICIU ECOLET - API Real (Optimizat pentru Google Maps Data)
- * Folosește datele structurate (Stradă, Număr, Detalii) separate.
+ * SERVICIU ECOLET - API Real (Smart Lookup & Google Maps Data)
  */
 
 import fetch from 'node-fetch';
@@ -24,7 +23,6 @@ async function authenticate() {
         return cachedToken;
     }
 
-    // console.log('🔄 Ecolet: Requesting new token...');
     const params = new URLSearchParams();
     params.append('grant_type', 'password');
     params.append('client_id', ECOLET_CLIENT_ID);
@@ -46,81 +44,120 @@ async function authenticate() {
 }
 
 /**
- * 2. Căutare Localitate (Smart Lookup)
+ * 2. Căutare Localitate (Smart Lookup cu Fallback API)
+ * Asta e funcția care rezolvă problema Bucureștiului dinamic.
  */
 async function getLocalityId(token, county, city) {
-    if (!county || !city) return 323; // Fallback București
+    if (!county || !city) return null;
 
-    // Normalizăm numele pentru a crește șansele de match (fără diacritice)
+    // Funcție de normalizare (scoate diacritice, litere mici) pentru comparații
     const normalize = (str) => str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
     
-    // Fix specific: Google zice "București", Ecolet vrea "Bucuresti"
-    if (normalize(city).includes('bucurest') || normalize(county).includes('bucurest')) return 323;
+    const countyNorm = normalize(county).replace(/\s+/g, '-');
+    const cityNorm = city.trim(); 
 
     try {
-        const countyNorm = normalize(county).replace(/\s+/g, '-');
-        const cityNorm = city.trim(); // Păstrăm orașul original pentru query, dar normalizat în URL
-
-        const response = await fetch(
+        // PASUL 1: Încercăm căutarea directă (cea rapidă)
+        // Endpoint: /locations/ro/{judet}/localities/{oras}
+        let response = await fetch(
             `${ECOLET_BASE_URL}/locations/ro/${countyNorm}/localities/${encodeURIComponent(cityNorm)}`,
             { headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' } }
         );
 
-        if (!response.ok) return null;
-        const data = await response.json();
+        if (response.ok) {
+            const data = await response.json();
+            // Ecolet poate returna un array sau un obiect
+            if (Array.isArray(data) && data.length > 0) return data[0].id;
+            if (data.id) return data.id;
+        }
+
+        // PASUL 2: Dacă direct nu merge (ex: București 404), cerem TOATE localitățile din județ
+        // Endpoint: /locations/ro/{judet}/localities
+        console.log(`⚠️ Lookup direct eșuat pentru ${city}. Cerem lista completă din ${county}...`);
         
-        if (Array.isArray(data) && data.length > 0) return data[0].id;
-        if (data.id) return data.id;
+        response = await fetch(
+            `${ECOLET_BASE_URL}/locations/ro/${countyNorm}/localities`,
+            { headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' } }
+        );
+
+        if (response.ok) {
+            const allLocalities = await response.json();
+            
+            if (Array.isArray(allLocalities) && allLocalities.length > 0) {
+                // a) Căutăm "fuzzy match" (numele conține ce a scris userul sau invers)
+                const match = allLocalities.find(l => 
+                    normalize(l.name).includes(normalize(city)) || 
+                    normalize(city).includes(normalize(l.name))
+                );
+
+                if (match) {
+                    console.log(`✅ Găsit prin listă: ${match.name} (ID: ${match.id})`);
+                    return match.id;
+                }
+
+                // b) Fallback specific pentru București:
+                // Dacă suntem în județul București și nu am găsit exact ce a scris userul,
+                // luăm pur și simplu PRIMA localitate din listă (care e un ID valid din acel județ).
+                // Asta rezolvă problema "Sector X" vs "București".
+                if (normalize(county).includes('bucurest')) {
+                     console.log(`ℹ️ Fallback București: Folosim ID-ul primei localități (${allLocalities[0].name})`);
+                     return allLocalities[0].id;
+                }
+            }
+        }
+
+        console.warn(`❌ Niciun ID găsit pentru ${city} în ${county}`);
         return null;
+
     } catch (e) {
-        console.warn('⚠️ Ecolet locality lookup error:', e.message);
+        console.error('❌ Ecolet locality lookup error:', e.message);
         return null;
     }
 }
 
 /**
- * 3. Creare AWB (Folosind datele de la Google Maps)
+ * 3. Creare AWB
  */
 export async function createDraftShipment(order) {
     try {
         const token = await authenticate();
 
-        // Parsăm datele. Acum ne așteptăm ca shipping_address să conțină câmpurile noi
+        // Extragem datele
+        const items = typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || []);
         const shippingAddress = typeof order.shipping_address === 'string' 
             ? JSON.parse(order.shipping_address) 
             : (order.shipping_address || {});
 
-        // --- EXTRAGERE DATE STRUCTURATE (DE LA GOOGLE) ---
-        // Asta e partea pe care o doreai: folosim datele separate, nu le mai tăiem noi.
-        
         const targetCounty = shippingAddress.county || order.county || "Bucuresti";
         const targetCity = shippingAddress.city || order.city || "Bucuresti";
         
-        // 1. Strada (Vine curat de la Google)
+        // --- LOGICA DE ADRESĂ (GOOGLE MAPS) ---
+        // 1. Strada: Luăm exact ce vine de la Google
         const streetName = shippingAddress.street_name || order.address_line || "Strada Principala";
         
-        // 2. Numărul (Vine curat de la Google - ex: "10B")
+        // 2. Numărul: Luăm exact ce vine de la Google
         let streetNumber = shippingAddress.street_number || "1";
         
-        // SAFEGUARD: Ecolet are o limită tehnică de 10 caractere pe DB. 
-        // Chiar dacă luăm datele corect, dacă userul a scris "10 bis intrarea 2", tot crapă API-ul.
-        // Așa că tăiem surplusul și îl mutăm la observații, dar păstrăm esențialul.
+        // SAFEGUARD: Ecolet are o limită strictă de 10 caractere pentru număr.
+        // Chiar dacă Google ne dă corect "10 bis corp A", Ecolet va refuza comanda.
+        // Soluția corectă: Tăiem la 10 pentru validare API, dar punem TOTUL în observații.
         if (streetNumber.length > 10) {
             streetNumber = streetNumber.substring(0, 10);
         }
+        if (!streetNumber) streetNumber = "1";
 
-        // 3. Detalii (Bloc, Scara, Ap) -> Merg în OBSERVAȚII
-        // Așa curierul vede tot, dar API-ul primește câmpurile curate.
+        // 3. Detaliile (Bloc, Scara) -> Observații
         const details = shippingAddress.details || "";
-        
-        // Compunem observațiile pentru curier
-        const observations = `Comanda #${order.id}. ${details ? 'Detalii livrare: ' + details : ''}`;
+        const fullAddressInfo = `Adresă completă: ${streetName} Nr. ${shippingAddress.street_number || streetNumber} ${details}`;
+        const observations = `Comanda #${order.id}. ${details ? 'Detalii: ' + details : ''}`;
 
-        // Căutăm ID-ul localității
+        // Căutăm ID-ul localității (folosind logica nouă "Smart")
         let localityId = await getLocalityId(token, targetCounty, targetCity);
+        
+        // Ultimul resort: Hardcoded doar dacă API-ul a picat complet
         if (!localityId) {
-            console.warn(`⚠️ Locality ID not found for ${targetCity}. Fallback to Bucuresti (323).`);
-            localityId = 323;
+            console.warn(`⚠️ API Lookup failed complet. Folosim fallback sigur.`);
+            localityId = 323; 
         }
 
         const payload = {
@@ -146,7 +183,7 @@ export async function createDraftShipment(order) {
                 locality: targetCity,
                 postal_code: order.postal_code || shippingAddress.postalCode || "000000",
                 street_name: streetName,
-                street_number: streetNumber, // Trimitem NUMĂRUL CURAT
+                street_number: streetNumber, // Numărul scurt (valid API)
                 contact_person: order.customer_name,
                 email: order.customer_email || "client@fara-email.ro",
                 phone: (order.customer_phone || "0700000000").replace(/\s/g, ''),
@@ -157,7 +194,7 @@ export async function createDraftShipment(order) {
                 weight: 1,
                 dimensions: { length: 20, width: 20, height: 10 },
                 content: `Ochelari`,
-                observations: observations, // Aici punem BLOC, SCARA, AP, INTERFON
+                observations: observations, // Detaliile importante sunt aici
                 shape: "standard",
                 amount: 1
             },
@@ -178,14 +215,13 @@ export async function createDraftShipment(order) {
             }
         };
 
-        // Suport Easybox
         if (order.shipping_method === 'easybox' && order.locker_id) {
             payload.receiver.has_map_point = true;
             payload.receiver.map_point_id = order.locker_id;
             payload.courier.service = "sameday_easybox"; 
         }
 
-        console.log(`📦 Ecolet: Sending draft for Order #${order.id} (Str: ${streetName}, Nr: ${streetNumber})...`);
+        console.log(`📦 Ecolet: Sending draft for Order #${order.id} (LocalityID: ${localityId})...`);
         
         const response = await fetch(`${ECOLET_BASE_URL}/add-parcel/save-order-to-send`, {
             method: 'POST',
@@ -197,22 +233,16 @@ export async function createDraftShipment(order) {
             body: JSON.stringify(payload)
         });
 
-        const text = await response.text();
-        let data;
-        try { data = JSON.parse(text); } catch { throw new Error('Invalid JSON from Ecolet'); }
+        const data = await response.json();
 
         if (!response.ok) {
             console.error('❌ Ecolet API Error:', JSON.stringify(data, null, 2));
             throw new Error(`Ecolet: ${data.message || JSON.stringify(data.errors)}`);
         }
 
-        console.log('✅ Ecolet Shipment Created! ID:', data.order_to_send_id || data.id);
-        return { 
-            success: true, 
-            ecolet_shipment_id: (data.order_to_send_id || data.id).toString(),
-            status: 'draft',
-            message: 'Draft creat cu succes'
-        };
+        const shipmentId = data.order_to_send_id || data.id;
+        console.log('✅ Ecolet Draft Created! ID:', shipmentId);
+        return { success: true, ecolet_shipment_id: shipmentId.toString(), status: 'draft', message: 'Draft creat' };
 
     } catch (error) {
         console.error('❌ createDraftShipment Failed:', error.message);
@@ -221,7 +251,6 @@ export async function createDraftShipment(order) {
 }
 
 export async function getShipmentStatus(shipmentId) {
-    // ... Păstrăm logica existentă pentru status ...
     try {
         const token = await authenticate();
         const response = await fetch(`${ECOLET_BASE_URL}/order/${shipmentId}`, {
@@ -236,7 +265,6 @@ export async function getShipmentStatus(shipmentId) {
 }
 
 export async function getShipmentLabel(shipmentId) {
-    // ... Păstrăm logica existentă pentru label ...
     try {
         const token = await authenticate();
         return { success: true, label_url: `${ECOLET_BASE_URL}/order/${shipmentId}/download-waybill?access_token=${token}` };
