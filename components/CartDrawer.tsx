@@ -8,7 +8,7 @@ import { ROMANIAN_COUNTIES } from '../constants';
 import '@googlemaps/extended-component-library/place_picker.js';
 import '@googlemaps/extended-component-library/api_loader.js';
 
-// ⭐ DEFINIȚII TYPESCRIPT PENTRU REACT 19 & WEB COMPONENTS
+// ⭐ DEFINIȚII TYPESCRIPT
 declare global {
   namespace JSX {
     interface IntrinsicElements {
@@ -20,7 +20,6 @@ declare global {
       };
       'gmpx-api-loader': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
         ref?: any;
-        // Nu setăm props direct aici pentru a evita erorile React 19
       };
     }
   }
@@ -43,7 +42,7 @@ export const CartDrawer: React.FC = () => {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('ramburs');
   const [shippingMethod, setShippingMethod] = useState<ShippingMethod>('courier');
    
-  // Discount state
+  // Discount
   const [discountCode, setDiscountCode] = useState('');
   const [appliedDiscount, setAppliedDiscount] = useState<{
     code: string;
@@ -54,14 +53,14 @@ export const CartDrawer: React.FC = () => {
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // ⭐ REF-URI PENTRU GOOGLE MAPS
+  // ⭐ REF-URI GOOGLE MAPS
   const pickerRef = useRef<any>(null);
   const loaderRef = useRef<any>(null);
   
   // API Key
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_KEY || (window as any).__GOOGLE_MAPS_KEY__;
 
-  // ⭐ STATE PENTRU ECOLET
+  // State Ecolet
   const [selectedLocker, setSelectedLocker] = useState<{
     lockerId: string;
     lockerName: string;
@@ -82,7 +81,6 @@ export const CartDrawer: React.FC = () => {
     details: '' 
   });
   
-  // ⭐ VALIDĂRI
   const [validationErrors, setValidationErrors] = useState<{
     phone?: string;
     email?: string;
@@ -98,32 +96,24 @@ export const CartDrawer: React.FC = () => {
     return 0;
   };
 
-  // ⭐ HELPERE PENTRU NORMALIZARE DATE GOOGLE
-  const normalizeCounty = (googleCounty: string) => {
-    if (!googleCounty) return '';
-    let clean = googleCounty.replace('Județul', '').replace('County', '').trim();
+  // Helper normalizare nume
+  const normalizeName = (name: string) => {
+    if (!name) return '';
+    let clean = name.replace('Județul', '').replace('County', '').trim();
     if (clean === 'Bucharest' || clean === 'București') return 'Bucuresti';
-    // Elimină diacriticele pentru a se potrivi cu lista ta ROMANIAN_COUNTIES
     return clean.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); 
   };
 
-  const normalizeCity = (googleCity: string) => {
-      if (!googleCity) return '';
-      if (googleCity === 'Bucharest' || googleCity === 'București') return 'Bucuresti';
-      return googleCity;
-  };
-
-  // ⭐ INITIALIZARE GOOGLE MAPS API (FIX REACT 19)
+  // ⭐ INITIALIZARE GOOGLE MAPS API
   useEffect(() => {
     if (loaderRef.current && apiKey) {
-      // Setăm proprietățile direct pe elementul DOM, nu prin JSX
       loaderRef.current.key = apiKey;
-      loaderRef.current.libraries = ['places']; // Array corect
+      loaderRef.current.libraries = ['places'];
       loaderRef.current.region = 'RO'; 
     }
   }, [apiKey, step]);
 
-  // ⭐ LISTENER PENTRU SELECTARE ADRESĂ & EXTRAGERE AUTOMATĂ
+  // ⭐ LISTENER ADRESĂ (AUTO-COMPLETARE)
   useEffect(() => {
     const picker = pickerRef.current;
     if (picker && step === 'details') {
@@ -134,44 +124,34 @@ export const CartDrawer: React.FC = () => {
         const addressComponents = place.addressComponents || [];
         let street = '', number = '', city = '', county = '', postal = '';
 
-        // Iterăm prin componentele adresei
         addressComponents.forEach((component: any) => {
           const types = component.types;
           
           if (types.includes("route")) street = component.longText;
           if (types.includes("street_number")) number = component.longText;
-          
-          if (types.includes("locality")) city = normalizeCity(component.longText);
-          if (!city && types.includes("administrative_area_level_2")) city = normalizeCity(component.longText);
-          
-          if (types.includes("administrative_area_level_1")) county = normalizeCounty(component.longText);
-          
-          // ✅ EXTRAGERE COD POȘTAL
-          if (types.includes("postal_code")) {
-             postal = component.longText;
-          }
+          if (types.includes("locality")) city = normalizeName(component.longText);
+          if (!city && types.includes("administrative_area_level_2")) city = normalizeName(component.longText);
+          if (types.includes("administrative_area_level_1")) county = normalizeName(component.longText);
+          if (types.includes("postal_code")) postal = component.longText;
         });
 
-        // Fallback: Dacă nu găsim strada exactă, încercăm din adresa formatată
+        // Fallback dacă Google nu dă strada exactă (de ex. la puncte de interes)
         if (!street && place.formattedAddress) {
            const parts = place.formattedAddress.split(',');
            if (parts.length > 0) street = parts[0];
         }
 
-        console.log('📍 Date extrase Google:', { city, county, street, number, postal });
-
-        // Actualizăm formularul automat
+        // Actualizăm formularul
         setFormData(prev => ({
           ...prev,
           street_name: street,
           street_number: number,
           city: city,
           county: county,
-          postalCode: postal, // Codul poștal automat
+          postalCode: postal,
           address: place.formattedAddress
         }));
         
-        // Validăm codul poștal dacă există
         if (postal) validateField('postalCode', postal);
       };
 
@@ -182,7 +162,7 @@ export const CartDrawer: React.FC = () => {
     }
   }, [step]);
 
-  // Resetam starea cand se inchide cosul
+  // Resetare stare
   useEffect(() => {
     if (!isCartOpen) {
       setStep('cart');
@@ -203,20 +183,16 @@ export const CartDrawer: React.FC = () => {
     }
   }, [step]);
 
-  // ⭐ INTEGRARE WIDGET ECOLET PENTRU EASYBOX
+  // Ecolet Widget
   useEffect(() => {
     if (shippingMethod === 'easybox' && step === 'details') {
       const scriptId = 'ecolet-widget-script';
-      
       if (!document.getElementById(scriptId)) {
         const script = document.createElement('script');
         script.id = scriptId;
         script.src = 'https://widget.ecolet.ro/locker-selector.js'; 
         script.async = true;
-        script.onload = () => {
-          console.log('✅ Ecolet widget loaded');
-          initEcoletWidget();
-        };
+        script.onload = () => initEcoletWidget();
         document.body.appendChild(script);
       } else {
         initEcoletWidget();
@@ -229,54 +205,35 @@ export const CartDrawer: React.FC = () => {
       (window as any).EcoletWidget.init({
         containerId: 'ecolet-locker-widget',
         onLockerSelected: (locker: any) => {
-          console.log('✅ Locker selected:', locker);
           setSelectedLocker({
             lockerId: locker.id,
             lockerName: locker.name,
             city: locker.city,
             county: locker.county
           });
-          setFormData(prev => ({
-            ...prev,
-            city: locker.city,
-            county: locker.county
-          }));
+          setFormData(prev => ({ ...prev, city: locker.city, county: locker.county }));
         }
       });
     }
   };
 
-  // FUNCȚIE VALIDARE CÂMPURI
   const validateField = (name: string, value: string) => {
     const errors = { ...validationErrors };
-
     if (name === 'phone') {
       const phoneRegex = /^[0-9]{10,}$/;
-      if (value && !phoneRegex.test(value.replace(/\s/g, ''))) {
-        errors.phone = 'Telefonul trebuie să conțină minim 10 cifre';
-      } else {
-        delete errors.phone;
-      }
+      if (value && !phoneRegex.test(value.replace(/\s/g, ''))) errors.phone = 'Telefonul trebuie să conțină minim 10 cifre';
+      else delete errors.phone;
     }
-
     if (name === 'email' && value) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(value)) {
-        errors.email = 'Adresă email invalidă';
-      } else {
-        delete errors.email;
-      }
+      if (!emailRegex.test(value)) errors.email = 'Adresă email invalidă';
+      else delete errors.email;
     }
-
     if (name === 'postalCode') {
       const postalRegex = /^[0-9]{6}$/;
-      if (value && !postalRegex.test(value)) {
-        errors.postalCode = 'Codul poștal trebuie să aibă 6 cifre';
-      } else {
-        delete errors.postalCode;
-      }
+      if (value && !postalRegex.test(value)) errors.postalCode = 'Codul poștal trebuie să aibă 6 cifre';
+      else delete errors.postalCode;
     }
-
     setValidationErrors(errors);
   };
 
@@ -296,10 +253,7 @@ export const CartDrawer: React.FC = () => {
       });
       const data = await response.json();
       if (data.valid) {
-        setAppliedDiscount({
-          code: data.code,
-          amount: data.discountAmount
-        });
+        setAppliedDiscount({ code: data.code, amount: data.discountAmount });
         setDiscountError('');
       } else {
         setDiscountError(data.message || 'Cod invalid');
@@ -318,9 +272,7 @@ export const CartDrawer: React.FC = () => {
     setDiscountError('');
   };
 
-  const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
-  ) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
     validateField(name, value);
@@ -328,17 +280,15 @@ export const CartDrawer: React.FC = () => {
 
   const handleSubmitOrder = async (e?: React.MouseEvent) => {
     if (e) e.preventDefault();
-
     const errors: any = {};
     if (!formData.fullName) errors.fullName = 'Numele este obligatoriu';
     if (!formData.phone) errors.phone = 'Telefonul este obligatoriu';
     if (!formData.county) errors.county = 'Județul este obligatoriu';
     if (!formData.city) errors.city = 'Orașul este obligatoriu';
 
-    // Pentru curier, codul poștal este obligatoriu (acum extras și de Google)
     if (shippingMethod === 'courier') {
-         if (!formData.street_name) errors.address = 'Adresa este obligatorie';
-         if (!formData.postalCode) errors.postalCode = 'Codul poștal este obligatoriu pentru livrare curier';
+         if (!formData.street_name) errors.address = 'Selectează adresa din sugestiile Google';
+         if (!formData.postalCode) errors.postalCode = 'Adresa selectată nu are cod poștal';
     } else {
          if (!formData.address && !formData.street_name) errors.address = 'Adresa este obligatorie';
     }
@@ -348,7 +298,7 @@ export const CartDrawer: React.FC = () => {
     }
 
     if (Object.keys(errors).length > 0) {
-      alert('Te rugăm să completezi toate câmpurile obligatorii corect.');
+      alert('Te rugăm să completezi toate câmpurile obligatorii.');
       setValidationErrors(errors);
       return;
     }
@@ -356,7 +306,6 @@ export const CartDrawer: React.FC = () => {
     setLoading(true);
 
     try {
-      // Calculăm adresa completă pentru trimitere
       const addressObject = {
         line: `${formData.street_name} Nr. ${formData.street_number}, ${formData.details || ''}`.trim(),
         street_name: formData.street_name,
@@ -391,7 +340,6 @@ export const CartDrawer: React.FC = () => {
         });
 
         if (!response.ok) throw new Error('Failed to create checkout session');
-
         const { url } = await response.json();
         if (url) window.location.href = url;
         else throw new Error('No checkout URL received');
@@ -403,7 +351,6 @@ export const CartDrawer: React.FC = () => {
         });
 
         if (!response.ok) throw new Error('Failed to create order');
-
         const result = await response.json();
 
         if (result?.success) {
@@ -423,7 +370,7 @@ export const CartDrawer: React.FC = () => {
 
   if (!isCartOpen) return null;
 
-  // CALCULE PREȚURI
+  // Calcul final
   const subtotal = toNumber(cartTotal);
   const shippingCost = SHIPPING_COSTS[shippingMethod];
   const discountAmount = appliedDiscount ? appliedDiscount.amount : 0;
@@ -445,7 +392,7 @@ export const CartDrawer: React.FC = () => {
           </button>
         </div>
 
-        {/* Content - Scrollable */}
+        {/* Content */}
         <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-5 space-y-4">
           {step === 'cart' ? (
             cart.length === 0 ? (
@@ -464,114 +411,46 @@ export const CartDrawer: React.FC = () => {
                       <h3 className="font-bold text-sm truncate">{item.name}</h3>
                       <p className="text-xs text-neutral-500 mt-1">{item.price.toFixed(2)} RON</p>
                       <div className="flex items-center gap-2 mt-2">
-                        <button
-                          onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                          className="w-7 h-7 flex items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200 text-sm font-bold"
-                        >
-                          −
-                        </button>
+                        <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="w-7 h-7 flex items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200 text-sm font-bold">−</button>
                         <span className="text-sm font-mono w-6 text-center">{item.quantity}</span>
-                        <button
-                          onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                          className="w-7 h-7 flex items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200 text-sm font-bold"
-                        >
-                          +
-                        </button>
+                        <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="w-7 h-7 flex items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200 text-sm font-bold">+</button>
                       </div>
                     </div>
-                    <button
-                      onClick={() => removeFromCart(item.id)}
-                      className="shrink-0 text-red-400 hover:text-red-600 p-2"
-                    >
-                      ✕
-                    </button>
+                    <button onClick={() => removeFromCart(item.id)} className="shrink-0 text-red-400 hover:text-red-600 p-2">✕</button>
                   </div>
                 ))}
 
-                {/* Cod reducere */}
+                {/* Cod Reducere */}
                 <div className="bg-white p-4 rounded-xl border border-neutral-100 shadow-sm">
-                  <label className="text-xs font-bold uppercase text-neutral-500 mb-2 block">
-                    Cod Reducere
-                  </label>
+                  <label className="text-xs font-bold uppercase text-neutral-500 mb-2 block">Cod Reducere</label>
                   {!appliedDiscount ? (
                     <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={discountCode}
-                        onChange={(e) => setDiscountCode(e.target.value.toUpperCase())}
-                        placeholder="Introdu codul"
-                        className="flex-1 p-3 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-black"
-                      />
-                      <Button
-                        onClick={handleApplyDiscount}
-                        disabled={discountLoading}
-                        variant="outline"
-                        className="px-4"
-                      >
-                        {discountLoading ? '...' : 'Aplică'}
-                      </Button>
+                      <input type="text" value={discountCode} onChange={(e) => setDiscountCode(e.target.value.toUpperCase())} placeholder="Introdu codul" className="flex-1 p-3 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-black" />
+                      <Button onClick={handleApplyDiscount} disabled={discountLoading} variant="outline" className="px-4">{discountLoading ? '...' : 'Aplică'}</Button>
                     </div>
                   ) : (
                     <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
                       <div className="flex items-center gap-2">
                         <span className="text-green-600 text-xl">✓</span>
-                        <div>
-                          <p className="text-sm font-bold text-green-700">{appliedDiscount.code}</p>
-                          <p className="text-xs text-green-600">-{discountAmount.toFixed(2)} RON</p>
-                        </div>
+                        <div><p className="text-sm font-bold text-green-700">{appliedDiscount.code}</p><p className="text-xs text-green-600">-{discountAmount.toFixed(2)} RON</p></div>
                       </div>
-                      <button
-                        onClick={handleRemoveDiscount}
-                        className="text-red-500 hover:text-red-700 font-bold"
-                      >
-                        ✕
-                      </button>
+                      <button onClick={handleRemoveDiscount} className="text-red-500 hover:text-red-700 font-bold">✕</button>
                     </div>
                   )}
-                  {discountError && (
-                    <p className="text-xs text-red-500 mt-2">{discountError}</p>
-                  )}
+                  {discountError && <p className="text-xs text-red-500 mt-2">{discountError}</p>}
                 </div>
 
-                {/* Metoda livrare */}
+                {/* Metoda Livrare */}
                 <div className="bg-white p-4 rounded-xl border border-neutral-100 shadow-sm space-y-3">
                   <h3 className="text-xs font-bold uppercase text-neutral-500">Metoda Livrare</h3>
-                   
                   <div className="grid grid-cols-1 gap-3">
-                    <label className={`flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all ${
-                      shippingMethod === 'easybox'
-                        ? 'border-black bg-neutral-50 shadow-inner'
-                        : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="shipping"
-                        checked={shippingMethod === 'easybox'}
-                        onChange={() => setShippingMethod('easybox')}
-                        className="accent-black w-5 h-5"
-                      />
-                      <div>
-                        <span className="font-bold block text-sm">Easy Box</span>
-                        <span className="text-xs text-neutral-500">{SHIPPING_COSTS.easybox.toFixed(2)} RON</span>
-                      </div>
+                    <label className={`flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all ${shippingMethod === 'easybox' ? 'border-black bg-neutral-50 shadow-inner' : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'}`}>
+                      <input type="radio" name="shipping" checked={shippingMethod === 'easybox'} onChange={() => setShippingMethod('easybox')} className="accent-black w-5 h-5" />
+                      <div><span className="font-bold block text-sm">Easy Box</span><span className="text-xs text-neutral-500">{SHIPPING_COSTS.easybox.toFixed(2)} RON</span></div>
                     </label>
-
-                    <label className={`flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all ${
-                      shippingMethod === 'courier'
-                        ? 'border-black bg-neutral-50 shadow-inner'
-                        : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="shipping"
-                        checked={shippingMethod === 'courier'}
-                        onChange={() => setShippingMethod('courier')}
-                        className="accent-black w-5 h-5"
-                      />
-                      <div>
-                        <span className="font-bold block text-sm">Livrare Curier</span>
-                        <span className="text-xs text-neutral-500">{SHIPPING_COSTS.courier.toFixed(2)} RON</span>
-                      </div>
+                    <label className={`flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all ${shippingMethod === 'courier' ? 'border-black bg-neutral-50 shadow-inner' : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'}`}>
+                      <input type="radio" name="shipping" checked={shippingMethod === 'courier'} onChange={() => setShippingMethod('courier')} className="accent-black w-5 h-5" />
+                      <div><span className="font-bold block text-sm">Livrare Curier</span><span className="text-xs text-neutral-500">{SHIPPING_COSTS.courier.toFixed(2)} RON</span></div>
                     </label>
                   </div>
                 </div>
@@ -581,196 +460,105 @@ export const CartDrawer: React.FC = () => {
               <form id="checkout-form" className="space-y-4" onSubmit={(e) => e.preventDefault()}>
                 {/* Date Contact */}
                 <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
-                  <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">
-                    Date Contact
-                  </h3>
-
-                  <input
-                    required
-                    name="fullName"
-                    placeholder="Nume Complet *"
-                    value={formData.fullName}
-                    onChange={handleInputChange}
-                    className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm"
-                  />
-
+                  <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">Date Contact</h3>
+                  <input required name="fullName" placeholder="Nume Complet *" value={formData.fullName} onChange={handleInputChange} className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm" />
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <input
-                        name="email"
-                        type="email"
-                        placeholder="Email (opțional)"
-                        value={formData.email}
-                        onChange={handleInputChange}
-                        className={`w-full p-3 border rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm ${validationErrors.email ? 'border-red-500' : 'border-neutral-200'
-                          }`}
-                      />
-                      {validationErrors.email && (
-                        <p className="text-xs text-red-500 mt-1">{validationErrors.email}</p>
-                      )}
+                      <input name="email" type="email" placeholder="Email (opțional)" value={formData.email} onChange={handleInputChange} className={`w-full p-3 border rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm ${validationErrors.email ? 'border-red-500' : 'border-neutral-200'}`} />
+                      {validationErrors.email && <p className="text-xs text-red-500 mt-1">{validationErrors.email}</p>}
                     </div>
                     <div>
-                      <input
-                        required
-                        name="phone"
-                        placeholder="Telefon *"
-                        value={formData.phone}
-                        onChange={handleInputChange}
-                        className={`w-full p-3 border rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm ${validationErrors.phone ? 'border-red-500' : 'border-neutral-200'
-                          }`}
-                      />
-                      {validationErrors.phone && (
-                        <p className="text-xs text-red-500 mt-1">{validationErrors.phone}</p>
-                      )}
+                      <input required name="phone" placeholder="Telefon *" value={formData.phone} onChange={handleInputChange} className={`w-full p-3 border rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm ${validationErrors.phone ? 'border-red-500' : 'border-neutral-200'}`} />
+                      {validationErrors.phone && <p className="text-xs text-red-500 mt-1">{validationErrors.phone}</p>}
                     </div>
                   </div>
                 </div>
 
-                {/* Adresa Livrare (MODIFICAT PENTRU GOOGLE MAPS) */}
+                {/* Adresa Livrare - GOOGLE MAPS LOCKED */}
                 <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
-                  <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">
-                    Adresa Livrare
-                  </h3>
+                  <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">Adresa Livrare</h3>
                   
-                  {/* ⭐ LOADER GOOGLE MAPS (Invizibil, doar logică) */}
-                  {step === 'details' && apiKey && (
-                     <gmpx-api-loader ref={loaderRef} />
-                  )}
+                  {step === 'details' && apiKey && (<gmpx-api-loader ref={loaderRef} />)}
 
-                  {/* ⭐ AUTOCOMPLETE GOOGLE MAPS */}
+                  {/* SEARCH BAR GOOGLE */}
                   <div className="mb-3">
-                      <label className="text-xs text-blue-600 font-bold ml-1 mb-1 block">
-                          🔍 Caută Adresa (Stradă și Număr)
-                      </label>
-                      <gmpx-place-picker 
-                          ref={pickerRef} 
-                          placeholder="Ex: Strada Libertății 4, București" 
-                          style={{ width: '100%' }}
-                      />
+                      <label className="text-xs text-blue-600 font-bold ml-1 mb-1 block">🔍 Caută Adresa (Stradă și Număr)</label>
+                      <gmpx-place-picker ref={pickerRef} placeholder="Ex: Strada Libertății 4, București" style={{ width: '100%' }} />
                   </div>
 
-                  {/* CÂMPURI MANUALE (POPULATE AUTOMAT SAU EDITABILE) */}
+                  {/* CÂMPURI READ-ONLY PENTRU VERIFICARE */}
                   <div className="grid grid-cols-2 gap-3">
-                    {/* JUDEȚ - DROPDOWN */}
-                    <div className="relative">
-                      <select
-                        required
-                        name="county"
+                    {/* Județ (Acum INPUT read-only, populat de Google) */}
+                    <div>
+                      <label className="text-[10px] text-gray-500 uppercase font-bold ml-1">Județ</label>
+                      <input 
+                        readOnly
                         value={formData.county}
-                        onChange={handleInputChange}
-                        className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm appearance-none bg-white"
-                      >
-                        <option value="">Județ *</option>
-                        {ROMANIAN_COUNTIES.map((judet) => (
-                          <option key={judet} value={judet}>
-                            {judet}
-                          </option>
-                        ))}
-                      </select>
-                      {/* Săgeată discretă */}
-                      <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none">
-                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-                      </div>
+                        className="w-full p-3 bg-gray-100 border border-neutral-200 rounded-lg text-gray-600 cursor-not-allowed focus:outline-none"
+                      />
                     </div>
-
-                    {/* ORAȘ */}
-                    <input
-                      required
-                      name="city"
-                      placeholder="Oraș / Sat *"
-                      value={formData.city}
-                      onChange={handleInputChange}
-                      className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm"
-                    />
+                    {/* Oraș */}
+                    <div>
+                      <label className="text-[10px] text-gray-500 uppercase font-bold ml-1">Oraș</label>
+                      <input 
+                        readOnly
+                        value={formData.city}
+                        className="w-full p-3 bg-gray-100 border border-neutral-200 rounded-lg text-gray-600 cursor-not-allowed focus:outline-none"
+                      />
+                    </div>
                   </div>
 
-                  {/* STRADĂ ȘI NUMĂR */}
                   <div className="grid grid-cols-3 gap-3">
                     <div className="col-span-2">
-                      <input
-                        required
-                        name="street_name"
-                        placeholder="Nume Stradă *"
+                       <label className="text-[10px] text-gray-500 uppercase font-bold ml-1">Stradă</label>
+                      <input 
+                        readOnly
                         value={formData.street_name}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setFormData(prev => ({
-                            ...prev,
-                            street_name: val,
-                            address: `${val} Nr. ${prev.street_number}, ${prev.details}`
-                          }));
-                        }}
-                        className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm"
+                        className="w-full p-3 bg-gray-100 border border-neutral-200 rounded-lg text-gray-600 cursor-not-allowed focus:outline-none"
                       />
                     </div>
                     <div className="col-span-1">
-                      <input
-                        required
-                        name="street_number"
-                        placeholder="Nr. *"
+                      <label className="text-[10px] text-gray-500 uppercase font-bold ml-1">Număr</label>
+                      <input 
+                        readOnly
                         value={formData.street_number}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setFormData(prev => ({
-                            ...prev,
-                            street_number: val,
-                            address: `${prev.street_name} Nr. ${val}, ${prev.details}`
-                          }));
-                        }}
-                        className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm"
+                        className="w-full p-3 bg-gray-100 border border-neutral-200 rounded-lg text-gray-600 cursor-not-allowed focus:outline-none"
                       />
                     </div>
                   </div>
 
-                  {/* DETALII SUPLIMENTARE */}
-                  <input
-                    name="details"
-                    placeholder="Bloc, Scara, Etaj, Ap (Opțional)"
-                    value={formData.details}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setFormData(prev => ({
-                        ...prev,
-                        details: val,
-                        address: `${prev.street_name} Nr. ${prev.street_number}, ${val}`
-                      }));
-                    }}
-                    className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm"
-                  />
-
-                  {/* COD POȘTAL */}
+                  {/* DETALII EDITABILE */}
                   <div>
+                    <label className="text-xs text-neutral-500 ml-1 mb-1 block">Detalii (Bloc, Scara, Etaj, Ap)</label>
                     <input
-                      required={shippingMethod === 'courier'}
-                      name="postalCode"
-                      placeholder={`Cod Poștal ${shippingMethod === 'courier' ? '*' : '(opțional)'}`}
-                      value={formData.postalCode}
-                      onChange={handleInputChange}
-                      maxLength={6}
-                      className={`w-full p-3 border rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm ${validationErrors.postalCode ? 'border-red-500' : 'border-neutral-200'
-                        }`}
+                      name="details"
+                      placeholder="Introdu manual detalii despre bloc/apartament..."
+                      value={formData.details}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFormData(prev => ({ ...prev, details: val, address: `${prev.street_name} Nr. ${prev.street_number}, ${val}` }));
+                      }}
+                      className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors"
                     />
-                    {validationErrors.postalCode && (
-                      <p className="text-xs text-red-500 mt-1">{validationErrors.postalCode}</p>
-                    )}
-                    <p className="text-xs text-neutral-400 mt-1">
-                      {shippingMethod === 'courier'
-                        ? 'Obligatoriu pentru livrare curier (6 cifre)'
-                        : 'Opțional pentru EasyBox, necesar pentru factură'}
-                    </p>
+                  </div>
+
+                  {/* COD POȘTAL READ-ONLY */}
+                  <div>
+                    <label className="text-[10px] text-gray-500 uppercase font-bold ml-1">Cod Poștal (Auto)</label>
+                    <input
+                      readOnly
+                      value={formData.postalCode}
+                      className={`w-full p-3 bg-gray-100 border rounded-lg text-gray-600 cursor-not-allowed focus:outline-none ${validationErrors.postalCode ? 'border-red-500' : 'border-neutral-200'}`}
+                    />
+                    {validationErrors.postalCode && <p className="text-xs text-red-500 mt-1">{validationErrors.postalCode}</p>}
+                    <p className="text-xs text-neutral-400 mt-1">{shippingMethod === 'courier' ? 'Se completează automat din Google Maps' : 'Opțional'}</p>
                   </div>
                 </div>
 
                 {shippingMethod === 'easybox' && (
                   <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
-                    <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">
-                      📦 Selectează EasyBox
-                    </h3>
-
-                    <div id="ecolet-locker-widget" className="border border-neutral-200 rounded-lg p-4 min-h-[200px]">
-                      <p className="text-sm text-neutral-400 text-center">Se încarcă harta EasyBox...</p>
-                    </div>
-
+                    <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">📦 Selectează EasyBox</h3>
+                    <div id="ecolet-locker-widget" className="border border-neutral-200 rounded-lg p-4 min-h-[200px]"><p className="text-sm text-neutral-400 text-center">Se încarcă harta EasyBox...</p></div>
                     {selectedLocker && (
                       <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                         <p className="text-sm font-bold text-green-700">✓ EasyBox selectat:</p>
@@ -783,63 +571,17 @@ export const CartDrawer: React.FC = () => {
 
                 {/* Plata */}
                 <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
-                  <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">
-                    Metoda Plată
-                  </h3>
-
+                  <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">Metoda Plată</h3>
                   <div className="grid grid-cols-1 gap-3">
-                    <label
-                      className={`relative flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all duration-200 ${paymentMethod === 'ramburs'
-                          ? 'border-black bg-neutral-50 shadow-inner'
-                          : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
-                        }`}
-                    >
-                      <input
-                        type="radio"
-                        name="payment"
-                        checked={paymentMethod === 'ramburs'}
-                        onChange={() => setPaymentMethod('ramburs')}
-                        className="accent-black w-5 h-5"
-                      />
-
-                      <div className="p-2 bg-white rounded-full border border-neutral-100 shadow-sm shrink-0">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <line x1="12" y1="1" x2="12" y2="23" />
-                          <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-                        </svg>
-                      </div>
-
-                      <div>
-                        <span className="font-bold block text-sm">Plata Ramburs (Cash)</span>
-                        <span className="text-xs text-neutral-500">Plătești curierului la livrare</span>
-                      </div>
+                    <label className={`flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all duration-200 ${paymentMethod === 'ramburs' ? 'border-black bg-neutral-50 shadow-inner' : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'}`}>
+                      <input type="radio" name="payment" checked={paymentMethod === 'ramburs'} onChange={() => setPaymentMethod('ramburs')} className="accent-black w-5 h-5" />
+                      <div className="p-2 bg-white rounded-full border border-neutral-100 shadow-sm shrink-0"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg></div>
+                      <div><span className="font-bold block text-sm">Plata Ramburs (Cash)</span><span className="text-xs text-neutral-500">Plătești curierului la livrare</span></div>
                     </label>
-
-                    <label
-                      className={`relative flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all duration-200 ${paymentMethod === 'card'
-                          ? 'border-black bg-neutral-50 shadow-inner'
-                          : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
-                        }`}
-                    >
-                      <input
-                        type="radio"
-                        name="payment"
-                        checked={paymentMethod === 'card'}
-                        onChange={() => setPaymentMethod('card')}
-                        className="accent-black w-5 h-5"
-                      />
-
-                      <div className="p-2 bg-white rounded-full border border-neutral-100 shadow-sm shrink-0">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
-                          <line x1="1" y1="10" x2="23" y2="10" />
-                        </svg>
-                      </div>
-
-                      <div>
-                        <span className="font-bold block text-sm">Card Online</span>
-                        <span className="text-xs text-neutral-500">Securizat prin Stripe</span>
-                      </div>
+                    <label className={`relative flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all duration-200 ${paymentMethod === 'card' ? 'border-black bg-neutral-50 shadow-inner' : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'}`}>
+                      <input type="radio" name="payment" checked={paymentMethod === 'card'} onChange={() => setPaymentMethod('card')} className="accent-black w-5 h-5" />
+                      <div className="p-2 bg-white rounded-full border border-neutral-100 shadow-sm shrink-0"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2" /><line x1="1" y1="10" x2="23" y2="10" /></svg></div>
+                      <div><span className="font-bold block text-sm">Card Online</span><span className="text-xs text-neutral-500">Securizat prin Stripe</span></div>
                     </label>
                   </div>
                 </div>
@@ -847,95 +589,31 @@ export const CartDrawer: React.FC = () => {
           )}
         </div>
 
-        {/* Footer cu prețuri */}
+        {/* Footer */}
         {cart.length > 0 && (
           <div className="p-6 border-t border-neutral-100 bg-white shrink-0">
-            {/* Detalii prețuri */}
             <div className="space-y-2 mb-4 text-sm">
-              <div className="flex justify-between text-neutral-600">
-                <span>Subtotal produse</span>
-                <span>{subtotal.toFixed(2)} RON</span>
-              </div>
-               
-              <div className="flex justify-between text-neutral-600">
-                <span>Transport ({shippingMethod === 'easybox' ? 'Easy Box' : 'Curier'})</span>
-                <span>{shippingCost.toFixed(2)} RON</span>
-              </div>
-
-              {appliedDiscount && (
-                <div className="flex justify-between text-green-600 font-bold">
-                  <span>Reducere ({appliedDiscount.code})</span>
-                  <span>-{discountAmount.toFixed(2)} RON</span>
-                </div>
-              )}
-
-              {appliedDiscount && (
-                <div className="flex justify-between text-neutral-400 line-through text-xs pt-2 border-t border-neutral-100">
-                  <span>Fără reducere</span>
-                  <span>{totalBeforeDiscount.toFixed(2)} RON</span>
-                </div>
-              )}
+              <div className="flex justify-between text-neutral-600"><span>Subtotal produse</span><span>{subtotal.toFixed(2)} RON</span></div>
+              <div className="flex justify-between text-neutral-600"><span>Transport ({shippingMethod === 'easybox' ? 'Easy Box' : 'Curier'})</span><span>{shippingCost.toFixed(2)} RON</span></div>
+              {appliedDiscount && <div className="flex justify-between text-green-600 font-bold"><span>Reducere ({appliedDiscount.code})</span><span>-{discountAmount.toFixed(2)} RON</span></div>}
+              {appliedDiscount && <div className="flex justify-between text-neutral-400 line-through text-xs pt-2 border-t border-neutral-100"><span>Fără reducere</span><span>{totalBeforeDiscount.toFixed(2)} RON</span></div>}
             </div>
-
-            {/* Total final */}
-            <div className="flex justify-between items-center mb-4 pb-4 border-b-2 border-black">
-              <span className="text-sm text-neutral-500 uppercase font-bold">Total de plată</span>
-              <span className="text-2xl font-black">{finalTotal.toFixed(2)} RON</span>
-            </div>
-
-            {appliedDiscount && (
-              <p className="text-center text-sm text-green-600 mb-4">
-                ✓ Ai economisit <strong>{discountAmount.toFixed(2)} RON</strong>!
-              </p>
-            )}
-
+            <div className="flex justify-between items-center mb-4 pb-4 border-b-2 border-black"><span className="text-sm text-neutral-500 uppercase font-bold">Total de plată</span><span className="text-2xl font-black">{finalTotal.toFixed(2)} RON</span></div>
+            {appliedDiscount && <p className="text-center text-sm text-green-600 mb-4">✓ Ai economisit <strong>{discountAmount.toFixed(2)} RON</strong>!</p>}
             {step === 'cart' ? (
-              <Button fullWidth onClick={() => setStep('details')}>
-                Continuă spre Checkout
-              </Button>
+              <Button fullWidth onClick={() => setStep('details')}>Continuă spre Checkout</Button>
             ) : (
-              <Button
-                fullWidth
-                onClick={handleSubmitOrder}
-                disabled={loading}
-                type="button"
-                className="shadow-xl"
-              >
-                {loading
-                  ? 'Se procesează...'
-                  : paymentMethod === 'ramburs'
-                    ? `Trimite Comanda (${finalTotal.toFixed(2)} RON)`
-                    : `Plătește cu Cardul (${finalTotal.toFixed(2)} RON)`}
-              </Button>
+              <Button fullWidth onClick={handleSubmitOrder} disabled={loading} type="button" className="shadow-xl">{loading ? 'Se procesează...' : paymentMethod === 'ramburs' ? `Trimite Comanda (${finalTotal.toFixed(2)} RON)` : `Plătește cu Cardul (${finalTotal.toFixed(2)} RON)`}</Button>
             )}
           </div>
         )}
       </div>
 
-      {/* STILURI PENTRU COMPONENTELE GOOGLE */}
       <style>{`
-        .pac-container { 
-          z-index: 99999 !important; 
-        }
-        gmpx-place-picker {
-          display: block;
-          width: 100%;
-        }
-        /* Stilizare input intern Google pentru a semăna cu input-urile tale */
-        gmpx-place-picker input {
-          padding: 0.75rem !important;
-          border-radius: 0.5rem !important;
-          border: 1px solid #e5e5e5 !important;
-          width: 100% !important;
-          font-size: 0.875rem !important; /* text-sm echivalent */
-          box-sizing: border-box !important;
-          background-color: white !important;
-          height: auto !important;
-        }
-        gmpx-place-picker input:focus {
-          outline: none !important;
-          border-color: black !important;
-        }
+        .pac-container { z-index: 99999 !important; }
+        gmpx-place-picker { display: block; width: 100%; }
+        gmpx-place-picker input { padding: 0.75rem !important; border-radius: 0.5rem !important; border: 1px solid #e5e5e5 !important; width: 100% !important; font-size: 0.875rem !important; box-sizing: border-box !important; background-color: white !important; height: auto !important; }
+        gmpx-place-picker input:focus { outline: none !important; border-color: black !important; }
       `}</style>
     </>
   );
