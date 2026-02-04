@@ -1,16 +1,3 @@
-Mă bucur mult că funcționează acum! 🎉 Integrarea cu Web Components în React 19 poate fi tricky, dar soluția cu `ref` este cea mai sigură.
-
-Legat de **Codul Poștal**, în codul anterior funcționalitatea era deja inclusă, dar poate nu a fost evidentă sau poate nu a funcționat pentru anumite adrese (de exemplu, dacă selectezi un oraș întreg, Google nu returnează mereu un cod poștal, ci doar pentru adrese specifice stradă+număr).
-
-Totuși, pentru a fi siguri că preluarea este cât mai robustă, am adăugat o verificare suplimentară și un log în consolă ca să vezi exact ce extrage.
-
-Iată codul complet actualizat pentru **`CartDrawer.tsx`**. Înlocuiește tot fișierul cu acesta:
-
-### Fișier: `components/CartDrawer.tsx`
-
-Modificarea principală este în `useEffect`-ul care gestionează `gmpx-placechange`, unde am evidențiat logica pentru `postal_code`.
-
-```tsx
 import React, { useState, useEffect, useRef } from 'react';
 import { useCart } from '../context/CartContext';
 import { Button } from './Button';
@@ -596,5 +583,3 @@ export const CartDrawer: React.FC = () => {
     </>
   );
 };
-
-```
