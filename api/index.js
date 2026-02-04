@@ -540,7 +540,7 @@ app.all('/api/admin', async (req, res) => {
         if (req.method === 'PUT') {
             const { orderId, ...updateData } = req.body;
             
-            const allowedFields = ['customer_name', 'customer_email', 'customer_phone', 'status', 'county', 'city', 'address_line'];
+            const allowedFields = ['customer_name', 'customer_email', 'customer_phone', 'status', 'county', 'city', 'address_line', 'postal_code', 'locker_id'];
             const updates = [];
             const values = [];
 

@@ -845,98 +845,124 @@ export const Admin: React.FC = () => {
                 {orders.length === 0 && !loading && <div className="p-12 text-center text-neutral-400">Nu există comenzi.</div>}
               </div>
 
-              {/* MODAL EDITARE COMANDĂ */}
-              {editingOrder && (
-                  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-fade-in">
-                      <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-                          <h2 className="text-xl font-black uppercase mb-6 flex justify-between items-center">
-                              <span>Editare Comandă #{editingOrder.id}</span>
-                              <button onClick={() => setEditingOrder(null)} className="text-neutral-400 hover:text-black">✕</button>
-                          </h2>
-                          
-                          <form onSubmit={handleUpdateOrder} className="space-y-4">
-                              <div>
-                                  <label className="label-admin">Status Comandă</label>
-                                  <select 
-                                      className="input-admin"
-                                      value={editingOrder.status}
-                                      onChange={e => setEditingOrder({...editingOrder, status: e.target.value})}
-                                  >
-                                      <option value="pending">Pending (În așteptare)</option>
-                                      <option value="paid">Paid (Plătit)</option>
-                                      <option value="shipped">Shipped (Livrat)</option>
-                                      <option value="completed">Completed (Finalizat)</option>
-                                      <option value="cancelled">Cancelled (Anulat)</option>
-                                      <option value="returned">Returned (Returnat)</option>
-                                  </select>
-                              </div>
+                      {/* MODAL EDITARE COMANDĂ - ACTUALIZAT */}
+                      {editingOrder && (
+                          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-fade-in">
+                              <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                                  <h2 className="text-xl font-black uppercase mb-6 flex justify-between items-center">
+                                      <span>Editare Comandă #{editingOrder.id}</span>
+                                      <button onClick={() => setEditingOrder(null)} className="text-neutral-400 hover:text-black">✕</button>
+                                  </h2>
 
-                              <div className="grid grid-cols-2 gap-4">
-                                  <div>
-                                      <label className="label-admin">Nume Client</label>
-                                      <input 
-                                          className="input-admin"
-                                          value={editingOrder.customer_name}
-                                          onChange={e => setEditingOrder({...editingOrder, customer_name: e.target.value})}
-                                      />
-                                  </div>
-                                  <div>
-                                      <label className="label-admin">Telefon</label>
-                                      <input 
-                                          className="input-admin"
-                                          value={editingOrder.customer_phone}
-                                          onChange={e => setEditingOrder({...editingOrder, customer_phone: e.target.value})}
-                                      />
-                                  </div>
-                              </div>
-
-                              <div>
-                                  <label className="label-admin">Email</label>
-                                  <input 
-                                      className="input-admin"
-                                      value={editingOrder.customer_email}
-                                      onChange={e => setEditingOrder({...editingOrder, customer_email: e.target.value})}
-                                  />
-                              </div>
-
-                              <div className="border-t border-neutral-100 pt-4 mt-2">
-                                   <p className="text-xs font-bold uppercase text-neutral-400 mb-3">Adresă Livrare</p>
-                                   <div className="grid grid-cols-2 gap-4 mb-2">
+                                  <form onSubmit={handleUpdateOrder} className="space-y-4">
                                       <div>
-                                          <label className="label-admin">Județ</label>
-                                          <input 
+                                          <label className="label-admin">Status Comandă</label>
+                                          <select
                                               className="input-admin"
-                                              value={editingOrder.county || ''}
-                                              onChange={e => setEditingOrder({...editingOrder, county: e.target.value})}
+                                              value={editingOrder.status}
+                                              onChange={e => setEditingOrder({ ...editingOrder, status: e.target.value })}
+                                          >
+                                              <option value="pending">Pending (În așteptare)</option>
+                                              <option value="paid">Paid (Plătit)</option>
+                                              <option value="shipped">Shipped (Livrat)</option>
+                                              <option value="completed">Completed (Finalizat)</option>
+                                              <option value="cancelled">Cancelled (Anulat)</option>
+                                              <option value="returned">Returned (Returnat)</option>
+                                          </select>
+                                      </div>
+
+                                      <div className="grid grid-cols-2 gap-4">
+                                          <div>
+                                              <label className="label-admin">Nume Client</label>
+                                              <input
+                                                  className="input-admin"
+                                                  value={editingOrder.customer_name}
+                                                  onChange={e => setEditingOrder({ ...editingOrder, customer_name: e.target.value })}
+                                              />
+                                          </div>
+                                          <div>
+                                              <label className="label-admin">Telefon</label>
+                                              <input
+                                                  className="input-admin"
+                                                  value={editingOrder.customer_phone}
+                                                  onChange={e => setEditingOrder({ ...editingOrder, customer_phone: e.target.value })}
+                                              />
+                                          </div>
+                                      </div>
+
+                                      <div>
+                                          <label className="label-admin">Email</label>
+                                          <input
+                                              className="input-admin"
+                                              value={editingOrder.customer_email}
+                                              onChange={e => setEditingOrder({ ...editingOrder, customer_email: e.target.value })}
                                           />
                                       </div>
-                                      <div>
-                                          <label className="label-admin">Oraș</label>
-                                          <input 
-                                              className="input-admin"
-                                              value={editingOrder.city || ''}
-                                              onChange={e => setEditingOrder({...editingOrder, city: e.target.value})}
-                                          />
-                                      </div>
-                                   </div>
-                                   <div>
-                                      <label className="label-admin">Adresă / Stradă</label>
-                                      <input 
-                                          className="input-admin"
-                                          value={editingOrder.address_line || ''}
-                                          onChange={e => setEditingOrder({...editingOrder, address_line: e.target.value})}
-                                      />
-                                   </div>
-                              </div>
 
-                              <div className="flex gap-3 pt-6">
-                                  <Button fullWidth type="submit">Salvează Modificările</Button>
-                                  <Button fullWidth variant="outline" type="button" onClick={() => setEditingOrder(null)}>Anulează</Button>
+                                      <div className="border-t border-neutral-100 pt-4 mt-2">
+                                          <p className="text-xs font-bold uppercase text-neutral-400 mb-3">Adresă Livrare & Ecolet</p>
+
+                                          <div className="grid grid-cols-2 gap-4 mb-2">
+                                              <div>
+                                                  <label className="label-admin">Județ</label>
+                                                  <input
+                                                      className="input-admin"
+                                                      value={editingOrder.county || ''}
+                                                      onChange={e => setEditingOrder({ ...editingOrder, county: e.target.value })}
+                                                  />
+                                              </div>
+                                              <div>
+                                                  <label className="label-admin">Oraș</label>
+                                                  <input
+                                                      className="input-admin"
+                                                      value={editingOrder.city || ''}
+                                                      onChange={e => setEditingOrder({ ...editingOrder, city: e.target.value })}
+                                                  />
+                                              </div>
+                                          </div>
+
+                                          {/* ⭐ CÂMPURI NOI PENTRU ECOLET */}
+                                          <div className="grid grid-cols-3 gap-4 mb-2">
+                                              <div className="col-span-2">
+                                                  <label className="label-admin">Adresă (Stradă, Nr, Bloc)</label>
+                                                  <input
+                                                      className="input-admin"
+                                                      value={editingOrder.address_line || ''}
+                                                      onChange={e => setEditingOrder({ ...editingOrder, address_line: e.target.value })}
+                                                  />
+                                              </div>
+                                              <div>
+                                                  <label className="label-admin">Cod Poștal</label>
+                                                  <input
+                                                      className="input-admin"
+                                                      value={editingOrder.postal_code || ''}
+                                                      placeholder="000000"
+                                                      onChange={e => setEditingOrder({ ...editingOrder, postal_code: e.target.value })}
+                                                  />
+                                              </div>
+                                          </div>
+
+                                          {/* ID LOCKER (Doar informativ sau editabil dacă e EasyBox) */}
+                                          {editingOrder.shipping_method === 'easybox' && (
+                                              <div>
+                                                  <label className="label-admin">Locker ID (EasyBox)</label>
+                                                  <input
+                                                      className="input-admin bg-yellow-50 font-mono text-xs"
+                                                      value={editingOrder.locker_id || ''}
+                                                      onChange={e => setEditingOrder({ ...editingOrder, locker_id: e.target.value })}
+                                                  />
+                                              </div>
+                                          )}
+                                      </div>
+
+                                      <div className="flex gap-3 pt-6">
+                                          <Button fullWidth type="submit">Salvează Modificările</Button>
+                                          <Button fullWidth variant="outline" type="button" onClick={() => setEditingOrder(null)}>Anulează</Button>
+                                      </div>
+                                  </form>
                               </div>
-                          </form>
-                      </div>
-                  </div>
-              )}
+                          </div>
+                      )}
             </>
         )}
 
