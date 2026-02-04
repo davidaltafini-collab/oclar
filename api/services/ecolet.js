@@ -169,8 +169,8 @@ export async function createDraftShipment(order) {
                 locality_id: receiverLocalityId,
                 locality: targetCity,
                 postal_code: order.postal_code || shippingAddress.postal_code || "000000",
-                street_name: targetAddress.substring(0, 50), // Limitare caractere
-                street_number: "1", // Obligatoriu la Ecolet
+                street_name: (order.address_line || "").split('Nr.')[0].trim(), // Luăm partea dinainte de "Nr."
+                street_number: (order.address_line || "").split('Nr.')[1]?.trim() || "1", // Luăm partea de după "Nr." sau punem "1"
                 contact_person: order.customer_name || "Client",
                 email: order.customer_email || order.email || "client@test.ro",
                 phone: (order.customer_phone || order.phone || "0700000000").replace(/\s/g, ''),
