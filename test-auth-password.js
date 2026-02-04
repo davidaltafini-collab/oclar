@@ -78,7 +78,7 @@ async function testPasswordAuth() {
                 type: "package",
                 weight: 1,
                 dimensions: { length: 10, width: 10, height: 10 },
-                content: "TEST"
+                content: "TEST",
                 shape: "standard", // <--- Am adăugat asta
                 amount: 1
             },
