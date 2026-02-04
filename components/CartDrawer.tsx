@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { usePlacesWidget } from "react-google-autocomplete"; // ⭐ IMPORT NOU
 import { useCart } from '../context/CartContext';
 import { Button } from './Button';
 import { API_URL } from '../constants';
@@ -52,12 +53,71 @@ export const CartDrawer: React.FC = () => {
     street_number: '',
     details: '' 
   });
+  
   // ⭐ VALIDĂRI
   const [validationErrors, setValidationErrors] = useState<{
     phone?: string;
     email?: string;
     postalCode?: string;
   }>({});
+
+  // ⭐ HELPERE PENTRU GOOGLE PLACES & ECOLET
+  const normalizeCounty = (googleCounty: string) => {
+    if (!googleCounty) return '';
+    let clean = googleCounty.replace('Județul', '').replace('County', '').trim();
+    if (clean === 'Bucharest' || clean === 'București') return 'Bucuresti';
+    // Eliminare diacritice pentru matching cu lista Ecolet
+    return clean.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); 
+  };
+
+  const normalizeCity = (googleCity: string) => {
+      if (!googleCity) return '';
+      if (googleCity === 'Bucharest' || googleCity === 'București') return 'Bucuresti';
+      return googleCity;
+  };
+
+  // ⭐ CONFIGURARE GOOGLE PLACES WIDGET
+  const { ref: materialRef } = usePlacesWidget({
+    apiKey: import.meta.env.VITE_GOOGLE_MAPS_KEY, // Asigură-te că ai cheia în .env
+    onPlaceSelected: (place) => {
+      // 1. Extragem componentele adresei
+      const addressComponents = place.address_components;
+      let street = '', number = '', city = '', county = '', postal = '';
+
+      if (addressComponents) {
+        addressComponents.forEach((component: any) => {
+          const types = component.types;
+          if (types.includes("route")) street = component.long_name;
+          if (types.includes("street_number")) number = component.long_name;
+          if (types.includes("locality")) city = normalizeCity(component.long_name);
+          // Fallback oraș (uneori apare la sector/admin level 2)
+          if (!city && types.includes("administrative_area_level_2")) city = normalizeCity(component.long_name);
+          if (types.includes("administrative_area_level_1")) county = normalizeCounty(component.long_name);
+          if (types.includes("postal_code")) postal = component.long_name;
+        });
+      }
+
+      // 2. Actualizăm formularul cu datele de la Google
+      setFormData(prev => ({
+        ...prev,
+        street_name: street,
+        street_number: number,
+        city: city,
+        county: county, 
+        postalCode: postal,
+        // Reconstruim adresa completă pentru Ecolet/Curier
+        address: `${street} Nr. ${number}, ${prev.details}`
+      }));
+      
+      // 3. Validăm codul poștal dacă a fost găsit
+      if (postal) validateField('postalCode', postal);
+    },
+    options: {
+      types: ["address"], // Caută doar adrese exacte
+      componentRestrictions: { country: "ro" }, // Restricționează la România
+    },
+    language: "ro"
+  });
 
   const toNumber = (v: unknown): number => {
     if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
@@ -92,34 +152,25 @@ export const CartDrawer: React.FC = () => {
   // ⭐ INTEGRARE WIDGET ECOLET PENTRU EASYBOX
   useEffect(() => {
     if (shippingMethod === 'easybox' && step === 'details') {
-      // AICI INTEGREZI WIDGET-UL ECOLET
-      // Exemplu: încarcă script-ul Ecolet și configurează callback-ul
-      
-      // Presupunem că Ecolet oferă un script care trebuie încărcat
       const scriptId = 'ecolet-widget-script';
       
       if (!document.getElementById(scriptId)) {
         const script = document.createElement('script');
         script.id = scriptId;
-        script.src = 'https://widget.ecolet.ro/locker-selector.js'; // URL exemplu
+        script.src = 'https://widget.ecolet.ro/locker-selector.js';
         script.async = true;
         script.onload = () => {
           console.log('✅ Ecolet widget loaded');
-          // După ce se încarcă, inițializăm widget-ul
           initEcoletWidget();
         };
         document.body.appendChild(script);
       } else {
-        // Dacă scriptul e deja încărcat, inițializăm direct
         initEcoletWidget();
       }
     }
   }, [shippingMethod, step]);
 
   const initEcoletWidget = () => {
-    // AICI CONFIGUREZI WIDGET-UL ECOLET
-    // Exemplu (sintaxa depinde de API-ul Ecolet):
-    
     if (typeof window !== 'undefined' && (window as any).EcoletWidget) {
       (window as any).EcoletWidget.init({
         containerId: 'ecolet-locker-widget',
@@ -131,7 +182,6 @@ export const CartDrawer: React.FC = () => {
             city: locker.city,
             county: locker.county
           });
-          // Actualizăm și formData cu datele de la locker
           setFormData(prev => ({
             ...prev,
             city: locker.city,
@@ -208,7 +258,6 @@ export const CartDrawer: React.FC = () => {
     const errors = { ...validationErrors };
 
     if (name === 'phone') {
-      // Telefon: doar cifre, minim 10 caractere
       const phoneRegex = /^[0-9]{10,}$/;
       if (value && !phoneRegex.test(value.replace(/\s/g, ''))) {
         errors.phone = 'Telefonul trebuie să conțină minim 10 cifre';
@@ -218,7 +267,6 @@ export const CartDrawer: React.FC = () => {
     }
 
     if (name === 'email' && value) {
-      // Email: regex simplu
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(value)) {
         errors.email = 'Adresă email invalidă';
@@ -228,7 +276,6 @@ export const CartDrawer: React.FC = () => {
     }
 
     if (name === 'postalCode') {
-      // Cod poștal: 6 cifre
       const postalRegex = /^[0-9]{6}$/;
       if (value && !postalRegex.test(value)) {
         errors.postalCode = 'Codul poștal trebuie să aibă 6 cifre';
@@ -291,7 +338,7 @@ export const CartDrawer: React.FC = () => {
         if (url) window.location.href = url;
         else throw new Error('No checkout URL received');
       } else {
-        // ⭐ PAYLOAD MODIFICAT CU postal_code și lockerId
+        // ⭐ PAYLOAD
         const response = await fetch(`${API_URL}/create-order-ramburs`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -311,8 +358,8 @@ export const CartDrawer: React.FC = () => {
             discountCode: appliedDiscount?.code || null,
             discountAmount,
             totalAmount: finalTotal,
-            postalCode: formData.postalCode, // ⭐ NOU
-            lockerId: selectedLocker?.lockerId || null, // ⭐ NOU
+            postalCode: formData.postalCode,
+            lockerId: selectedLocker?.lockerId || null,
           }),
         });
 
@@ -532,14 +579,75 @@ export const CartDrawer: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Adresa Livrare (MODIFICAT PENTRU ECOLET) */}
+                {/* Adresa Livrare (MODIFICAT PENTRU GOOGLE PLACES) */}
                 <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
                   <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">
                     Adresa Livrare
                   </h3>
+                  
+                  {/* ⭐ CÂMPUL STRADĂ CU GOOGLE AUTOCOMPLETE */}
+                  <div className="col-span-2">
+                      <label className="text-xs text-neutral-400 ml-1 mb-1 block">Caută strada (Google):</label>
+                      <input
+                        ref={materialRef} // <-- AICI ESTE REFERINȚA CĂTRE GOOGLE PLACES
+                        required
+                        name="street_name"
+                        placeholder="Începe să scrii numele străzii..."
+                        defaultValue={formData.street_name}
+                        onChange={(e) => {
+                             // Permite și editare manuală dacă userul modifică textul după autocompletare
+                             const val = e.target.value;
+                             setFormData(prev => ({
+                               ...prev,
+                               street_name: val,
+                               address: `${val} Nr. ${prev.street_number}, ${prev.details}`
+                             }));
+                        }}
+                        className="w-full p-3 border border-blue-200 bg-blue-50/30 rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm"
+                      />
+                  </div>
+
+                  {/* Număr stradă */}
+                  <div className="grid grid-cols-3 gap-3">
+                     <div className="col-span-1">
+                      <label className="text-xs text-neutral-400 ml-1 mb-1 block">Număr:</label>
+                      <input
+                        required
+                        name="street_number"
+                        placeholder="Nr. *"
+                        value={formData.street_number}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFormData(prev => ({
+                            ...prev,
+                            street_number: val,
+                            address: `${prev.street_name} Nr. ${val}, ${prev.details}`
+                          }));
+                        }}
+                        className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors"
+                      />
+                    </div>
+                     <div className="col-span-2">
+                       <label className="text-xs text-neutral-400 ml-1 mb-1 block">Detalii (Bl, Sc, Ap):</label>
+                       <input
+                        name="details"
+                        placeholder="Bloc, Scara, Etaj, Ap..."
+                        value={formData.details}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFormData(prev => ({
+                            ...prev,
+                            details: val,
+                            address: `${prev.street_name} Nr. ${prev.street_number}, ${val}`
+                          }));
+                        }}
+                        className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors"
+                      />
+                     </div>
+                  </div>
 
                   <div className="grid grid-cols-2 gap-3">
-                    {/* JUDEȚ - DROPDOWN STILIZAT CA INPUT */}
+                    {/* JUDEȚ - Auto-completat dar editabil */}
                     <div className="relative">
                       <select
                         required
@@ -555,13 +663,12 @@ export const CartDrawer: React.FC = () => {
                           </option>
                         ))}
                       </select>
-                      {/* Săgeată discretă */}
                       <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none">
                         <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
                       </div>
                     </div>
 
-                    {/* ORAȘ */}
+                    {/* ORAȘ - Auto-completat dar editabil */}
                     <input
                       required
                       name="city"
@@ -572,61 +679,7 @@ export const CartDrawer: React.FC = () => {
                     />
                   </div>
 
-                  {/* STRADĂ ȘI NUMĂR (SPARTE) */}
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="col-span-2">
-                      <input
-                        required
-                        name="street_name"
-                        placeholder="Nume Stradă *"
-                        value={formData.street_name}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setFormData(prev => ({
-                            ...prev,
-                            street_name: val,
-                            address: `${val} Nr. ${prev.street_number}, ${prev.details}` // Actualizăm adresa combinată
-                          }));
-                        }}
-                        className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm"
-                      />
-                    </div>
-                    <div className="col-span-1">
-                      <input
-                        required
-                        name="street_number"
-                        placeholder="Nr. *"
-                        value={formData.street_number}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setFormData(prev => ({
-                            ...prev,
-                            street_number: val,
-                            address: `${prev.street_name} Nr. ${val}, ${prev.details}`
-                          }));
-                        }}
-                        className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm"
-                      />
-                    </div>
-                  </div>
-
-                  {/* DETALII SUPLIMENTARE */}
-                  <input
-                    name="details"
-                    placeholder="Bloc, Scara, Etaj, Ap (Opțional)"
-                    value={formData.details}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setFormData(prev => ({
-                        ...prev,
-                        details: val,
-                        address: `${prev.street_name} Nr. ${prev.street_number}, ${val}`
-                      }));
-                    }}
-                    className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm"
-                  />
-
-                  {/* COD POȘTAL */}
+                  {/* COD POȘTAL - Auto-completat */}
                   <div>
                     <input
                       required={shippingMethod === 'courier'}
@@ -801,7 +854,6 @@ export const CartDrawer: React.FC = () => {
       </div>
 
       {/* ⭐ SCRIPTUL ECOLET SE VA ÎNCĂRCA DINAMIC */}
-      {/* Nu mai este nevoie de script static, se încarcă în useEffect */}
     </>
   );
 };
