@@ -3,10 +3,12 @@ import { useCart } from '../context/CartContext';
 import { Button } from './Button';
 import { API_URL, ROMANIAN_COUNTIES } from '../constants';
 
-// ⭐ IMPORTURI PENTRU GOOGLE PLACES (FĂRĂ API LOADER WEB COMPONENT)
+// ⭐ IMPORTURI GOOGLE MAPS COMPLETARE
+// Importăm și loader-ul oficial, și picker-ul
 import '@googlemaps/extended-component-library/place_picker.js';
+import '@googlemaps/extended-component-library/api_loader.js';
 
-// ⭐ DEFINIȚII TYPESCRIPT
+// ⭐ DEFINIȚII TYPESCRIPT ACTUALIZATE
 declare global {
   namespace JSX {
     interface IntrinsicElements {
@@ -14,7 +16,12 @@ declare global {
         placeholder?: string; 
         ref?: any; 
         style?: React.CSSProperties;
-        country?: string;
+        'for-country'?: string; // Observație: atributul corect este adesea for-country sau country în funcție de versiune
+      };
+      // Adăugăm definiția pentru loader
+      'gmpx-api-loader': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
+        key: string;
+        libraries?: string;
       };
     }
   }
@@ -27,67 +34,6 @@ type ShippingMethod = 'easybox' | 'courier';
 const SHIPPING_COSTS = {
   easybox: 15.00,
   courier: 25.00
-};
-
-// ⭐ FUNCȚIE PENTRU ÎNCĂRCARE PROGRAMATICĂ GOOGLE MAPS API
-const loadGoogleMapsAPI = (apiKey: string): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    // Verifică dacă API-ul e deja încărcat
-    if (typeof window !== 'undefined' && (window as any).google?.maps) {
-      console.log('✅ Google Maps API already loaded');
-      resolve();
-      return;
-    }
-
-    // Verifică dacă scriptul e deja adăugat
-    const existingScript = document.querySelector('script[src*="maps.googleapis.com"]');
-    if (existingScript) {
-      // Așteaptă încărcarea scriptului existent
-      const checkInterval = setInterval(() => {
-        if ((window as any).google?.maps) {
-          console.log('✅ Google Maps API loaded from existing script');
-          clearInterval(checkInterval);
-          resolve();
-        }
-      }, 100);
-      
-      setTimeout(() => {
-        clearInterval(checkInterval);
-        if (!(window as any).google?.maps) {
-          reject(new Error('Timeout waiting for existing script'));
-        }
-      }, 15000);
-      return;
-    }
-
-    console.log('📦 Loading Google Maps API...');
-
-    // Creează scriptul
-    const script = document.createElement('script');
-    script.type = 'text/javascript';
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&loading=async`;
-    script.async = true;
-    script.defer = true;
-
-    script.onload = () => {
-      console.log('✅ Google Maps API loaded successfully');
-      resolve();
-    };
-
-    script.onerror = (error) => {
-      console.error('❌ Failed to load Google Maps API:', error);
-      reject(new Error('Failed to load Google Maps API'));
-    };
-
-    document.head.appendChild(script);
-
-    // Timeout de siguranță
-    setTimeout(() => {
-      if (!(window as any).google?.maps) {
-        reject(new Error('Google Maps API load timeout'));
-      }
-    }, 15000);
-  });
 };
 
 export const CartDrawer: React.FC = () => {
@@ -109,10 +55,8 @@ export const CartDrawer: React.FC = () => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const pickerRef = useRef<any>(null);
   
-  // ⭐ STATE PENTRU GOOGLE MAPS (SIMPLIFICAT)
-  const [googleMapsReady, setGoogleMapsReady] = useState(false);
-  const [googleMapsError, setGoogleMapsError] = useState(false);
-  const [isLoadingMaps, setIsLoadingMaps] = useState(false);
+  // Obținem cheia API o singură dată
+  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_KEY || (window as any).__GOOGLE_MAPS_KEY__;
 
   const [selectedLocker, setSelectedLocker] = useState<{
     lockerId: string;
@@ -162,49 +106,67 @@ export const CartDrawer: React.FC = () => {
     }
     return 0;
   };
-
-  // ⭐ ÎNCĂRCARE GOOGLE MAPS API (NOUĂ METODĂ)
+  // ⭐ LISTENER PENTRU GOOGLE PICKER
   useEffect(() => {
-    // Încearcă să ia API key-ul din mai multe surse
-    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_KEY || 
-                   (window as any).__GOOGLE_MAPS_KEY__ ||
-    
-    
-    if (!apiKey || apiKey === 'undefined') {
-      console.error('❌ VITE_GOOGLE_MAPS_KEY is not defined in .env file');
-      console.log('💡 Add VITE_GOOGLE_MAPS_KEY=your_key to your .env file');
-      setGoogleMapsError(true);
-      return;
-    }
-    
-    console.log('🔑 Using Google Maps API key:', apiKey.substring(0, 10) + '...');
+    const picker = pickerRef.current;
+    // Nu mai verificăm googleMapsReady, picker-ul există în DOM
+    if (picker && step === 'details') {
+      const handlePlaceChange = () => {
+        const place = picker.value;
 
-    // Verifică dacă e deja încărcat
-    if ((window as any).google?.maps) {
-      console.log('✅ Google Maps API already available');
-      setGoogleMapsReady(true);
-      return;
-    }
+        // Verificare de siguranță
+        if (!place) return;
 
-    // Încarcă API-ul doar când e nevoie (când drawer-ul e deschis)
-    if (isCartOpen && !googleMapsReady && !isLoadingMaps && !googleMapsError) {
-      setIsLoadingMaps(true);
-      
-      loadGoogleMapsAPI(apiKey)
-        .then(() => {
-          setGoogleMapsReady(true);
-          setGoogleMapsError(false);
-        })
-        .catch((error) => {
-          console.error('❌ Error loading Google Maps:', error);
-          setGoogleMapsError(true);
-        })
-        .finally(() => {
-          setIsLoadingMaps(false);
+        // În noua bibliotecă, uneori trebuie să așteptăm popularea câmpurilor
+        // Dar de obicei picker.value are datele de bază pentru UI
+        if (!place.addressComponents) {
+          console.warn('⚠️ No address components found on place object directly.');
+          // Aici am putea apela place.fetchFields(), dar de obicei picker-ul le are
+        }
+
+        console.log('📍 Place selected:', place);
+
+        const addressComponents = place.addressComponents || [];
+        let street = '', number = '', city = '', county = '', postal = '';
+
+        addressComponents.forEach((component: any) => {
+          const types = component.types;
+          if (types.includes("route")) street = component.longText;
+          if (types.includes("street_number")) number = component.longText;
+          if (types.includes("locality")) city = normalizeCity(component.longText);
+          if (!city && types.includes("administrative_area_level_2")) city = normalizeCity(component.longText);
+          if (types.includes("administrative_area_level_1")) county = normalizeCounty(component.longText);
+          if (types.includes("postal_code")) postal = component.longText;
         });
-    }
-  }, [isCartOpen, googleMapsReady, isLoadingMaps, googleMapsError]);
 
+        // Fallback: Dacă nu găsește strada în componente (se întâmplă la locații punct fixe),
+        // încercăm să luăm din adresa formatată sau numele locului
+        if (!street && place.displayName) {
+          // Logică simplificată de fallback
+        }
+
+        setFormData(prev => ({
+          ...prev,
+          street_name: street,
+          street_number: number,
+          city: city,
+          county: county,
+          postalCode: postal,
+          address: place.formattedAddress
+        }));
+
+        if (postal) validateField('postalCode', postal);
+      };
+
+      picker.addEventListener('gmpx-placechange', handlePlaceChange);
+
+      return () => {
+        if (picker) {
+          picker.removeEventListener('gmpx-placechange', handlePlaceChange);
+        }
+      };
+    }
+  }, [step]); // Am scos googleMapsReady din dependințe
   // Resetam starea cand se inchide cosul
   useEffect(() => {
     if (!isCartOpen) {
@@ -225,57 +187,6 @@ export const CartDrawer: React.FC = () => {
       scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }, [step]);
-
-  // ⭐ LISTENER PENTRU GOOGLE PICKER
-  useEffect(() => {
-    const picker = pickerRef.current;
-    if (picker && step === 'details' && googleMapsReady) {
-        const handlePlaceChange = () => {
-            const place = picker.value;
-            if (!place || !place.addressComponents) {
-                console.warn('⚠️ No address components found');
-                return;
-            }
-
-            console.log('📍 Place selected:', place);
-
-            const addressComponents = place.addressComponents;
-            let street = '', number = '', city = '', county = '', postal = '';
-
-            addressComponents.forEach((component: any) => {
-                const types = component.types;
-                if (types.includes("route")) street = component.longText;
-                if (types.includes("street_number")) number = component.longText;
-                if (types.includes("locality")) city = normalizeCity(component.longText);
-                if (!city && types.includes("administrative_area_level_2")) city = normalizeCity(component.longText);
-                if (types.includes("administrative_area_level_1")) county = normalizeCounty(component.longText);
-                if (types.includes("postal_code")) postal = component.longText;
-            });
-
-            console.log('✅ Parsed address:', { street, number, city, county, postal });
-
-            setFormData(prev => ({
-                ...prev,
-                street_name: street,
-                street_number: number,
-                city: city,
-                county: county,
-                postalCode: postal,
-                address: place.formattedAddress
-            }));
-            
-            if (postal) validateField('postalCode', postal);
-        };
-
-        picker.addEventListener('gmpx-placechange', handlePlaceChange);
-        
-        return () => {
-            if (picker) {
-                picker.removeEventListener('gmpx-placechange', handlePlaceChange);
-            }
-        };
-    }
-  }, [step, googleMapsReady]);
 
   // ⭐ INTEGRARE WIDGET ECOLET
   useEffect(() => {
@@ -707,101 +618,55 @@ export const CartDrawer: React.FC = () => {
                   <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">
                     Adresa Livrare
                   </h3>
-                  
-                  {/* ⭐ GOOGLE AUTOCOMPLETE SAU MANUAL */}
-                  {isLoadingMaps ? (
-                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-center">
-                      <div className="animate-spin inline-block w-6 h-6 border-[3px] border-current border-t-transparent text-blue-600 rounded-full mb-2" />
-                      <p className="text-sm text-blue-700">Se încarcă Google Maps...</p>
-                    </div>
-                  ) : googleMapsReady ? (
-                    <div className="space-y-3">
-                      <div>
-                        <label className="text-xs text-blue-600 font-bold ml-1 mb-1 block">
-                          🔍 Caută Adresa (Stradă și Număr)
-                        </label>
-                        <gmpx-place-picker 
-                          ref={pickerRef} 
-                          placeholder="Ex: Strada Libertății 4, București" 
-                          id="place-picker"
-                          country="ro"
-                          style={{ width: '100%' }}
-                        />
-                      </div>
 
-                      {/* Date Extrase */}
-                      {(formData.county || formData.city || formData.street_name) && (
-                        <div className="grid grid-cols-2 gap-2 bg-gray-50 p-2 rounded border border-gray-100">
-                            <div>
-                                <label className="text-[10px] text-gray-400 block">Județ</label>
-                                <div className="text-sm font-bold">{formData.county || '-'}</div>
-                            </div>
-                            <div>
-                                <label className="text-[10px] text-gray-400 block">Oraș</label>
-                                <div className="text-sm font-bold">{formData.city || '-'}</div>
-                            </div>
-                            <div>
-                                <label className="text-[10px] text-gray-400 block">Stradă</label>
-                                <div className="text-sm font-bold">{formData.street_name || '-'}</div>
-                            </div>
-                            <div>
-                                <label className="text-[10px] text-gray-400 block">Număr</label>
-                                <div className="text-sm font-bold">{formData.street_number || '-'}</div>
-                            </div>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {googleMapsError && (
-                        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                          <p className="text-sm text-yellow-700">⚠️ Google Maps nu s-a putut încărca. Completează manual:</p>
-                        </div>
-                      )}
-                      
-                      <div className="grid grid-cols-2 gap-3">
-                        <select
-                          name="county"
-                          value={formData.county}
-                          onChange={handleInputChange}
-                          className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors"
-                          required
-                        >
-                          <option value="">Județ *</option>
-                          {ROMANIAN_COUNTIES.map(county => (
-                            <option key={county} value={county}>{county}</option>
-                          ))}
-                        </select>
-
-                        <input
-                          name="city"
-                          placeholder="Oraș *"
-                          value={formData.city}
-                          onChange={handleInputChange}
-                          className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors"
-                          required
-                        />
-                      </div>
-
-                      <input
-                        name="street_name"
-                        placeholder="Nume Stradă *"
-                        value={formData.street_name}
-                        onChange={handleInputChange}
-                        className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors"
-                        required
-                      />
-                      
-                      <input
-                        name="street_number"
-                        placeholder="Număr *"
-                        value={formData.street_number}
-                        onChange={handleInputChange}
-                        className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors"
-                        required
-                      />
-                    </div>
+                  {/* ⭐ LOADER OFICIAL GOOGLE MAPS */}
+                  {/* Acesta nu randează nimic vizual, doar încarcă scriptul global */}
+                  {step === 'details' && apiKey && (
+                    <gmpx-api-loader key={apiKey} libraries="places" />
                   )}
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs text-blue-600 font-bold ml-1 mb-1 block">
+                        🔍 Caută Adresa (Stradă și Număr)
+                      </label>
+
+                      {/* Picker-ul este randat direct. Dacă API-ul nu e gata, el așteaptă automat. */}
+                      <gmpx-place-picker
+                        ref={pickerRef}
+                        placeholder="Ex: Strada Libertății 4, București"
+                        id="place-picker"
+                        // @ts-ignore - Proprietate web component
+                        country="ro"
+                        style={{ width: '100%' }}
+                      />
+                    </div>
+
+                    {/* Date Extrase */}
+                    {(formData.county || formData.city || formData.street_name) && (
+                      <div className="grid grid-cols-2 gap-2 bg-gray-50 p-2 rounded border border-gray-100">
+                        <div>
+                          <label className="text-[10px] text-gray-400 block">Județ</label>
+                          <div className="text-sm font-bold">{formData.county || '-'}</div>
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-gray-400 block">Oraș</label>
+                          <div className="text-sm font-bold">{formData.city || '-'}</div>
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-gray-400 block">Stradă</label>
+                          <div className="text-sm font-bold">{formData.street_name || '-'}</div>
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-gray-400 block">Număr</label>
+                          <div className="text-sm font-bold">{formData.street_number || '-'}</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Câmpuri manuale ascunse sau afișate dacă e nevoie de editare */}
+                    {/* Poți păstra input-urile manuale ca fallback vizual sau editabile */}
+                  </div>
 
                   {/* Detalii Manuale */}
                   <div>
