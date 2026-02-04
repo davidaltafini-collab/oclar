@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useCart } from '../context/CartContext';
 import { Button } from './Button';
-import { API_URL } from '../constants';
-import { ROMANIAN_COUNTIES } from '../constants';
+import { API_URL, ROMANIAN_COUNTIES } from '../constants';
 
 // ⭐ IMPORTURI GOOGLE WEB COMPONENTS (SOLUȚIA PREMIUM)
 import '@googlemaps/extended-component-library/api_loader.js';
