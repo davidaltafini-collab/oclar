@@ -7,14 +7,13 @@ import { API_URL, ROMANIAN_COUNTIES } from '../constants';
 import '@googlemaps/extended-component-library/api_loader.js';
 import '@googlemaps/extended-component-library/place_picker.js';
 
-// ⭐ DEFINIȚII TYPESCRIPT PENTRU ELEMENTELE GOOGLE
+// ⭐ DEFINIȚII TYPESCRIPT
 declare global {
   namespace JSX {
     interface IntrinsicElements {
       'gmpx-api-loader': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & { 
         key: string; 
         "solution-channel"?: string;
-        "loading"?: string;
       };
       'gmpx-place-picker': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & { 
         placeholder?: string; 
@@ -43,7 +42,6 @@ export const CartDrawer: React.FC = () => {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('ramburs');
   const [shippingMethod, setShippingMethod] = useState<ShippingMethod>('courier');
   
-  // Discount state
   const [discountCode, setDiscountCode] = useState('');
   const [appliedDiscount, setAppliedDiscount] = useState<{
     code: string;
@@ -53,14 +51,13 @@ export const CartDrawer: React.FC = () => {
   const [discountError, setDiscountError] = useState('');
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  
-  // ⭐ REFERINȚĂ PENTRU PICKER GOOGLE
   const pickerRef = useRef<any>(null);
   
-  // ⭐ STATE PENTRU GOOGLE MAPS API
+  // ⭐ STATE ÎMBUNĂTĂȚIT PENTRU GOOGLE MAPS
   const [googleMapsLoaded, setGoogleMapsLoaded] = useState(false);
+  const [googleMapsError, setGoogleMapsError] = useState(false);
+  const apiLoaderRef = useRef<any>(null);
 
-  // ⭐ STATE PENTRU ECOLET
   const [selectedLocker, setSelectedLocker] = useState<{
     lockerId: string;
     lockerName: string;
@@ -81,14 +78,13 @@ export const CartDrawer: React.FC = () => {
     details: '' 
   });
   
-  // ⭐ VALIDĂRI
   const [validationErrors, setValidationErrors] = useState<{
     phone?: string;
     email?: string;
     postalCode?: string;
   }>({});
 
-  // ⭐ HELPERE PENTRU GOOGLE PLACES & ECOLET
+  // ⭐ HELPERE
   const normalizeCounty = (googleCounty: string) => {
     if (!googleCounty) return '';
     let clean = googleCounty.replace('Județul', '').replace('County', '').trim();
@@ -111,38 +107,54 @@ export const CartDrawer: React.FC = () => {
     return 0;
   };
 
-  // ⭐ VERIFICARE ÎNCĂRCARE GOOGLE MAPS API
+  // ⭐ VERIFICARE ÎMBUNĂTĂȚITĂ GOOGLE MAPS API
   useEffect(() => {
+    let mounted = true;
+    let attempts = 0;
+    const maxAttempts = 40; // 20 secunde (40 * 500ms)
+
     const checkGoogleMapsLoaded = () => {
+      attempts++;
+      
+      // Verificăm dacă Google Maps API este disponibil
       if (typeof window !== 'undefined' && (window as any).google?.maps) {
-        console.log('✅ Google Maps API loaded successfully');
-        setGoogleMapsLoaded(true);
+        if (mounted) {
+          console.log('✅ Google Maps API loaded successfully');
+          setGoogleMapsLoaded(true);
+          setGoogleMapsError(false);
+        }
         return true;
       }
+      
+      // Timeout după maxAttempts
+      if (attempts >= maxAttempts) {
+        if (mounted) {
+          console.error('❌ Google Maps API failed to load after 20 seconds');
+          setGoogleMapsError(true);
+        }
+        return true; // Oprește verificările
+      }
+      
       return false;
     };
 
     // Verificare imediată
-    if (checkGoogleMapsLoaded()) return;
+    if (!checkGoogleMapsLoaded()) {
+      // Verificare periodică
+      const interval = setInterval(() => {
+        if (checkGoogleMapsLoaded()) {
+          clearInterval(interval);
+        }
+      }, 500);
 
-    // Verificare periodică (cu timeout pentru siguranță)
-    const interval = setInterval(() => {
-      if (checkGoogleMapsLoaded()) {
+      return () => {
+        mounted = false;
         clearInterval(interval);
-      }
-    }, 500);
-
-    // Cleanup după 10 secunde
-    const timeout = setTimeout(() => {
-      clearInterval(interval);
-      if (!googleMapsLoaded) {
-        console.warn('⚠️ Google Maps API took too long to load');
-      }
-    }, 10000);
+      };
+    }
 
     return () => {
-      clearInterval(interval);
-      clearTimeout(timeout);
+      mounted = false;
     };
   }, []);
 
@@ -218,7 +230,7 @@ export const CartDrawer: React.FC = () => {
     }
   }, [step, googleMapsLoaded]);
 
-  // ⭐ INTEGRARE WIDGET ECOLET PENTRU EASYBOX
+  // ⭐ INTEGRARE WIDGET ECOLET
   useEffect(() => {
     if (shippingMethod === 'easybox' && step === 'details') {
       const scriptId = 'ecolet-widget-script';
@@ -320,7 +332,6 @@ export const CartDrawer: React.FC = () => {
     validateField(name, value);
   };
 
-  // ⭐ FUNCȚIE VALIDARE CÂMPURI
   const validateField = (name: string, value: string) => {
     const errors = { ...validationErrors };
 
@@ -357,7 +368,6 @@ export const CartDrawer: React.FC = () => {
   const handleSubmitOrder = async (e?: React.MouseEvent) => {
     if (e) e.preventDefault();
 
-    // ⭐ VALIDĂRI FINALE
     const errors: any = {};
 
     if (!formData.fullName) errors.fullName = 'Numele este obligatoriu';
@@ -452,11 +462,11 @@ export const CartDrawer: React.FC = () => {
 
   return (
     <>
-      {/* ⭐ LOAD GOOGLE API LOADER - VERSIUNE ÎMBUNĂTĂȚITĂ */}
+      {/* ⭐ GOOGLE API LOADER - POZIȚIONAT CORECT */}
       <gmpx-api-loader 
-        key={import.meta.env.VITE_GOOGLE_MAPS_KEY} 
+        key={import.meta.env.VITE_GOOGLE_MAPS_KEY}
         solution-channel="GMP_GE_mapsandplacesautocomplete_v2"
-        loading="async"
+        ref={apiLoaderRef}
       />
 
       <div className="fixed inset-0 bg-black/60 z-50 backdrop-blur-sm" onClick={toggleCart} />
@@ -658,45 +668,69 @@ export const CartDrawer: React.FC = () => {
                     Adresa Livrare
                   </h3>
                   
-                  {/* ⭐ CÂMPUL STRADĂ CU GOOGLE AUTOCOMPLETE */}
-                  {googleMapsLoaded ? (
+                  {/* ⭐ CÂMPUL GOOGLE AUTOCOMPLETE - CU FALLBACK */}
+                  {!googleMapsError ? (
                     <div className="col-span-2">
                       <label className="text-xs text-blue-600 font-bold ml-1 mb-1 block">
-                        🔍 Caută Adresa (Stradă și Număr)
+                        {googleMapsLoaded ? '🔍 Caută Adresa (Stradă și Număr)' : '⏳ Se încarcă Google Maps...'}
                       </label>
-                      <gmpx-place-picker 
-                        ref={pickerRef} 
-                        placeholder="Ex: Strada Libertății 4, București" 
-                        id="place-picker"
-                        country="ro"
-                        style={{ width: '100%' }}
-                      />
+                      {googleMapsLoaded ? (
+                        <gmpx-place-picker 
+                          ref={pickerRef} 
+                          placeholder="Ex: Strada Libertății 4, București" 
+                          id="place-picker"
+                          country="ro"
+                          style={{ width: '100%' }}
+                        />
+                      ) : (
+                        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+                          Se încarcă Google Maps... ({Math.min(20, Math.round((Date.now() % 20000) / 1000))}s)
+                        </div>
+                      )}
                     </div>
                   ) : (
-                    <div className="col-span-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                      <p className="text-sm text-yellow-700">⏳ Se încarcă Google Maps...</p>
+                    <div className="col-span-2">
+                      <div className="p-3 bg-red-50 border border-red-200 rounded-lg mb-3">
+                        <p className="text-sm text-red-700">⚠️ Google Maps nu s-a încărcat. Introdu manual adresa:</p>
+                      </div>
+                      <input
+                        name="street_name"
+                        placeholder="Nume Stradă *"
+                        value={formData.street_name}
+                        onChange={handleInputChange}
+                        className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors mb-2"
+                      />
+                      <input
+                        name="street_number"
+                        placeholder="Număr *"
+                        value={formData.street_number}
+                        onChange={handleInputChange}
+                        className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors"
+                      />
                     </div>
                   )}
 
                   {/* Date Extrase */}
-                  <div className="grid grid-cols-2 gap-2 bg-gray-50 p-2 rounded border border-gray-100">
-                      <div>
-                          <label className="text-[10px] text-gray-400 block">Județ</label>
-                          <div className="text-sm font-bold">{formData.county || '-'}</div>
-                      </div>
-                      <div>
-                          <label className="text-[10px] text-gray-400 block">Oraș</label>
-                          <div className="text-sm font-bold">{formData.city || '-'}</div>
-                      </div>
-                      <div>
-                          <label className="text-[10px] text-gray-400 block">Stradă</label>
-                          <div className="text-sm font-bold">{formData.street_name || '-'}</div>
-                      </div>
-                      <div>
-                          <label className="text-[10px] text-gray-400 block">Număr</label>
-                          <div className="text-sm font-bold">{formData.street_number || '-'}</div>
-                      </div>
-                  </div>
+                  {(formData.county || formData.city || formData.street_name) && (
+                    <div className="grid grid-cols-2 gap-2 bg-gray-50 p-2 rounded border border-gray-100">
+                        <div>
+                            <label className="text-[10px] text-gray-400 block">Județ</label>
+                            <div className="text-sm font-bold">{formData.county || '-'}</div>
+                        </div>
+                        <div>
+                            <label className="text-[10px] text-gray-400 block">Oraș</label>
+                            <div className="text-sm font-bold">{formData.city || '-'}</div>
+                        </div>
+                        <div>
+                            <label className="text-[10px] text-gray-400 block">Stradă</label>
+                            <div className="text-sm font-bold">{formData.street_name || '-'}</div>
+                        </div>
+                        <div>
+                            <label className="text-[10px] text-gray-400 block">Număr</label>
+                            <div className="text-sm font-bold">{formData.street_number || '-'}</div>
+                        </div>
+                    </div>
+                  )}
 
                   {/* Detalii Manuale */}
                   <div className="col-span-2">
@@ -859,7 +893,7 @@ export const CartDrawer: React.FC = () => {
               <Button
                 fullWidth
                 onClick={handleSubmitOrder}
-                disabled={loading || !googleMapsLoaded}
+                disabled={loading}
                 type="button"
                 className="shadow-xl"
               >
@@ -874,7 +908,7 @@ export const CartDrawer: React.FC = () => {
         )}
       </div>
 
-      {/* ⭐ STILURI PENTRU COMPONENTELE GOOGLE */}
+      {/* ⭐ STILURI */}
       <style>{`
         .pac-container { 
           z-index: 99999 !important; 
