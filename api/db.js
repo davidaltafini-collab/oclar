@@ -1,4 +1,6 @@
 import mysql from 'mysql2/promise';
+import dotenv from 'dotenv'; // <--- LINIE NOUĂ (1)
+dotenv.config();             // <--- LINIE NOUĂ (2) - Asta citește fișierul .env
 
 // Logging pentru debugging
 console.log('DB Config loaded:', {
