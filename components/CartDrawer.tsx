@@ -84,7 +84,10 @@ export const CartDrawer: React.FC = () => {
     postalCode: '',
     street_name: '',
     street_number: '',
-    details: '' 
+    details: '', 
+    lat: null as number | null,
+    lng: null as number | null
+
   });
   
   // ⭐ VALIDĂRI
@@ -158,6 +161,11 @@ export const CartDrawer: React.FC = () => {
           const handlePlaceChange = () => {
             const place = picker.value;
             if (!place) return;
+            const location = place.location || place.geometry?.location;
+            const lat = location?.lat?.();
+            const lng = location?.lng?.();
+
+
 
             const addressComponents = place.addressComponents || [];
             let street = '', number = '', city = '', county = '', postal = '';
@@ -186,7 +194,9 @@ export const CartDrawer: React.FC = () => {
               city: city,
               county: county,
               postalCode: postal,
-              address: fullAddressLine
+              address: fullAddressLine,
+              lat: lat,
+              lng: lng
             }));
             
             if (postal) validateField('postalCode', postal);
@@ -265,11 +275,14 @@ export const CartDrawer: React.FC = () => {
           }
 
           window.BPWidget.init(container, {
+            initialPosition: formData.lat && formData.lng
+              ? { lat: formData.lat, lng: formData.lng }
+              : undefined,
             onPointSelected: (point: any) => {
               console.log("DEBUG raw locker point:", point);
               console.log('📦 Locker Selected:', point);
               const lockerName = point.name || point.description || point.operator + ' Locker';
-              const lockerId = point.id || point.code; 
+              const lockerId = String(point.id || point.code || ''); 
               const lockerCity = point.city || '';
               const lockerCounty = point.province || '';
               const lockerAddress = point.address || '';
@@ -325,7 +338,8 @@ export const CartDrawer: React.FC = () => {
         tryInitWidget();
       }
     }
-  }, [shippingMethod, step, isCartOpen, formData.city, formData.street_name]);
+  }, [shippingMethod, step, isCartOpen, formData.lat, formData.lng]);
+
 
   const validateField = (name: string, value: string) => {
     const errors = { ...validationErrors };
