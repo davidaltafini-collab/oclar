@@ -65,6 +65,27 @@ export const CartDrawer: React.FC = () => {
   // API Key
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_KEY || (window as any).__GOOGLE_MAPS_KEY__;
 
+// ⭐ FIX SUPREM: BLOCARE ZOOM PE MOBILE (NUCLEAR OPTION)
+  // Acest cod rulează o singură dată și forțează telefonul să nu facă zoom
+  useEffect(() => {
+    const metaTag = document.querySelector('meta[name="viewport"]');
+    if (metaTag) {
+      // Salvăm valoarea originală ca să fim siguri
+      const originalContent = metaTag.getAttribute('content') || '';
+      
+      // FORȚĂM setările care interzic zoom-ul: user-scalable=no, maximum-scale=1
+      metaTag.setAttribute(
+        'content', 
+        'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no'
+      );
+
+      // (Opțional) Revenim la setările normale când se închide componenta
+      return () => {
+         metaTag.setAttribute('content', originalContent);
+      };
+    }
+  }, []);
+
   // ⭐ STATE PENTRU ECOLET
   const [selectedLocker, setSelectedLocker] = useState<{
     lockerId: string;
@@ -589,7 +610,7 @@ export const CartDrawer: React.FC = () => {
                   </h3>
                   
                   <div className="mb-2 relative">
-                      <label className="text-xs text-yellow-600 font-bold ml-1 mb-1 block">Strada numar, oras</label>
+                      <label className="text-xs text-yellow-400 font-bold ml-1 mb-1 block">Stradă Numărr, Oraș</label>
                       <gmpx-place-picker 
                           ref={pickerRef} 
                           placeholder="Introdu adresa..." 
