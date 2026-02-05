@@ -265,6 +265,7 @@ export const CartDrawer: React.FC = () => {
 
           window.BPWidget.init(container, {
             callback: (point: any) => {
+              console.log("DEBUG raw locker point:", point);
               console.log('📦 Locker Selected:', point);
               const lockerName = point.name || point.description || point.operator + ' Locker';
               const lockerId = point.id || point.code; 
@@ -390,6 +391,7 @@ export const CartDrawer: React.FC = () => {
 
   // ⭐ SUBMIT COMANDĂ - VALIDARE COMPLETĂ
   const handleSubmitOrder = async (e?: React.MouseEvent) => {
+    console.log("DEBUG selectedLocker:", selectedLocker);
     if (e) e.preventDefault();
     const errors: any = {};
     
