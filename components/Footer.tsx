@@ -38,21 +38,32 @@ export const Footer: React.FC = () => {
         </div>
       </div>
       
-      {/* Stickere ANPC - Centrate sau la final */}
+      {/* Stickere ANPC - SAL și SOL */}
       <div className="max-w-7xl mx-auto border-t border-neutral-900 pt-8 flex flex-col md:flex-row justify-between items-center gap-6">
         
-        {/* Imaginile ANPC - SAL si SOL */}
+        {/* Imaginile ANPC - Aici am adăugat clasele 'border-0 no-underline outline-none' */}
         <div className="flex gap-4">
-          <a href="https://anpc.ro/ce-este-sal/" target="_blank" rel="noopener noreferrer">
-            <img src="/anpc-sal.svg" alt="ANPC SAL" className="h-6 w-auto opacity-80 hover:opacity-100 transition-opacity" />
+          <a 
+            href="https://anpc.ro/ce-este-sal/" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="border-0 no-underline outline-none hover:opacity-100 transition-opacity opacity-80"
+          >
+            <img src="/anpc-sal.svg" alt="ANPC SAL" className="h-6 w-auto block border-0" />
           </a>
-          <a href="https://ec.europa.eu/consumers/odr" target="_blank" rel="noopener noreferrer">
-            <img src="/anpc-sol.svg" alt="ANPC SOL" className="h-6 w-auto opacity-80 hover:opacity-100 transition-opacity" />
+          
+          <a 
+            href="https://ec.europa.eu/consumers/odr" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="border-0 no-underline outline-none hover:opacity-100 transition-opacity opacity-80"
+          >
+            <img src="/anpc-sol.svg" alt="ANPC SOL" className="h-6 w-auto block border-0" />
           </a>
         </div>
 
         <div className="text-[10px] uppercase tracking-widest text-neutral-600 text-center md:text-right">
-          <p>&copy; {currentYear} Oclar (ALTMAR GROUP S.R.L.). Toate drepturile rezervate.</p>
+          <p>&copy; {new Date().getFullYear()} Oclar (ALTMAR GROUP S.R.L.). Toate drepturile rezervate.</p>
         </div>
       </div>
     </footer>
