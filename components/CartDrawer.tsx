@@ -87,7 +87,6 @@ export const CartDrawer: React.FC = () => {
   }, []);
 
   // ⭐ STATE PENTRU ECOLET
-  const [isMapActive, setIsMapActive] = useState(false);
   const [selectedLocker, setSelectedLocker] = useState<{
     lockerId: string;
     lockerName: string;
@@ -227,7 +226,6 @@ export const CartDrawer: React.FC = () => {
   useEffect(() => {
     if (!isCartOpen) {
       setStep('cart');
-      setIsMapActive(false);
       setPaymentMethod('ramburs');
       setShippingMethod('courier');
       setLoading(false);
@@ -612,7 +610,7 @@ export const CartDrawer: React.FC = () => {
                   </h3>
                   
                   <div className="mb-2 relative">
-                      <label className="text-xs text-yellow-400 font-bold ml-1 mb-1 block">Stradă Numărr, Oraș</label>
+                      <label className="text-xs text-yellow-400 font-bold ml-1 mb-1 block">Stradă Număr, Oraș</label>
                       <gmpx-place-picker 
                           ref={pickerRef} 
                           placeholder="Introdu adresa..." 
@@ -693,26 +691,20 @@ export const CartDrawer: React.FC = () => {
                          ) : null
                     )}
 
-               {/* CONTAINER HARTA CU MASCĂ DE PROTECȚIE */}
+                 {/* CONTAINER HARTA CU BANDĂ DE ACOPERIRE BRANDING */}
                     <div className="relative w-full h-[500px] rounded-xl overflow-hidden border border-neutral-200 bg-white">
                       
-                      {/* ⭐ ZONA VIZUALĂ (SCRISUL) - DISPARE CÂND DAI CLICK */}
-                      {!isMapActive && (
-                        <div 
-                          onClick={() => setIsMapActive(true)}
-                          className="absolute inset-0 z-20 bg-white flex flex-col items-center justify-center cursor-pointer group"
-                        >
-                          {/* Aici e doar design-ul vizual (scrisul în chenar negru) */}
-                          <div className="bg-black text-white px-8 py-4 rounded-full font-bold shadow-xl transform transition-transform group-hover:scale-105 flex items-center gap-3">
-                            <span className="text-xl">📍</span>
-                            <span>ALEGE LOCKER</span>
-                          </div>
-                          <p className="text-xs text-neutral-400 mt-4 uppercase tracking-widest font-bold">Apasă pentru a încărca harta</p>
-                        </div>
-                      )}
-
-                      {/* HARTA PROPRIU-ZISĂ (Care stă dedesubt) */}
+                      {/* HARTA PROPRIU-ZISĂ */}
                       <div id="ecolet-locker-widget" style={{ width: '100%', height: '100%' }}></div>
+
+                      {/* ⭐ BANDA ALBĂ DE JOS (MASCA) - Acoperă branding-ul */}
+                      <div className="absolute bottom-0 left-0 w-full h-10 bg-white z-20 border-t border-neutral-100 flex items-center justify-center">
+                          {/* Aici scrie "ALEGE LOCKER" ca să pară că e parte din site */}
+                          <div className="flex items-center gap-2 text-xs font-bold text-neutral-400 uppercase tracking-widest">
+                            <span>📍 Alege Locker</span>
+                          </div>
+                      </div>
+
                     </div>
                   </div>
                 )}
