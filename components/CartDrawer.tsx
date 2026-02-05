@@ -733,7 +733,9 @@ export const CartDrawer: React.FC = () => {
 
         {/* Footer Complet */}
         {cart.length > 0 && (
-          <div className="p-6 border-t border-neutral-100 bg-white shrink-0">
+          <div className="sticky bottom-0 z-40 bg-white border-t border-neutral-200 shadow-[0_-10px_30px_rgba(0,0,0,0.08)]">
+           <div className="p-6">
+
             <div className="space-y-2 mb-4 text-sm">
               <div className="flex justify-between text-neutral-600"><span>Subtotal produse</span><span>{subtotal.toFixed(2)} RON</span></div>
               <div className="flex justify-between text-neutral-600"><span>Transport ({shippingMethod === 'easybox' ? 'Easy Box' : 'Curier'})</span><span>{shippingCost.toFixed(2)} RON</span></div>
