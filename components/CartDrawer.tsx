@@ -761,6 +761,7 @@ export const CartDrawer: React.FC = () => {
             </div>
           )}
         </div>
+        </div>
 
       <style>{`
         .pac-container { z-index: 99999 !important; }
