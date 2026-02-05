@@ -64,7 +64,7 @@ export const CartDrawer: React.FC = () => {
   // API Key
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_KEY || (window as any).__GOOGLE_MAPS_KEY__;
 
-  // ⭐ STATE PENTRU ECOLET
+  // ⭐ STATE PENTRU ECOLET & COORDONATE (FIX CORS)
   const [selectedLocker, setSelectedLocker] = useState<{
     lockerId: string;
     lockerName: string;
@@ -72,6 +72,9 @@ export const CartDrawer: React.FC = () => {
     county: string;
     address: string;
   } | null>(null);
+  
+  // Stocăm coordonatele pentru a le pasa direct widget-ului (evităm Nominatim)
+  const [mapCoordinates, setMapCoordinates] = useState<{lat: number, lng: number} | null>(null);
 
   const [formData, setFormData] = useState({
     fullName: '',
@@ -79,7 +82,7 @@ export const CartDrawer: React.FC = () => {
     phone: '',
     county: '',
     city: '',
-    address: '', // Adresa completă vizuală
+    address: '', 
     postalCode: '',
     street_name: '',
     street_number: '',
@@ -121,33 +124,30 @@ export const CartDrawer: React.FC = () => {
       return city;
   };
 
-  // ⭐ BLOCARE SCROLL PAGINĂ PRINCIPALĂ CÂND COȘUL ESTE DESCHIS
+  // ⭐ BLOCARE SCROLL
   useEffect(() => {
     if (isCartOpen) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
     }
-    return () => {
-      document.body.style.overflow = '';
-    };
+    return () => { document.body.style.overflow = ''; };
   }, [isCartOpen]);
 
-  // ⭐ FIX PLATĂ LOCKER: Dacă alegi EasyBox, forțăm Card
+  // ⭐ FIX PLATĂ LOCKER
   useEffect(() => {
     if (shippingMethod === 'easybox') {
       setPaymentMethod('card');
     }
   }, [shippingMethod]);
 
-  // ⭐ INITIALIZARE GOOGLE MAPS API
+  // ⭐ INITIALIZARE GOOGLE MAPS API - FIX InitializeAutocomplete
   useEffect(() => {
     if (loaderRef.current && apiKey) {
       loaderRef.current.key = apiKey;
       loaderRef.current.libraries = ['places'];
-      loaderRef.current.region = 'RO';
-      // Folosim versiunea weekly pentru a evita unele erori de deprecation, 
-      // dar rămânem pe canalul stabil pentru compatibilitate
+      loaderRef.current.region = 'RO'; 
+      // 🔥 FIX ESENȚIAL: Setăm versiunea pentru a evita erorile de deprecation
       loaderRef.current.version = 'weekly';
     }
   }, [apiKey, isCartOpen]);
@@ -160,6 +160,16 @@ export const CartDrawer: React.FC = () => {
           const handlePlaceChange = () => {
             const place = picker.value;
             if (!place) return;
+
+            // 🔥 EXTRAGERE COORDONATE PENTRU WIDGET (FIX CORS)
+            if (place.location) {
+                // Verificăm dacă sunt funcții sau valori directe (depinde de versiunea API)
+                const lat = typeof place.location.lat === 'function' ? place.location.lat() : place.location.lat;
+                const lng = typeof place.location.lng === 'function' ? place.location.lng() : place.location.lng;
+                if (lat && lng) {
+                    setMapCoordinates({ lat, lng });
+                }
+            }
 
             const addressComponents = place.addressComponents || [];
             let street = '', number = '', city = '', county = '', postal = '';
@@ -215,6 +225,7 @@ export const CartDrawer: React.FC = () => {
       setDiscountError('');
       setSelectedLocker(null);
       setValidationErrors({});
+      setMapCoordinates(null);
     }
   }, [isCartOpen]);
 
@@ -226,7 +237,7 @@ export const CartDrawer: React.FC = () => {
   }, [step]);
 
   // =================================================================
-  // ⭐ WIDGET EASYBOX - INITIALIZARE ORIGINALĂ (REVERT LA LOGICA FUNCȚIONALĂ)
+  // ⭐ WIDGET EASYBOX - FIX CORS DEFINITIV
   // =================================================================
   useEffect(() => {
     if (shippingMethod === 'easybox' && step === 'details' && isCartOpen) {
@@ -234,7 +245,6 @@ export const CartDrawer: React.FC = () => {
       const scriptId = 'ecolet-widget-script';
       const styleId = 'ecolet-widget-style';
 
-      // 1. Injectare CSS Widget
       if (!document.getElementById(styleId)) {
         const link = document.createElement('link');
         link.id = styleId;
@@ -249,19 +259,17 @@ export const CartDrawer: React.FC = () => {
 
         if (container && isScriptLoaded) {
           console.log('✅ Ecolet: Initializing Widget v7...');
-          container.innerHTML = ''; // Curățare
+          container.innerHTML = ''; 
 
-          // ⭐ LOCAȚIE BAZATĂ PE ADRESA TEXT (Cum era înainte)
-          // Eroarea CORS de la Nominatim este externă widget-ului, dar această metodă permite selecția
-          let startLocation = 'Bucuresti, Romania';
-          if (formData.city) {
-              const streetPart = formData.street_name ? formData.street_name : '';
-              
-              if (streetPart && formData.city) {
-                  startLocation = `${streetPart}, ${formData.city}, Romania`;
-              } else {
-                  startLocation = `${formData.city}, Romania`;
-              }
+          // 🔥 LOGICA INTELIGENTĂ PENTRU LOCAȚIE
+          // 1. Default: Coordonate generice București (ca să nu crape cu request-uri goale)
+          let finalLat = 44.4268; 
+          let finalLng = 26.1025;
+
+          // 2. Dacă avem coordonate din Google Picker, le folosim pe alea
+          if (mapCoordinates) {
+             finalLat = mapCoordinates.lat;
+             finalLng = mapCoordinates.lng;
           }
 
           window.BPWidget.init(container, {
@@ -294,7 +302,13 @@ export const CartDrawer: React.FC = () => {
             operatorMarkers: true,
             codeSearch: true,
             countryCodes: 'RO',
-            initialAddress: startLocation, // Revenim la initialAddress
+            
+            // 🔥 FIX CORS: Folosim LAT/LNG direct, NU `initialAddress` string!
+            // Astfel widgetul nu mai sună la Nominatim să facă conversia.
+            latitude: finalLat,
+            longitude: finalLng,
+            initialAddress: null, // Resetăm explicit adresa text
+
             operators: [
                 { operator: 'DPD' },
                 { operator: 'SAMEDAY' },
@@ -312,7 +326,6 @@ export const CartDrawer: React.FC = () => {
         }
       };
 
-      // 2. Injectare JS Widget
       if (!document.getElementById(scriptId)) {
         const script = document.createElement('script');
         script.id = scriptId;
@@ -324,7 +337,7 @@ export const CartDrawer: React.FC = () => {
         tryInitWidget();
       }
     }
-  }, [shippingMethod, step, isCartOpen, formData.city, formData.street_name]);
+  }, [shippingMethod, step, isCartOpen, mapCoordinates]); // Adăugat mapCoordinates la dependințe
 
   const validateField = (name: string, value: string) => {
     const errors = { ...validationErrors };
@@ -379,8 +392,6 @@ export const CartDrawer: React.FC = () => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
     validateField(name, value);
-    
-    // Curățăm erorile pe măsură ce scrie userul
     if (validationErrors[name as keyof typeof validationErrors]) {
          const newErrs = {...validationErrors};
          delete newErrs[name as keyof typeof validationErrors];
@@ -393,14 +404,12 @@ export const CartDrawer: React.FC = () => {
     if (e) e.preventDefault();
     const errors: any = {};
     
-    // 1. VALIDARE DATE FACTURARE (MEREU OBLIGATORII)
     if (!formData.fullName) errors.fullName = 'Numele este obligatoriu';
     if (!formData.phone) errors.phone = 'Telefonul este obligatoriu';
     if (!formData.county) errors.county = 'Județul este obligatoriu';
     if (!formData.city) errors.city = 'Orașul este obligatoriu';
     if (!formData.street_name) errors.address = 'Adresa este obligatorie';
 
-    // 2. VALIDARE EASYBOX (Doar dacă e selectat)
     if (shippingMethod === 'easybox') {
         if (!selectedLocker || !selectedLocker.lockerId) {
             errors.locker = 'Te rugăm să selectezi un locker de pe hartă!';
@@ -423,8 +432,6 @@ export const CartDrawer: React.FC = () => {
             customerName: formData.fullName,
             customerEmail: formData.email || null,
             customerPhone: formData.phone,
-            
-            // Adresa Facturare
             address: {
                 county: formData.county,
                 city: formData.city,
@@ -434,7 +441,6 @@ export const CartDrawer: React.FC = () => {
                 details: formData.details,
                 postalCode: formData.postalCode
             },
-            
             items: cart,
             subtotal,
             shippingMethod,
@@ -495,72 +501,72 @@ export const CartDrawer: React.FC = () => {
 
       <div className="fixed inset-0 bg-black/60 z-50 backdrop-blur-sm" onClick={toggleCart} />
 
+      {/* CONTAINER PRINCIPAL */}
       <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-2xl flex flex-col animate-slide-in-right">
-        {/* HEADER */}
-        <div className="p-4 border-b border-neutral-100 flex items-center justify-between bg-white shrink-0 z-10">
-          <h2 className="text-lg font-bold uppercase tracking-tight">
+        <div className="p-5 border-b border-neutral-100 flex items-center justify-between bg-white shrink-0">
+          <h2 className="text-xl font-bold uppercase tracking-tight">
             {step === 'cart' ? 'Coșul Tău' : 'Detalii Livrare'}
           </h2>
           <button onClick={toggleCart} className="p-2 hover:bg-neutral-100 rounded-full transition-colors">✕</button>
         </div>
 
-        {/* CONTENT SCROLLABLE */}
-        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 pb-4">
+        {/* ⬇️ ZONA DE SCROLL - FOOTER-UL ESTE ACUM AICI, NU MAI E STICKY */}
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-5 space-y-4">
           {step === 'cart' ? (
             cart.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center">
-                <div className="text-5xl mb-4">🛒</div>
-                <p className="text-neutral-500 text-base">Coșul tău este gol</p>
+                <div className="text-6xl mb-4">🛒</div>
+                <p className="text-neutral-500 text-lg">Coșul tău este gol</p>
               </div>
             ) : (
               <div className="space-y-4">
                 {cart.map((item) => (
-                  <div key={item.id} className="flex gap-3 p-3 bg-white rounded-xl border border-neutral-100 shadow-sm hover:shadow-md transition-shadow">
-                    <div className="w-16 h-16 rounded-lg overflow-hidden bg-neutral-50 shrink-0">
+                  <div key={item.id} className="flex gap-4 p-4 bg-white rounded-xl border border-neutral-100 shadow-sm hover:shadow-md transition-shadow">
+                    <div className="w-20 h-20 rounded-lg overflow-hidden bg-neutral-50 shrink-0">
                       <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <h3 className="font-bold text-sm truncate">{item.name}</h3>
-                      <p className="text-xs text-neutral-500 mt-0.5">{item.price.toFixed(2)} RON</p>
+                      <p className="text-xs text-neutral-500 mt-1">{item.price.toFixed(2)} RON</p>
                       <div className="flex items-center gap-2 mt-2">
-                        <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="w-6 h-6 flex items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200 text-sm font-bold">−</button>
-                        <span className="text-xs font-mono w-5 text-center">{item.quantity}</span>
-                        <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="w-6 h-6 flex items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200 text-sm font-bold">+</button>
+                        <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="w-7 h-7 flex items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200 text-sm font-bold">−</button>
+                        <span className="text-sm font-mono w-6 text-center">{item.quantity}</span>
+                        <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="w-7 h-7 flex items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200 text-sm font-bold">+</button>
                       </div>
                     </div>
-                    <button onClick={() => removeFromCart(item.id)} className="shrink-0 text-red-400 hover:text-red-600 p-1 self-start">✕</button>
+                    <button onClick={() => removeFromCart(item.id)} className="shrink-0 text-red-400 hover:text-red-600 p-2">✕</button>
                   </div>
                 ))}
 
-                <div className="bg-white p-3 rounded-xl border border-neutral-100 shadow-sm">
-                  <label className="text-[10px] font-bold uppercase text-neutral-500 mb-2 block">Cod Reducere</label>
+                <div className="bg-white p-4 rounded-xl border border-neutral-100 shadow-sm">
+                  <label className="text-xs font-bold uppercase text-neutral-500 mb-2 block">Cod Reducere</label>
                   {!appliedDiscount ? (
                     <div className="flex gap-2">
-                      <input type="text" value={discountCode} onChange={(e) => setDiscountCode(e.target.value.toUpperCase())} placeholder="COD" className="flex-1 p-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-black" />
-                      <Button onClick={handleApplyDiscount} disabled={discountLoading} variant="outline" className="px-3 py-1 text-xs">{discountLoading ? '...' : 'Aplică'}</Button>
+                      <input type="text" value={discountCode} onChange={(e) => setDiscountCode(e.target.value.toUpperCase())} placeholder="COD" className="flex-1 p-3 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-black" />
+                      <Button onClick={handleApplyDiscount} disabled={discountLoading} variant="outline" className="px-4">{discountLoading ? '...' : 'Aplică'}</Button>
                     </div>
                   ) : (
-                    <div className="flex items-center justify-between p-2 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
                       <div className="flex items-center gap-2">
-                        <span className="text-green-600 text-lg">✓</span>
-                        <div><p className="text-sm font-bold text-green-700">{appliedDiscount.code}</p><p className="text-[10px] text-green-600">-{discountAmount.toFixed(2)} RON</p></div>
+                        <span className="text-green-600 text-xl">✓</span>
+                        <div><p className="text-sm font-bold text-green-700">{appliedDiscount.code}</p><p className="text-xs text-green-600">-{discountAmount.toFixed(2)} RON</p></div>
                       </div>
-                      <button onClick={handleRemoveDiscount} className="text-red-500 hover:text-red-700 font-bold px-2">✕</button>
+                      <button onClick={handleRemoveDiscount} className="text-red-500 hover:text-red-700 font-bold">✕</button>
                     </div>
                   )}
-                  {discountError && <p className="text-[10px] text-red-500 mt-1">{discountError}</p>}
+                  {discountError && <p className="text-xs text-red-500 mt-2">{discountError}</p>}
                 </div>
 
-                <div className="bg-white p-3 rounded-xl border border-neutral-100 shadow-sm space-y-2">
-                  <h3 className="text-[10px] font-bold uppercase text-neutral-500">Metoda Livrare</h3>
-                  <div className="grid grid-cols-1 gap-2">
-                    <label className={`flex items-center gap-3 p-3 border rounded-xl cursor-pointer transition-all ${shippingMethod === 'easybox' ? 'border-black bg-neutral-50 shadow-inner' : 'border-neutral-200 hover:border-neutral-300'}`}>
-                      <input type="radio" name="shipping" checked={shippingMethod === 'easybox'} onChange={() => setShippingMethod('easybox')} className="accent-black w-4 h-4" />
-                      <div><span className="font-bold block text-sm">Easy Box</span><span className="text-[10px] text-neutral-500">{SHIPPING_COSTS.easybox.toFixed(2)} RON</span></div>
+                <div className="bg-white p-4 rounded-xl border border-neutral-100 shadow-sm space-y-3">
+                  <h3 className="text-xs font-bold uppercase text-neutral-500">Metoda Livrare</h3>
+                  <div className="grid grid-cols-1 gap-3">
+                    <label className={`flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all ${shippingMethod === 'easybox' ? 'border-black bg-neutral-50 shadow-inner' : 'border-neutral-200 hover:border-neutral-300'}`}>
+                      <input type="radio" name="shipping" checked={shippingMethod === 'easybox'} onChange={() => setShippingMethod('easybox')} className="accent-black w-5 h-5" />
+                      <div><span className="font-bold block text-sm">Easy Box</span><span className="text-xs text-neutral-500">{SHIPPING_COSTS.easybox.toFixed(2)} RON</span></div>
                     </label>
-                    <label className={`flex items-center gap-3 p-3 border rounded-xl cursor-pointer transition-all ${shippingMethod === 'courier' ? 'border-black bg-neutral-50 shadow-inner' : 'border-neutral-200 hover:border-neutral-300'}`}>
-                      <input type="radio" name="shipping" checked={shippingMethod === 'courier'} onChange={() => setShippingMethod('courier')} className="accent-black w-4 h-4" />
-                      <div><span className="font-bold block text-sm">Livrare Curier</span><span className="text-[10px] text-neutral-500">{SHIPPING_COSTS.courier.toFixed(2)} RON</span></div>
+                    <label className={`flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all ${shippingMethod === 'courier' ? 'border-black bg-neutral-50 shadow-inner' : 'border-neutral-200 hover:border-neutral-300'}`}>
+                      <input type="radio" name="shipping" checked={shippingMethod === 'courier'} onChange={() => setShippingMethod('courier')} className="accent-black w-5 h-5" />
+                      <div><span className="font-bold block text-sm">Livrare Curier</span><span className="text-xs text-neutral-500">{SHIPPING_COSTS.courier.toFixed(2)} RON</span></div>
                     </label>
                   </div>
                 </div>
@@ -569,28 +575,27 @@ export const CartDrawer: React.FC = () => {
           ) : (
               <form id="checkout-form" className="space-y-4" onSubmit={(e) => e.preventDefault()}>
                 <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
-                  <h3 className="font-bold text-xs uppercase text-neutral-500 flex items-center gap-2">Date Contact</h3>
-                  <input required name="fullName" placeholder="Nume Complet *" value={formData.fullName} onChange={handleInputChange} className={`w-full p-2.5 border rounded-lg focus:outline-none focus:border-black transition-colors text-sm ${validationErrors.fullName ? 'border-red-500' : 'border-neutral-200'}`} />
+                  <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">Date Contact</h3>
+                  <input required name="fullName" placeholder="Nume Complet *" value={formData.fullName} onChange={handleInputChange} className={`w-full p-3 border rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm ${validationErrors.fullName ? 'border-red-500' : 'border-neutral-200'}`} />
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <input name="email" type="email" placeholder="Email (opțional)" value={formData.email} onChange={handleInputChange} className={`w-full p-2.5 border rounded-lg focus:outline-none focus:border-black transition-colors text-sm ${validationErrors.email ? 'border-red-500' : 'border-neutral-200'}`} />
-                      {validationErrors.email && <p className="text-[10px] text-red-500 mt-1">{validationErrors.email}</p>}
+                      <input name="email" type="email" placeholder="Email (opțional)" value={formData.email} onChange={handleInputChange} className={`w-full p-3 border rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm ${validationErrors.email ? 'border-red-500' : 'border-neutral-200'}`} />
+                      {validationErrors.email && <p className="text-xs text-red-500 mt-1">{validationErrors.email}</p>}
                     </div>
                     <div>
-                      <input required name="phone" placeholder="Telefon *" value={formData.phone} onChange={handleInputChange} className={`w-full p-2.5 border rounded-lg focus:outline-none focus:border-black transition-colors text-sm ${validationErrors.phone ? 'border-red-500' : 'border-neutral-200'}`} />
-                      {validationErrors.phone && <p className="text-[10px] text-red-500 mt-1">{validationErrors.phone}</p>}
+                      <input required name="phone" placeholder="Telefon *" value={formData.phone} onChange={handleInputChange} className={`w-full p-3 border rounded-lg focus:outline-none focus:border-black transition-colors text-base md:text-sm ${validationErrors.phone ? 'border-red-500' : 'border-neutral-200'}`} />
+                      {validationErrors.phone && <p className="text-xs text-red-500 mt-1">{validationErrors.phone}</p>}
                     </div>
                   </div>
                 </div>
 
-                {/* ⭐ ADRESA DE FACTURARE */}
                 <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
-                  <h3 className="font-bold text-xs uppercase text-neutral-500 flex items-center gap-2">
+                  <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">
                     Adresă Facturare
                   </h3>
                   
                   <div className="mb-2 relative">
-                      <label className="text-[10px] text-blue-600 font-bold ml-1 mb-1 block">🔍 Caută Adresa</label>
+                      <label className="text-xs text-blue-600 font-bold ml-1 mb-1 block">🔍 Caută Adresa</label>
                       <gmpx-place-picker 
                           ref={pickerRef} 
                           placeholder="Introdu adresa..." 
@@ -603,7 +608,6 @@ export const CartDrawer: React.FC = () => {
                       )}
                   </div>
 
-                  {/* Informații adresă Read Only */}
                   <div className="bg-gray-100 p-3 rounded-lg border border-gray-200 text-xs text-gray-700 grid grid-cols-12 gap-3 items-center">
                       <div className="col-span-6 border-b border-gray-200 pb-2">
                         <span className="text-[10px] text-gray-400 uppercase block mb-0.5">Județ</span>
@@ -628,7 +632,7 @@ export const CartDrawer: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="text-[10px] text-neutral-500 ml-1 mb-1 block">Detalii (Bl, Sc, Ap)</label>
+                    <label className="text-xs text-neutral-500 ml-1 mb-1 block">Detalii (Bl, Sc, Ap)</label>
                     <input
                       name="details"
                       placeholder="Scara A, Etaj 2, Ap 10, Interfon..."
@@ -637,27 +641,26 @@ export const CartDrawer: React.FC = () => {
                         const val = e.target.value;
                         setFormData(prev => ({ ...prev, details: val }));
                       }}
-                      className="w-full p-2.5 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors text-sm"
+                      className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors"
                     />
                   </div>
                 </div>
 
-                {/* ⭐ EASYBOX WIDGET - Revert la funcționalitatea originală */}
                 {shippingMethod === 'easybox' && (
                   <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
-                    <h3 className="font-bold text-xs uppercase text-neutral-500 flex items-center gap-2">📦 Selectează Locker</h3>
+                    <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">📦 Selectează Locker</h3>
                     
                     {selectedLocker ? (
                       <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-3 mb-2 animate-pulse-once">
                         <div className="flex justify-between items-center">
                             <div>
-                                <p className="text-[10px] text-neutral-500 uppercase font-bold">Locker Selectat:</p>
+                                <p className="text-xs text-neutral-500 uppercase font-bold">Locker Selectat:</p>
                                 <p className="text-sm font-bold text-black">{selectedLocker.lockerName}</p>
                                 <p className="text-xs text-neutral-600">{selectedLocker.city}</p>
                             </div>
-                            <div className="text-right bg-white px-2 py-1 rounded border border-black shadow-sm">
-                                <span className="text-[9px] text-gray-400 block uppercase">Cod</span>
-                                <span className="font-mono text-base font-black tracking-wider text-black">{selectedLocker.lockerId}</span>
+                            <div className="text-right bg-white px-3 py-1 rounded border border-black shadow-sm">
+                                <span className="text-[10px] text-gray-400 block uppercase">Cod</span>
+                                <span className="font-mono text-lg font-black tracking-wider text-black">{selectedLocker.lockerId}</span>
                             </div>
                         </div>
                       </div>
@@ -669,16 +672,15 @@ export const CartDrawer: React.FC = () => {
                          ) : null
                     )}
 
-                    <div id="ecolet-locker-widget" style={{ width: '100%', height: '400px', borderRadius: '12px', overflow: 'hidden', border: '1px solid #e5e5e5' }}></div>
+                    <div id="ecolet-locker-widget" style={{ width: '100%', height: '500px', borderRadius: '12px', overflow: 'hidden', border: '1px solid #e5e5e5' }}></div>
                   </div>
                 )}
 
                 <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
-                  <h3 className="font-bold text-xs uppercase text-neutral-500 flex items-center gap-2">Metoda Plată</h3>
-                  <div className="grid grid-cols-1 gap-2">
-                    
+                  <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">Metoda Plată</h3>
+                  <div className="grid grid-cols-1 gap-3">
                     <label 
-                      className={`relative flex items-center gap-3 p-3 border rounded-xl transition-all duration-200 
+                      className={`relative flex items-center gap-4 p-4 border rounded-xl transition-all duration-200 
                       ${paymentMethod === 'ramburs' 
                         ? 'border-black bg-neutral-50 shadow-inner' 
                         : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
@@ -691,97 +693,103 @@ export const CartDrawer: React.FC = () => {
                         name="payment" 
                         checked={paymentMethod === 'ramburs'} 
                         onChange={() => setPaymentMethod('ramburs')} 
-                        className="accent-black w-4 h-4"
+                        className="accent-black w-5 h-5"
                         disabled={shippingMethod === 'easybox'}
                       />
-                      <div className="p-1.5 bg-white rounded-full border border-neutral-100 shadow-sm shrink-0">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <div className="p-2 bg-white rounded-full border border-neutral-100 shadow-sm shrink-0">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <line x1="12" y1="1" x2="12" y2="23" />
                           <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
                         </svg>
                       </div>
                       <div>
                         <span className="font-bold block text-sm">Plata Ramburs (Cash)</span>
-                        <span className="text-[10px] text-neutral-500">
+                        <span className="text-xs text-neutral-500">
                           {shippingMethod === 'easybox' ? 'Indisponibil la Locker' : 'Plătești curierului la livrare'}
                         </span>
                       </div>
                     </label>
 
-                    <label className={`relative flex items-center gap-3 p-3 border rounded-xl cursor-pointer transition-all duration-200 ${paymentMethod === 'card' ? 'border-black bg-neutral-50 shadow-inner' : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'}`}>
-                      <input type="radio" name="payment" checked={paymentMethod === 'card'} onChange={() => setPaymentMethod('card')} className="accent-black w-4 h-4" />
-                      <div className="p-1.5 bg-white rounded-full border border-neutral-100 shadow-sm shrink-0">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <label className={`relative flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all duration-200 ${paymentMethod === 'card' ? 'border-black bg-neutral-50 shadow-inner' : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'}`}>
+                      <input type="radio" name="payment" checked={paymentMethod === 'card'} onChange={() => setPaymentMethod('card')} className="accent-black w-5 h-5" />
+                      <div className="p-2 bg-white rounded-full border border-neutral-100 shadow-sm shrink-0">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
                           <line x1="1" y1="10" x2="23" y2="10" />
                         </svg>
                       </div>
                       <div>
                         <span className="font-bold block text-sm">Card Online</span>
-                        <span className="text-[10px] text-neutral-500">Securizat prin Stripe</span>
+                        <span className="text-xs text-neutral-500">Securizat prin Stripe</span>
                       </div>
                     </label>
                   </div>
                 </div>
               </form>
           )}
-        </div>
 
-        {/* ⭐ FOOTER SUPER COMPACT (REDIZAT PENTRU VIZIBILITATE) */}
-        {cart.length > 0 && (
-          <div className="p-3 border-t border-neutral-100 bg-white shrink-0 shadow-[0_-4px_10px_rgba(0,0,0,0.03)] z-20">
-            {/* Detaliile sunt mici, pe un singur rând deasupra */}
-            <div className="flex justify-between items-center text-[10px] text-neutral-500 mb-2 px-1">
-               <span>Subtotal: <b>{subtotal.toFixed(2)}</b> + Trans: <b>{shippingCost.toFixed(2)}</b></span>
-               {appliedDiscount && <span className="text-green-600 font-bold">-{discountAmount.toFixed(2)} (Reducere)</span>}
-            </div>
+          {/* ⭐ FOOTER-UL E ACUM AICI, ÎN INTERIORUL DIV-ULUI CU SCROLL, LA FINAL */}
+          {cart.length > 0 && (
+            <div className="p-6 border-t border-neutral-100 bg-white shadow-[0_-5px_15px_rgba(0,0,0,0.05)] rounded-xl mt-4">
+              <div className="space-y-2 mb-4 text-sm">
+                <div className="flex justify-between text-neutral-600"><span>Subtotal produse</span><span>{subtotal.toFixed(2)} RON</span></div>
+                <div className="flex justify-between text-neutral-600"><span>Transport ({shippingMethod === 'easybox' ? 'Easy Box' : 'Curier'})</span><span>{shippingCost.toFixed(2)} RON</span></div>
+                {appliedDiscount && (
+                  <>
+                    <div className="flex justify-between text-green-600 font-bold"><span>Reducere ({appliedDiscount.code})</span><span>-{discountAmount.toFixed(2)} RON</span></div>
+                    <div className="flex justify-between text-neutral-400 line-through text-xs pt-2 border-t border-neutral-100"><span>Fără reducere</span><span>{totalBeforeDiscount.toFixed(2)} RON</span></div>
+                  </>
+                )}
+              </div>
 
-            <div className="flex gap-3">
-               <div className="flex flex-col justify-center">
-                   <span className="text-[9px] uppercase font-bold text-neutral-400 leading-none">Total</span>
-                   <span className="text-lg font-black leading-tight">{finalTotal.toFixed(2)} <small className="text-xs font-normal">RON</small></span>
-               </div>
-               
-               {step === 'cart' ? (
-                <Button fullWidth onClick={() => setStep('details')} className="py-2.5 text-sm flex-1">Continuă</Button>
-               ) : (
-                <Button fullWidth onClick={handleSubmitOrder} disabled={loading} type="button" className="shadow-md py-2.5 text-sm flex-1">
-                  {loading ? '...' : paymentMethod === 'ramburs' ? `Trimite Comanda` : `Plătește Card`}
+              <div className="flex justify-between items-center mb-4 pb-4 border-b-2 border-black">
+                <span className="text-sm text-neutral-500 uppercase font-bold">Total de plată</span>
+                <span className="text-2xl font-black">{finalTotal.toFixed(2)} RON</span>
+              </div>
+
+              {appliedDiscount && <p className="text-center text-sm text-green-600 mb-4">✓ Ai economisit <strong>{discountAmount.toFixed(2)} RON</strong>!</p>}
+
+              {step === 'cart' ? (
+                <Button fullWidth onClick={() => setStep('details')}>Continuă spre Checkout</Button>
+              ) : (
+                <Button fullWidth onClick={handleSubmitOrder} disabled={loading} type="button" className="shadow-xl">
+                  {loading ? 'Se procesează...' : paymentMethod === 'ramburs' ? `Trimite Comanda (${finalTotal.toFixed(2)} RON)` : `Plătește cu Cardul (${finalTotal.toFixed(2)} RON)`}
                 </Button>
-               )}
+              )}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <style>{`
         .pac-container { z-index: 99999 !important; }
         .leaflet-container { z-index: 999 !important; font-family: inherit !important; }
         
-        /* ⭐ STILIZARE MINIMALISTĂ WIDGET */
         .bp-widget-branding, 
         .bp-widget-footer,
-        .bp-powered-by, .bp-logo { 
+        .bp-powered-by { 
             display: none !important; 
             visibility: hidden !important;
             height: 0 !important;
             opacity: 0 !important;
         }
+        .bp-logo { display: none !important; opacity: 0 !important; }
 
         .bp-widget-top-bar {
             background-color: white !important;
             border-bottom: 1px solid #e5e5e5 !important;
-            padding: 8px !important;
+            display: block !important;
+            padding: 10px !important;
         }
 
         .bp-widget-btn, .bp-widget-btn-primary { 
             background-color: black !important; 
             color: white !important; 
             border: 1px solid black !important;
-            border-radius: 6px !important; 
+            border-radius: 8px !important; 
             font-weight: bold !important;
             text-transform: uppercase !important;
-            font-size: 11px !important;
+            font-size: 12px !important;
         }
         .bp-widget-btn:hover {
             background-color: #fbbf24 !important;
@@ -791,13 +799,14 @@ export const CartDrawer: React.FC = () => {
 
         .bp-widget-input {
             border: 1px solid #e5e5e5 !important;
-            border-radius: 6px !important;
-            padding: 8px !important;
+            border-radius: 8px !important;
+            padding: 10px !important;
             background-color: #f9f9f9 !important;
-            font-size: 13px !important;
+            color: #333 !important;
         }
         .bp-widget-input:focus {
             border-color: black !important;
+            outline: none !important;
             background-color: white !important;
         }
 
@@ -807,7 +816,7 @@ export const CartDrawer: React.FC = () => {
         }
         
         gmpx-place-picker { display: block; width: 100%; }
-        gmpx-place-picker input { padding: 0.65rem !important; border-radius: 0.5rem !important; border: 1px solid #e5e5e5 !important; width: 100% !important; font-size: 0.875rem !important; box-sizing: border-box !important; background-color: white !important; height: auto !important; }
+        gmpx-place-picker input { padding: 0.75rem !important; border-radius: 0.5rem !important; border: 1px solid #e5e5e5 !important; width: 100% !important; font-size: 0.875rem !important; box-sizing: border-box !important; background-color: white !important; height: auto !important; }
         gmpx-place-picker input:focus { outline: none !important; border-color: black !important; }
         
         @media screen and (max-width: 768px) {
