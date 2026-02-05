@@ -23,7 +23,7 @@ declare global {
       };
     }
   }
-  // ⭐ INTERFAȚĂ PENTRU WIDGET (BPWidget)
+  // Interfață pentru widget-ul Ecolet (BPWidget)
   interface Window {
     BPWidget: {
       init: (element: HTMLElement, config: any) => void;
@@ -59,14 +59,14 @@ export const CartDrawer: React.FC = () => {
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // ⭐ REF-URI
+  // ⭐ REF-URI PENTRU GOOGLE MAPS
   const pickerRef = useRef<any>(null);
   const loaderRef = useRef<any>(null);
   
   // API Key
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_KEY || (window as any).__GOOGLE_MAPS_KEY__;
 
-  // ⭐ STATE ECOLET
+  // ⭐ STATE PENTRU ECOLET
   const [selectedLocker, setSelectedLocker] = useState<{
     lockerId: string;
     lockerName: string;
@@ -80,7 +80,7 @@ export const CartDrawer: React.FC = () => {
     phone: '',
     county: '',
     city: '',
-    address: '',
+    address: '', // Adresa completă vizuală
     postalCode: '',
     street_name: '',
     street_number: '',
@@ -103,7 +103,7 @@ export const CartDrawer: React.FC = () => {
     return 0;
   };
 
-  // ⭐ HELPERE
+  // ⭐ HELPERE PENTRU NORMALIZARE
   const normalizeName = (name: string) => {
     if (!name) return '';
     let clean = name.replace('Județul', '').replace('County', '').trim();
@@ -117,14 +117,14 @@ export const CartDrawer: React.FC = () => {
       return city;
   };
 
-  // ⭐ FIX PLATĂ LOCKER: EasyBox forțează Card
+  // ⭐ FIX PLATĂ LOCKER: Dacă alegi EasyBox, forțăm Card
   useEffect(() => {
     if (shippingMethod === 'easybox') {
       setPaymentMethod('card');
     }
   }, [shippingMethod]);
 
-  // ⭐ INITIALIZARE GOOGLE MAPS API
+  // ⭐ INITIALIZARE GOOGLE MAPS API (Cu fix pentru React Key)
   useEffect(() => {
     if (loaderRef.current && apiKey) {
       loaderRef.current.key = apiKey;
@@ -133,7 +133,7 @@ export const CartDrawer: React.FC = () => {
     }
   }, [apiKey, isCartOpen]);
 
-  // ⭐ LISTENER ADRESĂ
+  // ⭐ LISTENER PENTRU SELECTARE ADRESĂ
   useEffect(() => {
     const timer = setTimeout(() => {
         const picker = pickerRef.current;
@@ -207,7 +207,7 @@ export const CartDrawer: React.FC = () => {
   }, [step]);
 
   // =================================================================
-  // ⭐ FIX HARTA EASYBOX (CSS & CONFIG)
+  // ⭐ FIX HARTA EASYBOX: CONFIGURAȚIA TA + STIL + SMART LOCATION
   // =================================================================
   useEffect(() => {
     if (shippingMethod === 'easybox' && step === 'details' && isCartOpen) {
@@ -215,7 +215,7 @@ export const CartDrawer: React.FC = () => {
       const scriptId = 'ecolet-widget-script';
       const styleId = 'ecolet-widget-style';
 
-      // 1. Injectare CSS Widget
+      // 1. Injectare CSS Widget (Oficial BliskaPaczka)
       if (!document.getElementById(styleId)) {
         const link = document.createElement('link');
         link.id = styleId;
@@ -232,7 +232,10 @@ export const CartDrawer: React.FC = () => {
           console.log('✅ Ecolet: Initializing Widget v7...');
           container.innerHTML = ''; // Curățare
 
-          // Configurația ta specifică
+          // Determinăm locația de start (Orașul clientului sau București default)
+          const startLocation = formData.city ? `${formData.city}, Romania` : 'Bucuresti, Romania';
+
+          // ⭐ CONFIGURAȚIA COMPLETĂ DIN DOCUMENTELE TALE
           window.BPWidget.init(container, {
             callback: (point: any) => {
               console.log('📦 Locker Selected:', point);
@@ -248,6 +251,7 @@ export const CartDrawer: React.FC = () => {
                 county: lockerCounty
               });
               
+              // Actualizăm formularul cu datele locker-ului
               setFormData(prev => ({ 
                 ...prev, 
                 city: lockerCity, 
@@ -261,13 +265,14 @@ export const CartDrawer: React.FC = () => {
             operatorMarkers: true,
             codeSearch: true,
             countryCodes: 'RO',
+            initialAddress: startLocation, // Smart Location
             operators: [
                 { operator: 'DPD' },
                 { operator: 'SAMEDAY' },
                 { operator: 'FAN_COURIER' },
                 { operator: 'CARGUS' },
             ],
-            alias: 'ecolet-192872'
+            alias: 'ecolet-192872' // Alias-ul tău
           });
         } else {
           if (attempts < 10) {
@@ -290,7 +295,7 @@ export const CartDrawer: React.FC = () => {
         tryInitWidget();
       }
     }
-  }, [shippingMethod, step, isCartOpen]);
+  }, [shippingMethod, step, isCartOpen, formData.city]); // Re-inițializăm dacă se schimbă orașul!
 
   const validateField = (name: string, value: string) => {
     const errors = { ...validationErrors };
@@ -360,7 +365,7 @@ export const CartDrawer: React.FC = () => {
     if (!formData.phone) errors.phone = 'Telefonul este obligatoriu';
     if (!formData.county) errors.county = 'Județul este obligatoriu';
     
-    // Validăm adresa pentru AMBELE metode
+    // Validăm adresa pentru AMBELE metode (facturare)
     if (!formData.city) errors.city = 'Orașul este obligatoriu';
     if (!formData.street_name) errors.address = 'Te rugăm să completezi adresa pentru factură';
 
@@ -384,7 +389,7 @@ export const CartDrawer: React.FC = () => {
             customerEmail: formData.email || null,
             customerPhone: formData.phone,
             
-            // Adresa completă (Facturare)
+            // Adresa completă
             address: {
                 county: formData.county,
                 city: formData.city,
@@ -556,6 +561,7 @@ export const CartDrawer: React.FC = () => {
                       />
                   </div>
 
+                  {/* Informații adresă Read Only */}
                   <div className="bg-gray-100 p-3 rounded-lg border border-gray-200 text-xs text-gray-700 grid grid-cols-12 gap-3 items-center">
                       <div className="col-span-6 border-b border-gray-200 pb-2">
                         <span className="text-[10px] text-gray-400 uppercase block mb-0.5">Județ</span>
@@ -599,8 +605,8 @@ export const CartDrawer: React.FC = () => {
                   <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
                     <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">📦 Selectează Locker</h3>
                     
-                    {/* AICI ESTE FIX-UL VIZUAL: style cu height fix și fără flex centering */}
-                    <div id="ecolet-locker-widget" style={{ width: '100%', height: '500px' }}></div>
+                    {/* CONTAINER HARTA CU STIL CORECT */}
+                    <div id="ecolet-locker-widget" style={{ width: '100%', height: '500px', borderRadius: '12px', overflow: 'hidden', border: '1px solid #e5e5e5' }}></div>
                     
                     {selectedLocker && (
                       <div className="bg-green-50 border border-green-200 rounded-lg p-3">
@@ -616,7 +622,7 @@ export const CartDrawer: React.FC = () => {
                   <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">Metoda Plată</h3>
                   <div className="grid grid-cols-1 gap-3">
                     
-                    {/* ⭐ OPȚIUNEA RAMBURS - Dezactivată la EasyBox */}
+                    {/* ⭐ OPȚIUNEA RAMBURS - Dezactivată la EasyBox + SVG */}
                     <label 
                       className={`relative flex items-center gap-4 p-4 border rounded-xl transition-all duration-200 
                       ${paymentMethod === 'ramburs' 
@@ -634,7 +640,6 @@ export const CartDrawer: React.FC = () => {
                         className="accent-black w-5 h-5"
                         disabled={shippingMethod === 'easybox'}
                       />
-                      {/* SVG CASH REAMINTIT */}
                       <div className="p-2 bg-white rounded-full border border-neutral-100 shadow-sm shrink-0">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <line x1="12" y1="1" x2="12" y2="23" />
@@ -649,10 +654,9 @@ export const CartDrawer: React.FC = () => {
                       </div>
                     </label>
 
-                    {/* ⭐ OPȚIUNEA CARD */}
+                    {/* ⭐ OPȚIUNEA CARD + SVG */}
                     <label className={`relative flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all duration-200 ${paymentMethod === 'card' ? 'border-black bg-neutral-50 shadow-inner' : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'}`}>
                       <input type="radio" name="payment" checked={paymentMethod === 'card'} onChange={() => setPaymentMethod('card')} className="accent-black w-5 h-5" />
-                      {/* SVG CARD REAMINTIT */}
                       <div className="p-2 bg-white rounded-full border border-neutral-100 shadow-sm shrink-0">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
@@ -670,32 +674,50 @@ export const CartDrawer: React.FC = () => {
           )}
         </div>
 
-        <div className="p-4 border-t border-neutral-100 bg-white shrink-0">
-          <div className="space-y-1 mb-3 text-xs">
-            <div className="flex justify-between text-neutral-600"><span>Subtotal</span><span>{subtotal.toFixed(2)} RON</span></div>
-            <div className="flex justify-between text-neutral-600"><span>Transport</span><span>{shippingCost.toFixed(2)} RON</span></div>
-            {appliedDiscount && <div className="flex justify-between text-green-600 font-bold"><span>Reducere</span><span>-{discountAmount.toFixed(2)} RON</span></div>}
-          </div>
+        {/* Footer Complet */}
+        {cart.length > 0 && (
+          <div className="p-6 border-t border-neutral-100 bg-white shrink-0">
+            <div className="space-y-2 mb-4 text-sm">
+              <div className="flex justify-between text-neutral-600"><span>Subtotal produse</span><span>{subtotal.toFixed(2)} RON</span></div>
+              <div className="flex justify-between text-neutral-600"><span>Transport ({shippingMethod === 'easybox' ? 'Easy Box' : 'Curier'})</span><span>{shippingCost.toFixed(2)} RON</span></div>
+              {appliedDiscount && (
+                <>
+                  <div className="flex justify-between text-green-600 font-bold"><span>Reducere ({appliedDiscount.code})</span><span>-{discountAmount.toFixed(2)} RON</span></div>
+                  <div className="flex justify-between text-neutral-400 line-through text-xs pt-2 border-t border-neutral-100"><span>Fără reducere</span><span>{totalBeforeDiscount.toFixed(2)} RON</span></div>
+                </>
+              )}
+            </div>
 
-          <div className="flex justify-between items-center mb-3 pb-2 border-b border-black">
-            <span className="text-xs text-neutral-500 uppercase font-bold">Total</span>
-            <span className="text-xl font-black">{finalTotal.toFixed(2)} RON</span>
-          </div>
+            <div className="flex justify-between items-center mb-4 pb-4 border-b-2 border-black">
+              <span className="text-sm text-neutral-500 uppercase font-bold">Total de plată</span>
+              <span className="text-2xl font-black">{finalTotal.toFixed(2)} RON</span>
+            </div>
 
-          {step === 'cart' ? (
-            <Button fullWidth onClick={() => setStep('details')}>Continuă</Button>
-          ) : (
-            <Button fullWidth onClick={handleSubmitOrder} disabled={loading} type="button" className="shadow-xl">{loading ? 'Se procesează...' : paymentMethod === 'ramburs' ? `Trimite Comanda (${finalTotal.toFixed(2)} RON)` : `Plătește cu Cardul (${finalTotal.toFixed(2)} RON)`}</Button>
-          )}
-        </div>
+            {appliedDiscount && <p className="text-center text-sm text-green-600 mb-4">✓ Ai economisit <strong>{discountAmount.toFixed(2)} RON</strong>!</p>}
+
+            {step === 'cart' ? (
+              <Button fullWidth onClick={() => setStep('details')}>Continuă spre Checkout</Button>
+            ) : (
+              <Button fullWidth onClick={handleSubmitOrder} disabled={loading} type="button" className="shadow-xl">
+                {loading ? 'Se procesează...' : paymentMethod === 'ramburs' ? `Trimite Comanda (${finalTotal.toFixed(2)} RON)` : `Plătește cu Cardul (${finalTotal.toFixed(2)} RON)`}
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       <style>{`
         .pac-container { z-index: 99999 !important; }
-        .leaflet-container { z-index: 999 !important; }
+        .leaflet-container { z-index: 999 !important; font-family: inherit !important; }
+        
+        /* SLEEK WIDGET STYLE */
+        .bp-widget-branding, .bp-widget-footer { display: none !important; }
+        .bp-widget-btn, .bp-widget-btn-primary { background-color: black !important; color: white !important; border-radius: 6px !important; }
+        
         gmpx-place-picker { display: block; width: 100%; }
         gmpx-place-picker input { padding: 0.75rem !important; border-radius: 0.5rem !important; border: 1px solid #e5e5e5 !important; width: 100% !important; font-size: 0.875rem !important; box-sizing: border-box !important; background-color: white !important; height: auto !important; }
         gmpx-place-picker input:focus { outline: none !important; border-color: black !important; }
+        
         @media screen and (max-width: 768px) {
           input, select, textarea, gmpx-place-picker::part(input) { font-size: 16px !important; }
         }
