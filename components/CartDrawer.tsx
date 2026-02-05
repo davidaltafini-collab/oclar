@@ -589,7 +589,7 @@ export const CartDrawer: React.FC = () => {
                   </h3>
                   
                   <div className="mb-2 relative">
-                      <label className="text-xs text-blue-600 font-bold ml-1 mb-1 block">🔍 Caută Adresa</label>
+                      <label className="text-xs text-yellow-600 font-bold ml-1 mb-1 block">Strada numar, oras</label>
                       <gmpx-place-picker 
                           ref={pickerRef} 
                           placeholder="Introdu adresa..." 
@@ -755,7 +755,7 @@ export const CartDrawer: React.FC = () => {
                 <Button fullWidth onClick={() => setStep('details')}>Continuă spre Checkout</Button>
               ) : (
                 <Button fullWidth onClick={handleSubmitOrder} disabled={loading} type="button" className="shadow-xl">
-                  {loading ? 'Se procesează...' : paymentMethod === 'ramburs' ? `Trimite Comanda (${finalTotal.toFixed(2)} RON)` : `Plătește cu Cardul (${finalTotal.toFixed(2)} RON)`}
+                  {loading ? 'Se procesează...' : paymentMethod === 'ramburs' ? `Trimite Comanda` : `Plătește cu Cardul`}
                 </Button>
               )}
             </div>
@@ -823,7 +823,7 @@ export const CartDrawer: React.FC = () => {
         }
         
         gmpx-place-picker { display: block; width: 100%; }
-        gmpx-place-picker input { padding: 0.75rem !important; border-radius: 0.5rem !important; border: 1px solid #e5e5e5 !important; width: 100% !important; font-size: 0.875rem !important; box-sizing: border-box !important; background-color: white !important; height: auto !important; }
+        gmpx-place-picker input { padding: 0.75rem !important; border-radius: 0.5rem !important; border: 1px solid #e5e5e5 !important; width: 100% !important; font-size: 16px !important; font-size: 0.875rem !important; box-sizing: border-box !important; background-color: white !important; height: auto !important; }
         gmpx-place-picker input:focus { outline: none !important; border-color: black !important; }
         
         @media screen and (max-width: 768px) {
