@@ -497,6 +497,7 @@ export const CartDrawer: React.FC = () => {
       <div className="fixed inset-0 bg-black/60 z-50 backdrop-blur-sm" onClick={toggleCart} />
 
       <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-2xl flex flex-col animate-slide-in-right">
+        {/* Header - Fixed at Top */}
         <div className="p-5 border-b border-neutral-100 flex items-center justify-between bg-white shrink-0">
           <h2 className="text-xl font-bold uppercase tracking-tight">
             {step === 'cart' ? 'Coșul Tău' : 'Detalii Livrare'}
@@ -504,74 +505,70 @@ export const CartDrawer: React.FC = () => {
           <button onClick={toggleCart} className="p-2 hover:bg-neutral-100 rounded-full transition-colors">✕</button>
         </div>
 
-              <div className="relative flex-1 overflow-hidden">
-                  <div
-                      ref={scrollContainerRef}
-                      className="absolute inset-0 overflow-y-auto p-5 space-y-4 pb-40"
-                  >
+        {/* Scrollable Content Wrapper */}
+        <div className="relative flex-1 overflow-hidden">
+          <div ref={scrollContainerRef} className="absolute inset-0 overflow-y-auto p-5 space-y-4 pb-40">
+            {step === 'cart' ? (
+              cart.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-center">
+                  <div className="text-6xl mb-4">🛒</div>
+                  <p className="text-neutral-500 text-lg">Coșul tău este gol</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {cart.map((item) => (
+                    <div key={item.id} className="flex gap-4 p-4 bg-white rounded-xl border border-neutral-100 shadow-sm hover:shadow-md transition-shadow">
+                      <div className="w-20 h-20 rounded-lg overflow-hidden bg-neutral-50 shrink-0">
+                        <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-bold text-sm truncate">{item.name}</h3>
+                        <p className="text-xs text-neutral-500 mt-1">{item.price.toFixed(2)} RON</p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="w-7 h-7 flex items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200 text-sm font-bold">−</button>
+                          <span className="text-sm font-mono w-6 text-center">{item.quantity}</span>
+                          <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="w-7 h-7 flex items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200 text-sm font-bold">+</button>
+                        </div>
+                      </div>
+                      <button onClick={() => removeFromCart(item.id)} className="shrink-0 text-red-400 hover:text-red-600 p-2">✕</button>
+                    </div>
+                  ))}
 
-          {step === 'cart' ? (
-            cart.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-center">
-                <div className="text-6xl mb-4">🛒</div>
-                <p className="text-neutral-500 text-lg">Coșul tău este gol</p>
-             </div>
+                  <div className="bg-white p-4 rounded-xl border border-neutral-100 shadow-sm">
+                    <label className="text-xs font-bold uppercase text-neutral-500 mb-2 block">Cod Reducere</label>
+                    {!appliedDiscount ? (
+                      <div className="flex gap-2">
+                        <input type="text" value={discountCode} onChange={(e) => setDiscountCode(e.target.value.toUpperCase())} placeholder="COD" className="flex-1 p-3 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-black" />
+                        <Button onClick={handleApplyDiscount} disabled={discountLoading} variant="outline" className="px-4">{discountLoading ? '...' : 'Aplică'}</Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <span className="text-green-600 text-xl">✓</span>
+                          <div><p className="text-sm font-bold text-green-700">{appliedDiscount.code}</p><p className="text-xs text-green-600">-{discountAmount.toFixed(2)} RON</p></div>
+                        </div>
+                        <button onClick={handleRemoveDiscount} className="text-red-500 hover:text-red-700 font-bold">✕</button>
+                      </div>
+                    )}
+                    {discountError && <p className="text-xs text-red-500 mt-2">{discountError}</p>}
+                  </div>
 
+                  <div className="bg-white p-4 rounded-xl border border-neutral-100 shadow-sm space-y-3">
+                    <h3 className="text-xs font-bold uppercase text-neutral-500">Metoda Livrare</h3>
+                    <div className="grid grid-cols-1 gap-3">
+                      <label className={`flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all ${shippingMethod === 'easybox' ? 'border-black bg-neutral-50 shadow-inner' : 'border-neutral-200 hover:border-neutral-300'}`}>
+                        <input type="radio" name="shipping" checked={shippingMethod === 'easybox'} onChange={() => setShippingMethod('easybox')} className="accent-black w-5 h-5" />
+                        <div><span className="font-bold block text-sm">Easy Box</span><span className="text-xs text-neutral-500">{SHIPPING_COSTS.easybox.toFixed(2)} RON</span></div>
+                      </label>
+                      <label className={`flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all ${shippingMethod === 'courier' ? 'border-black bg-neutral-50 shadow-inner' : 'border-neutral-200 hover:border-neutral-300'}`}>
+                        <input type="radio" name="shipping" checked={shippingMethod === 'courier'} onChange={() => setShippingMethod('courier')} className="accent-black w-5 h-5" />
+                        <div><span className="font-bold block text-sm">Livrare Curier</span><span className="text-xs text-neutral-500">{SHIPPING_COSTS.courier.toFixed(2)} RON</span></div>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              )
             ) : (
-              <div className="space-y-4">
-                {cart.map((item) => (
-                  <div key={item.id} className="flex gap-4 p-4 bg-white rounded-xl border border-neutral-100 shadow-sm hover:shadow-md transition-shadow">
-                    <div className="w-20 h-20 rounded-lg overflow-hidden bg-neutral-50 shrink-0">
-                      <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-bold text-sm truncate">{item.name}</h3>
-                      <p className="text-xs text-neutral-500 mt-1">{item.price.toFixed(2)} RON</p>
-                      <div className="flex items-center gap-2 mt-2">
-                        <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="w-7 h-7 flex items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200 text-sm font-bold">−</button>
-                        <span className="text-sm font-mono w-6 text-center">{item.quantity}</span>
-                        <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="w-7 h-7 flex items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200 text-sm font-bold">+</button>
-                      </div>
-                    </div>
-                    <button onClick={() => removeFromCart(item.id)} className="shrink-0 text-red-400 hover:text-red-600 p-2">✕</button>
-                  </div>
-                ))}
-
-                <div className="bg-white p-4 rounded-xl border border-neutral-100 shadow-sm">
-                  <label className="text-xs font-bold uppercase text-neutral-500 mb-2 block">Cod Reducere</label>
-                  {!appliedDiscount ? (
-                    <div className="flex gap-2">
-                      <input type="text" value={discountCode} onChange={(e) => setDiscountCode(e.target.value.toUpperCase())} placeholder="COD" className="flex-1 p-3 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-black" />
-                      <Button onClick={handleApplyDiscount} disabled={discountLoading} variant="outline" className="px-4">{discountLoading ? '...' : 'Aplică'}</Button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <span className="text-green-600 text-xl">✓</span>
-                        <div><p className="text-sm font-bold text-green-700">{appliedDiscount.code}</p><p className="text-xs text-green-600">-{discountAmount.toFixed(2)} RON</p></div>
-                      </div>
-                      <button onClick={handleRemoveDiscount} className="text-red-500 hover:text-red-700 font-bold">✕</button>
-                    </div>
-                  )}
-                  {discountError && <p className="text-xs text-red-500 mt-2">{discountError}</p>}
-                </div>
-
-                <div className="bg-white p-4 rounded-xl border border-neutral-100 shadow-sm space-y-3">
-                  <h3 className="text-xs font-bold uppercase text-neutral-500">Metoda Livrare</h3>
-                  <div className="grid grid-cols-1 gap-3">
-                    <label className={`flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all ${shippingMethod === 'easybox' ? 'border-black bg-neutral-50 shadow-inner' : 'border-neutral-200 hover:border-neutral-300'}`}>
-                      <input type="radio" name="shipping" checked={shippingMethod === 'easybox'} onChange={() => setShippingMethod('easybox')} className="accent-black w-5 h-5" />
-                      <div><span className="font-bold block text-sm">Easy Box</span><span className="text-xs text-neutral-500">{SHIPPING_COSTS.easybox.toFixed(2)} RON</span></div>
-                    </label>
-                    <label className={`flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all ${shippingMethod === 'courier' ? 'border-black bg-neutral-50 shadow-inner' : 'border-neutral-200 hover:border-neutral-300'}`}>
-                      <input type="radio" name="shipping" checked={shippingMethod === 'courier'} onChange={() => setShippingMethod('courier')} className="accent-black w-5 h-5" />
-                      <div><span className="font-bold block text-sm">Livrare Curier</span><span className="text-xs text-neutral-500">{SHIPPING_COSTS.courier.toFixed(2)} RON</span></div>
-                    </label>
-                  </div>
-                </div>
-              </div>
-            )
-          ) : (
               <form id="checkout-form" className="space-y-4" onSubmit={(e) => e.preventDefault()}>
                 <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
                   <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">Date Contact</h3>
@@ -734,43 +731,43 @@ export const CartDrawer: React.FC = () => {
                   </div>
                 </div>
               </form>
-          )}
-                  
+            )}
+
+            {/* Footer Complet - Acum Sticky Bottom */}
+            {cart.length > 0 && (
+              <div className="sticky bottom-0 z-40 bg-white border-t shadow-[0_-10px_30px_rgba(0,0,0,0.08)]">
+                <div className="p-6">
+                  <div className="space-y-2 mb-4 text-sm">
+                    <div className="flex justify-between text-neutral-600"><span>Subtotal produse</span><span>{subtotal.toFixed(2)} RON</span></div>
+                    <div className="flex justify-between text-neutral-600"><span>Transport ({shippingMethod === 'easybox' ? 'Easy Box' : 'Curier'})</span><span>{shippingCost.toFixed(2)} RON</span></div>
+                    {appliedDiscount && (
+                      <>
+                        <div className="flex justify-between text-green-600 font-bold"><span>Reducere ({appliedDiscount.code})</span><span>-{discountAmount.toFixed(2)} RON</span></div>
+                        <div className="flex justify-between text-neutral-400 line-through text-xs pt-2 border-t border-neutral-100"><span>Fără reducere</span><span>{totalBeforeDiscount.toFixed(2)} RON</span></div>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="flex justify-between items-center mb-4 pb-4 border-b-2 border-black">
+                    <span className="text-sm text-neutral-500 uppercase font-bold">Total de plată</span>
+                    <span className="text-2xl font-black">{finalTotal.toFixed(2)} RON</span>
+                  </div>
+
+                  {appliedDiscount && <p className="text-center text-sm text-green-600 mb-4">✓ Ai economisit <strong>{discountAmount.toFixed(2)} RON</strong>!</p>}
+
+                  {step === 'cart' ? (
+                    <Button fullWidth onClick={() => setStep('details')}>Continuă spre Checkout</Button>
+                  ) : (
+                    <Button fullWidth onClick={handleSubmitOrder} disabled={loading} type="button" className="shadow-xl">
+                      {loading ? 'Se procesează...' : paymentMethod === 'ramburs' ? `Trimite Comanda (${finalTotal.toFixed(2)} RON)` : `Plătește cu Cardul (${finalTotal.toFixed(2)} RON)`}
+                    </Button>
+                  )}
+                </div>
               </div>
-          </div>
-
-        {/* Footer Complet */}
-              {cart.length > 0 && (
-              <div className="sticky bottom-0 z-40 bg-white border-t border-neutral-200 shadow-[0_-10px_30px_rgba(0,0,0,0.08)]">
-              <div className="p-6">
-
-            <div className="space-y-2 mb-4 text-sm">
-              <div className="flex justify-between text-neutral-600"><span>Subtotal produse</span><span>{subtotal.toFixed(2)} RON</span></div>
-              <div className="flex justify-between text-neutral-600"><span>Transport ({shippingMethod === 'easybox' ? 'Easy Box' : 'Curier'})</span><span>{shippingCost.toFixed(2)} RON</span></div>
-              {appliedDiscount && (
-                <>
-                  <div className="flex justify-between text-green-600 font-bold"><span>Reducere ({appliedDiscount.code})</span><span>-{discountAmount.toFixed(2)} RON</span></div>
-                  <div className="flex justify-between text-neutral-400 line-through text-xs pt-2 border-t border-neutral-100"><span>Fără reducere</span><span>{totalBeforeDiscount.toFixed(2)} RON</span></div>
-                </>
-              )}
-            </div>
-
-            <div className="flex justify-between items-center mb-4 pb-4 border-b-2 border-black">
-              <span className="text-sm text-neutral-500 uppercase font-bold">Total de plată</span>
-              <span className="text-2xl font-black">{finalTotal.toFixed(2)} RON</span>
-            </div>
-
-            {appliedDiscount && <p className="text-center text-sm text-green-600 mb-4">✓ Ai economisit <strong>{discountAmount.toFixed(2)} RON</strong>!</p>}
-
-            {step === 'cart' ? (
-              <Button fullWidth onClick={() => setStep('details')}>Continuă spre Checkout</Button>
-            ) : (
-              <Button fullWidth onClick={handleSubmitOrder} disabled={loading} type="button" className="shadow-xl">
-                {loading ? 'Se procesează...' : paymentMethod === 'ramburs' ? `Trimite Comanda (${finalTotal.toFixed(2)} RON)` : `Plătește cu Cardul (${finalTotal.toFixed(2)} RON)`}
-              </Button>
             )}
           </div>
-        )}
+        </div>
+
       </div>
 
       <style>{`
