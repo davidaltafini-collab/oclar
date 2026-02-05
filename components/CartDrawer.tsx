@@ -296,7 +296,6 @@ export const CartDrawer: React.FC = () => {
             operatorMarkers: true,
             codeSearch: true,
             countryCodes: 'RO',
-            initialAddress: startLocation,
             operators: [
                 { operator: 'DPD' },
                 { operator: 'SAMEDAY' },
