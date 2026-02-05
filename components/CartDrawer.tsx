@@ -3,11 +3,10 @@ import { useCart } from '../context/CartContext';
 import { Button } from './Button';
 import { API_URL } from '../constants';
 
-// ⭐ IMPORTURI OFICIALE GOOGLE MAPS
+// ⭐ IMPORTURI OFICIALE GOOGLE MAPS WEB COMPONENTS
 import '@googlemaps/extended-component-library/place_picker.js';
 import '@googlemaps/extended-component-library/api_loader.js';
 
-// ⭐ DEFINIȚII TYPESCRIPT
 declare global {
   namespace JSX {
     interface IntrinsicElements {
@@ -62,10 +61,9 @@ export const CartDrawer: React.FC = () => {
   const pickerRef = useRef<any>(null);
   const loaderRef = useRef<any>(null);
   
-  // API Key
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_KEY || (window as any).__GOOGLE_MAPS_KEY__;
 
-  // ⭐ STATE PENTRU LOCKER
+  // ⭐ STATE PENTRU ECOLET
   const [selectedLocker, setSelectedLocker] = useState<{
     lockerId: string;
     lockerName: string;
@@ -87,7 +85,6 @@ export const CartDrawer: React.FC = () => {
     details: '' 
   });
   
-  // ⭐ VALIDĂRI
   const [validationErrors, setValidationErrors] = useState<{
     phone?: string;
     email?: string;
@@ -127,7 +124,9 @@ export const CartDrawer: React.FC = () => {
     } else {
       document.body.style.overflow = '';
     }
-    return () => { document.body.style.overflow = ''; };
+    return () => {
+      document.body.style.overflow = '';
+    };
   }, [isCartOpen]);
 
   useEffect(() => {
@@ -136,7 +135,7 @@ export const CartDrawer: React.FC = () => {
     }
   }, [shippingMethod]);
 
-  // ⭐ INITIALIZARE GOOGLE MAPS
+  // ⭐ INITIALIZARE GOOGLE MAPS API
   useEffect(() => {
     const isGoogleLoaded = window.google && window.google.maps && window.google.maps.places;
     if (!isGoogleLoaded && loaderRef.current && apiKey) {
@@ -146,7 +145,7 @@ export const CartDrawer: React.FC = () => {
     }
   }, [apiKey, isCartOpen]);
 
-  // ⭐ LISTENER ADRESĂ
+  // ⭐ LISTENER PENTRU SELECTARE ADRESĂ
   useEffect(() => {
     const timer = setTimeout(() => {
         const picker = pickerRef.current;
@@ -218,7 +217,7 @@ export const CartDrawer: React.FC = () => {
   }, [step]);
 
   // =================================================================
-  // ⭐ WIDGET EASYBOX - INITIALIZARE + FILTRARE BRANDING
+  // ⭐ WIDGET EASYBOX
   // =================================================================
   useEffect(() => {
     if (shippingMethod === 'easybox' && step === 'details' && isCartOpen) {
@@ -240,7 +239,7 @@ export const CartDrawer: React.FC = () => {
 
         if (container && isScriptLoaded) {
           console.log('✅ Ecolet: Initializing Widget v7...');
-          container.innerHTML = ''; 
+          container.innerHTML = '';
 
           let startLocation = 'Bucuresti, Romania';
           if (formData.city) {
@@ -507,7 +506,6 @@ export const CartDrawer: React.FC = () => {
                   </div>
                 ))}
                 
-                {/* COUPON & SHIPPING UI OMITTED FOR BREVITY, SAME AS BEFORE */}
                 <div className="bg-white p-4 rounded-xl border border-neutral-100 shadow-sm">
                   <label className="text-xs font-bold uppercase text-neutral-500 mb-2 block">Cod Reducere</label>
                   {!appliedDiscount ? (
@@ -568,7 +566,6 @@ export const CartDrawer: React.FC = () => {
                           <div className="bg-red-50 border border-red-100 text-red-600 p-2 mt-2 text-xs rounded font-bold">Te rugăm să completezi adresa de facturare.</div>
                       )}
                   </div>
-                  {/* Address Read Only UI Omitted for brevity, kept same */}
                   <div className="bg-gray-100 p-3 rounded-lg border border-gray-200 text-xs text-gray-700 grid grid-cols-12 gap-3 items-center">
                       <div className="col-span-6 border-b border-gray-200 pb-2">
                         <span className="text-[10px] text-gray-400 uppercase block mb-0.5">Județ</span>
@@ -621,7 +618,37 @@ export const CartDrawer: React.FC = () => {
                          ) : null
                     )}
 
-                    <div id="ecolet-locker-widget" style={{ width: '100%', height: '500px', borderRadius: '12px', overflow: 'hidden', border: '1px solid #e5e5e5' }}></div>
+                    {/* ⭐⭐⭐ BANDA ALBĂ DE MASCAT (WHITE PATCH) ⭐⭐⭐ */}
+                    <div style={{ position: 'relative', overflow: 'hidden', borderRadius: '12px', border: '1px solid #e5e5e5' }}>
+                        
+                        {/* WIDGETUL */}
+                        <div id="ecolet-locker-widget" style={{ width: '100%', height: '500px' }}></div>
+                        
+                        {/* BANDA ALBĂ - JOS (Ascunde footer/branding) */}
+                        <div style={{
+                            position: 'absolute',
+                            bottom: 0,
+                            left: 0,
+                            width: '100%',
+                            height: '35px', /* Ajustează înălțimea dacă se mai vede ceva */
+                            backgroundColor: 'white',
+                            zIndex: 9999,
+                            pointerEvents: 'none' /* Ca să nu blocheze click-uri accidentale, doar ascunde vizual */
+                        }}></div>
+
+                         {/* BANDA ALBĂ - SUS (Opțional - pentru header dacă te enervează și ăla) */}
+                        <div style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            width: '100%',
+                            height: '2px', /* Doar o linie fină să curețe marginea */
+                            backgroundColor: 'white',
+                            zIndex: 9999,
+                            pointerEvents: 'none'
+                        }}></div>
+
+                    </div>
                   </div>
                 )}
 
@@ -685,45 +712,6 @@ export const CartDrawer: React.FC = () => {
         gmpx-place-picker { display: block; width: 100%; }
         gmpx-place-picker input { padding: 0.75rem !important; border-radius: 0.5rem !important; border: 1px solid #e5e5e5 !important; width: 100% !important; font-size: 0.875rem !important; box-sizing: border-box !important; background-color: white !important; height: auto !important; }
         gmpx-place-picker input:focus { outline: none !important; border-color: black !important; }
-        
-        /* ✂️ TĂIERE BRANDING & STEAGURI - SOLUȚIA ROMÂNEASCĂ */
-        /* Ascunde branding-ul Bliska Paczka */
-        .bp-widget-branding,
-        .bp-powered-by,
-        .bp-logo {
-            display: none !important;
-            visibility: hidden !important;
-            opacity: 0 !important;
-            height: 0 !important;
-            width: 0 !important;
-            pointer-events: none !important;
-        }
-
-        /* Ascunde footer-ul cu reclame, dar avem grijă să lăsăm harta full */
-        .bp-widget-footer {
-            display: none !important;
-        }
-        
-        /* Ascunde orice steag explicit sau badge cu Ucraina dacă apare */
-        .bp-badge,
-        img[src*="ukraine"],
-        img[src*="ua.png"],
-        img[src*="ua.svg"],
-        .flag-icon-ua {
-            display: none !important;
-        }
-
-        /* Forțăm harta să ocupe tot spațiul rămas după ce am tăiat header/footer */
-        .bp-widget-map {
-            height: 100% !important;
-            min-height: 450px !important;
-        }
-
-        /* Facem bara de sus curată și minimalistă */
-        .bp-widget-top-bar {
-             background: white !important;
-             border-bottom: 1px solid #eee !important;
-        }
         
         @media screen and (max-width: 768px) {
           input, select, textarea, gmpx-place-picker::part(input) { font-size: 16px !important; }
