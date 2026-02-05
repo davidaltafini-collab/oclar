@@ -208,7 +208,7 @@ export const CartDrawer: React.FC = () => {
   }, [step]);
 
   // =================================================================
-  // ⭐ WIDGET EASYBOX - REPARAT CU GEOLOCAȚIE FUNCȚIONALĂ
+  // ⭐ WIDGET EASYBOX - CU GEOLOCAȚIE ȘI CENTRARE PE ROMÂNIA
   // =================================================================
   useEffect(() => {
     if (shippingMethod === 'easybox' && step === 'details' && isCartOpen) {
@@ -230,69 +230,98 @@ export const CartDrawer: React.FC = () => {
         const isScriptLoaded = typeof window !== 'undefined' && window.BPWidget;
 
         if (container && isScriptLoaded) {
-          console.log('✅ Ecolet: Initializing Widget with Geolocation...');
+          console.log('✅ Ecolet: Initializing Widget...');
           container.innerHTML = ''; // Curățare
 
-          // ⭐ GEOLOCAȚIE CORECTATĂ
-          let useGeolocation = false;
-          let initialAddress = '';
+          // ⭐ GEOLOCAȚIE FUNCȚIONALĂ
+          let initialAddress = 'București, Romania'; // Default fallback
+          let detectedCity = '';
 
-          // Prioritate 1: Dacă user-ul a completat deja o adresă
+          // Prioritate 1: Adresa completată de user
           if (formData.street_name && formData.city) {
             initialAddress = `${formData.street_name} ${formData.street_number}, ${formData.city}, Romania`;
             console.log('📍 Using user address:', initialAddress);
           } 
-          // Prioritate 2: Dacă are doar orașul
+          // Prioritate 2: Orașul user-ului
           else if (formData.city) {
             initialAddress = `${formData.city}, Romania`;
             console.log('📍 Using user city:', initialAddress);
           }
-          // Prioritate 3: Încercăm geolocația browserului
+          // Prioritate 3: GEOLOCAȚIE BROWSER
           else {
             try {
+              console.log('🔍 Attempting geolocation...');
+              
               const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-                navigator.geolocation.getCurrentPosition(resolve, reject, {
-                  timeout: 5000,
-                  enableHighAccuracy: true
-                });
+                if (!navigator.geolocation) {
+                  console.warn('⚠️ Geolocation not supported');
+                  reject(new Error('Geolocation not supported'));
+                  return;
+                }
+                
+                navigator.geolocation.getCurrentPosition(
+                  resolve, 
+                  reject, 
+                  {
+                    timeout: 8000,
+                    enableHighAccuracy: false, // Mai rapid
+                    maximumAge: 300000 // Cache 5 min
+                  }
+                );
               });
 
-              // Folosim coordonatele pentru reverse geocoding
               const lat = position.coords.latitude;
               const lng = position.coords.longitude;
               
-              console.log('📍 Geolocation detected:', lat, lng);
+              console.log('✅ Geolocation success:', lat, lng);
               
-              // Folosim Google Geocoding pentru a obține adresa
-              const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}`;
-              const geocodeResponse = await fetch(geocodeUrl);
-              const geocodeData = await geocodeResponse.json();
-              
-              if (geocodeData.results && geocodeData.results[0]) {
-                const result = geocodeData.results[0];
-                let city = '';
-                
-                result.address_components.forEach((comp: any) => {
-                  if (comp.types.includes('locality')) {
-                    city = comp.long_name;
+              // Reverse Geocoding cu Google Maps
+              if (apiKey) {
+                try {
+                  const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}&language=ro`;
+                  const geocodeResponse = await fetch(geocodeUrl);
+                  const geocodeData = await geocodeResponse.json();
+                  
+                  if (geocodeData.results && geocodeData.results[0]) {
+                    const result = geocodeData.results[0];
+                    let city = '';
+                    let county = '';
+                    
+                    result.address_components.forEach((comp: any) => {
+                      if (comp.types.includes('locality')) {
+                        city = normalizeCity(comp.long_name);
+                      }
+                      if (comp.types.includes('administrative_area_level_1')) {
+                        county = normalizeName(comp.long_name);
+                      }
+                    });
+                    
+                    if (city) {
+                      detectedCity = city;
+                      initialAddress = `${city}, Romania`;
+                      console.log('✅ Geocoded address:', initialAddress);
+                      
+                      // Auto-fill city și county
+                      setFormData(prev => ({
+                        ...prev,
+                        city: city,
+                        county: county
+                      }));
+                    }
                   }
-                });
-                
-                if (city) {
-                  initialAddress = `${city}, Romania`;
-                  console.log('📍 Geocoded address:', initialAddress);
+                } catch (geoError) {
+                  console.warn('⚠️ Geocoding failed:', geoError);
                 }
               }
               
-              useGeolocation = true;
-            } catch (error) {
-              console.warn('⚠️ Geolocation failed, using default (București):', error);
-              initialAddress = 'București, Romania';
+            } catch (geoError: any) {
+              console.warn('⚠️ Geolocation failed:', geoError.message);
+              // Folosim fallback-ul București
             }
           }
 
           // ⭐ CONFIGURAȚIA WIDGET-ULUI
-          window.BPWidget.init(container, {
+          const config: any = {
             callback: (point: any) => {
               console.log('📦 Locker Selected:', point);
               
@@ -316,7 +345,6 @@ export const CartDrawer: React.FC = () => {
                 ...prev, 
                 city: lockerCity,
                 county: lockerCounty,
-                // Pentru EasyBox, adresa este locația locker-ului
                 street_name: lockerAddress.split(',')[0] || lockerAddress,
                 address: lockerAddress
               }));
@@ -338,9 +366,10 @@ export const CartDrawer: React.FC = () => {
               { operator: 'CARGUS' },
             ],
             alias: 'ecolet-192872'
-          });
+          };
 
-          console.log('✅ Widget initialized successfully');
+          window.BPWidget.init(container, config);
+          console.log('✅ Widget initialized with address:', initialAddress);
         } else {
           console.error('❌ Widget container or BPWidget not available');
         }
@@ -354,17 +383,17 @@ export const CartDrawer: React.FC = () => {
         script.async = true;
         script.onload = () => {
           console.log('✅ Ecolet script loaded');
-          setTimeout(initWidget, 300);
+          setTimeout(initWidget, 500);
         };
         script.onerror = () => {
           console.error('❌ Failed to load Ecolet script');
         };
         document.body.appendChild(script);
       } else {
-        initWidget();
+        setTimeout(initWidget, 300);
       }
     }
-  }, [shippingMethod, step, isCartOpen]); // Nu mai includem formData în dependențe ca să evităm re-render-uri
+  }, [shippingMethod, step, isCartOpen]);
 
   const validateField = (name: string, value: string) => {
     const errors = { ...validationErrors };
@@ -785,25 +814,53 @@ export const CartDrawer: React.FC = () => {
         </div>
       </div>
 
-      {/* ⭐ CSS OPTIMIZAT - FĂRĂ FILTRE PE HARTĂ */}
+      {/* ⭐ CSS OPTIMIZAT - HARTĂ CURATĂ ȘI CENTRATĂ */}
       <style>{`
         /* Google Places Autocomplete */
         .pac-container { z-index: 99999 !important; }
         
-        /* Leaflet Map - FĂRĂ GRAYSCALE */
+        /* Leaflet Map Container */
         .leaflet-container { 
           z-index: 999 !important; 
-          font-family: inherit !important; 
+          font-family: inherit !important;
+          background: #f5f5f5 !important;
         }
 
-        /* ⭐ ASCUNDEM BRANDING MOV URÂT */
+        /* ⭐ ASCUNDEM TOT BRANDING-UL ȘI FOOTER-UL */
         .bp-widget-branding, 
         .bp-widget-footer,
         .bp-widget-logo,
-        a[href*="bliskapaczka"] { 
+        .bp-widget-header,
+        a[href*="bliskapaczka"],
+        a[href*="leaflet"],
+        .leaflet-control-attribution { 
           display: none !important; 
           opacity: 0 !important;
           visibility: hidden !important;
+          height: 0 !important;
+          overflow: hidden !important;
+        }
+
+        /* Ascundem linkurile Leaflet de jos */
+        .leaflet-bottom.leaflet-right {
+          display: none !important;
+        }
+
+        /* Input Search Locker */
+        #ecolet-locker-widget input[type="text"] {
+          width: 100% !important;
+          padding: 12px !important;
+          border: 1px solid #e5e5e5 !important;
+          border-radius: 8px !important;
+          font-size: 14px !important;
+          margin-bottom: 8px !important;
+        }
+
+        /* Butonul de play mov */
+        .bp-widget-footer button,
+        button[style*="background: rgb(108, 42, 145)"],
+        button[style*="background: rgb(103, 26, 145)"] {
+          display: none !important;
         }
         
         /* Google Maps Input Styling */
@@ -830,7 +887,11 @@ export const CartDrawer: React.FC = () => {
           }
         }
 
-        /* Widget Container Cleanup */
+        /* Widget Container */
+        #ecolet-locker-widget {
+          position: relative;
+        }
+
         #ecolet-locker-widget > div {
           border-radius: 12px;
         }
@@ -841,6 +902,11 @@ export const CartDrawer: React.FC = () => {
         }
         .animate-spin {
           animation: spin 1s linear infinite;
+        }
+
+        /* Markere pe hartă - mai vizibile */
+        .leaflet-marker-icon {
+          filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
         }
       `}</style>
     </>
