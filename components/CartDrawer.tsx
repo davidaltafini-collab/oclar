@@ -610,7 +610,7 @@ export const CartDrawer: React.FC = () => {
                   </h3>
                   
                   <div className="mb-2 relative">
-                      <label className="text-xs text-yellow-400 font-bold ml-1 mb-1 block">Stradă Număr, Oraș</label>
+                      <label className="text-xs text-yellow-400 ml-1 mb-1 block">Stradă Număr, Oraș</label>
                       <gmpx-place-picker 
                           ref={pickerRef} 
                           placeholder="Introdu adresa..." 
@@ -700,7 +700,7 @@ export const CartDrawer: React.FC = () => {
                       {/* ⭐ BANDA ALBĂ DE JOS (MASCA) - Acoperă branding-ul */}
                       <div className="absolute bottom-0 left-0 w-full h-24 bg-white z-20 border-t border-neutral-100 flex items-center justify-center">
                           {/* Aici scrie "ALEGE LOCKER" ca să pară că e parte din site */}
-                          <div className="flex items-center gap-2 text-xs font-bold text-yellow-300 uppercase tracking-widest">
+                          <div className="flex items-center gap-2 text-s font-bold text-yellow-300 uppercase tracking-widest">
                             <span>Alege Locker</span>
                           </div>
                       </div>
