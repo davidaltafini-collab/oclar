@@ -728,81 +728,39 @@ export const CartDrawer: React.FC = () => {
                   </div>
                 </div>
               </form>
-          )}
-        </div>
+          )}
 
-        {/* Footer Complet */}
-        {cart.length > 0 && (
-                  <div className="sticky bottom-0 z-40 bg-white border-t border-neutral-200 shadow-[0_-10px_30px_rgba(0,0,0,0.08)]">
-                      <div className="p-6">
+          {/* Footer Complet - MUTAT ÎN INTERIORUL SCROLL-ULUI */}
+          {cart.length > 0 && (
+            <div className="p-6 border-t border-neutral-100 bg-white mt-4">
+              <div className="space-y-2 mb-4 text-sm">
+                <div className="flex justify-between text-neutral-600"><span>Subtotal produse</span><span>{subtotal.toFixed(2)} RON</span></div>
+                <div className="flex justify-between text-neutral-600"><span>Transport ({shippingMethod === 'easybox' ? 'Easy Box' : 'Curier'})</span><span>{shippingCost.toFixed(2)} RON</span></div>
+                {appliedDiscount && (
+                  <>
+                    <div className="flex justify-between text-green-600 font-bold"><span>Reducere ({appliedDiscount.code})</span><span>-{discountAmount.toFixed(2)} RON</span></div>
+                    <div className="flex justify-between text-neutral-400 line-through text-xs pt-2 border-t border-neutral-100"><span>Fără reducere</span><span>{totalBeforeDiscount.toFixed(2)} RON</span></div>
+                  </>
+                )}
+              </div>
 
-                          <div className="space-y-2 mb-4 text-sm">
-                              <div className="flex justify-between text-neutral-600">
-                                  <span>Subtotal produse</span>
-                                  <span>{subtotal.toFixed(2)} RON</span>
-                              </div>
+              <div className="flex justify-between items-center mb-4 pb-4 border-b-2 border-black">
+                <span className="text-sm text-neutral-500 uppercase font-bold">Total de plată</span>
+                <span className="text-2xl font-black">{finalTotal.toFixed(2)} RON</span>
+              </div>
 
-                              <div className="flex justify-between text-neutral-600">
-                                  <span>
-                                      Transport ({shippingMethod === 'easybox' ? 'Easy Box' : 'Curier'})
-                                  </span>
-                                  <span>{shippingCost.toFixed(2)} RON</span>
-                              </div>
+              {appliedDiscount && <p className="text-center text-sm text-green-600 mb-4">✓ Ai economisit <strong>{discountAmount.toFixed(2)} RON</strong>!</p>}
 
-                              {appliedDiscount && (
-                                  <>
-                                      <div className="flex justify-between text-green-600 font-bold">
-                                          <span>Reducere ({appliedDiscount.code})</span>
-                                          <span>-{discountAmount.toFixed(2)} RON</span>
-                                      </div>
-
-                                      <div className="flex justify-between text-neutral-400 line-through text-xs pt-2 border-t border-neutral-100">
-                                          <span>Fără reducere</span>
-                                          <span>{totalBeforeDiscount.toFixed(2)} RON</span>
-                                      </div>
-                                  </>
-                              )}
-                          </div>
-
-                          <div className="flex justify-between items-center mb-4 pb-4 border-b-2 border-black">
-                              <span className="text-sm text-neutral-500 uppercase font-bold">
-                                  Total de plată
-                              </span>
-                              <span className="text-2xl font-black">
-                                  {finalTotal.toFixed(2)} RON
-                              </span>
-                          </div>
-
-                          {appliedDiscount && (
-                              <p className="text-center text-sm text-green-600 mb-4">
-                                  ✓ Ai economisit <strong>{discountAmount.toFixed(2)} RON</strong>!
-                              </p>
-                          )}
-
-                          {step === 'cart' ? (
-                              <Button fullWidth onClick={() => setStep('details')}>
-                                  Continuă spre Checkout
-                              </Button>
-                          ) : (
-                              <Button
-                                  fullWidth
-                                  onClick={handleSubmitOrder}
-                                  disabled={loading}
-                                  type="button"
-                                  className="shadow-xl"
-                              >
-                                  {loading
-                                      ? 'Se procesează...'
-                                      : paymentMethod === 'ramburs'
-                                          ? `Trimite Comanda (${finalTotal.toFixed(2)} RON)`
-                                          : `Plătește cu Cardul (${finalTotal.toFixed(2)} RON)`}
-                              </Button>
-                          )}
-
-                      </div>
-                  </div>
+              {step === 'cart' ? (
+                <Button fullWidth onClick={() => setStep('details')}>Continuă spre Checkout</Button>
+              ) : (
+                <Button fullWidth onClick={handleSubmitOrder} disabled={loading} type="button" className="shadow-xl">
+                  {loading ? 'Se procesează...' : paymentMethod === 'ramburs' ? `Trimite Comanda (${finalTotal.toFixed(2)} RON)` : `Plătește cu Cardul (${finalTotal.toFixed(2)} RON)`}
+                </Button>
               )}
-
+            </div>
+          )}
+        </div>
 
       <style>{`
         .pac-container { z-index: 99999 !important; }
