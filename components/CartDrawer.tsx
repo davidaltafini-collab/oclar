@@ -4,11 +4,11 @@ import { Button } from './Button';
 import { API_URL } from '../constants';
 import { ROMANIAN_COUNTIES } from '../constants';
 
-// ⭐ IMPORTURI OFICIALE GOOGLE MAPS
+// ⭐ IMPORTURI OFICIALE GOOGLE MAPS WEB COMPONENTS
 import '@googlemaps/extended-component-library/place_picker.js';
 import '@googlemaps/extended-component-library/api_loader.js';
 
-// ⭐ DEFINIȚII TYPESCRIPT
+// ⭐ DEFINIȚII TYPESCRIPT PENTRU ELEMENTELE CUSTOM
 declare global {
   namespace JSX {
     interface IntrinsicElements {
@@ -21,6 +21,12 @@ declare global {
       'gmpx-api-loader': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
         ref?: any;
       };
+    }
+  }
+  // Interfață pentru widget-ul Ecolet
+  interface Window {
+    EcoletWidget: {
+      init: (config: any) => void;
     }
   }
 }
@@ -57,7 +63,7 @@ export const CartDrawer: React.FC = () => {
   const pickerRef = useRef<any>(null);
   const loaderRef = useRef<any>(null);
   
-  // API Key
+  // API Key - Citire din env sau fallback
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_KEY || (window as any).__GOOGLE_MAPS_KEY__;
 
   // ⭐ STATE PENTRU ECOLET
@@ -74,7 +80,7 @@ export const CartDrawer: React.FC = () => {
     phone: '',
     county: '',
     city: '',
-    address: '', // Va conține adresa completă pentru DB
+    address: '', // Adresa completă vizuală
     postalCode: '',
     street_name: '',
     street_number: '',
@@ -97,7 +103,7 @@ export const CartDrawer: React.FC = () => {
     return 0;
   };
 
-  // ⭐ HELPERE PENTRU NORMALIZARE
+  // ⭐ HELPERE PENTRU NORMALIZARE DATE
   const normalizeName = (name: string) => {
     if (!name) return '';
     let clean = name.replace('Județul', '').replace('County', '').trim();
@@ -111,67 +117,77 @@ export const CartDrawer: React.FC = () => {
       return city;
   };
 
-  // ⭐ INITIALIZARE GOOGLE MAPS API (FIX REACT 19)
+  // ⭐ INITIALIZARE GOOGLE MAPS API (FIX CRITIC: SETARE KEY MANUAL)
+  // React șterge atributul 'key' din JSX, așa că îl punem manual prin ref
   useEffect(() => {
     if (loaderRef.current && apiKey) {
       loaderRef.current.key = apiKey;
       loaderRef.current.libraries = ['places'];
       loaderRef.current.region = 'RO'; 
     }
-  }, [apiKey, step]);
+  }, [apiKey, isCartOpen]); // Se execută când se deschide coșul
 
-  // ⭐ LISTENER PENTRU SELECTARE ADRESĂ
+  // ⭐ LISTENER PENTRU SELECTARE ADRESĂ (GOOGLE PICKER)
   useEffect(() => {
-    const picker = pickerRef.current;
-    if (picker && step === 'details') {
-      const handlePlaceChange = () => {
-        const place = picker.value;
-        if (!place) return;
+    // Folosim un mic delay pentru a fi siguri că elementul 'gmpx-place-picker' este montat
+    const timer = setTimeout(() => {
+        const picker = pickerRef.current;
+        if (picker && step === 'details') {
+          const handlePlaceChange = () => {
+            const place = picker.value;
+            if (!place) return;
 
-        const addressComponents = place.addressComponents || [];
-        let street = '', number = '', city = '', county = '', postal = '';
+            const addressComponents = place.addressComponents || [];
+            let street = '', number = '', city = '', county = '', postal = '';
 
-        // Parsare componente adresă
-        addressComponents.forEach((component: any) => {
-          const types = component.types;
-          if (types.includes("route")) street = component.longText;
-          if (types.includes("street_number")) number = component.longText;
-          if (types.includes("locality")) city = normalizeCity(component.longText);
-          if (!city && types.includes("administrative_area_level_2")) city = normalizeCity(component.longText);
-          if (types.includes("administrative_area_level_1")) county = normalizeName(component.longText);
-          if (types.includes("postal_code")) postal = component.longText;
-        });
+            // Parsare componente adresă Google
+            addressComponents.forEach((component: any) => {
+              const types = component.types;
+              if (types.includes("route")) street = component.longText;
+              if (types.includes("street_number")) number = component.longText;
+              if (types.includes("locality")) city = normalizeCity(component.longText);
+              // Fallback oraș (uneori apare la sector/admin level 2)
+              if (!city && types.includes("administrative_area_level_2")) city = normalizeCity(component.longText);
+              if (types.includes("administrative_area_level_1")) county = normalizeName(component.longText);
+              if (types.includes("postal_code")) postal = component.longText;
+            });
 
-        // Fallback dacă Google nu dă strada exactă
-        if (!street && place.formattedAddress) {
-           const parts = place.formattedAddress.split(',');
-           if (parts.length > 0) street = parts[0];
+            // Fallback: dacă Google nu dă strada exactă în componente, o luăm din formattedAddress
+            if (!street && place.formattedAddress) {
+               const parts = place.formattedAddress.split(',');
+               if (parts.length > 0) street = parts[0];
+            }
+
+            // Construim linia de adresă completă pentru backend/afișare
+            const fullAddressLine = `${street || ''} Nr. ${number || ''}`.trim();
+
+            setFormData(prev => ({
+              ...prev,
+              street_name: street,
+              street_number: number,
+              city: city,
+              county: county,
+              postalCode: postal,
+              address: fullAddressLine
+            }));
+            
+            // Validăm codul poștal automat dacă există
+            if (postal) validateField('postalCode', postal);
+          };
+
+          picker.addEventListener('gmpx-placechange', handlePlaceChange);
+          
+          // Cleanup
+          return () => {
+            if (picker) picker.removeEventListener('gmpx-placechange', handlePlaceChange);
+          };
         }
+    }, 100);
 
-        // Construim linia de adresă completă pentru backend
-        const fullAddressLine = `${street || ''} Nr. ${number || ''}`.trim();
+    return () => clearTimeout(timer);
+  }, [step, isCartOpen]);
 
-        setFormData(prev => ({
-          ...prev,
-          street_name: street,
-          street_number: number,
-          city: city,
-          county: county,
-          postalCode: postal,
-          address: fullAddressLine // Actualizăm câmpul 'address' folosit de logica ta veche
-        }));
-        
-        if (postal) validateField('postalCode', postal);
-      };
-
-      picker.addEventListener('gmpx-placechange', handlePlaceChange);
-      return () => {
-        if (picker) picker.removeEventListener('gmpx-placechange', handlePlaceChange);
-      };
-    }
-  }, [step]);
-
-  // Resetam starea
+  // Resetare stare când se închide coșul
   useEffect(() => {
     if (!isCartOpen) {
       setStep('cart');
@@ -186,47 +202,81 @@ export const CartDrawer: React.FC = () => {
     }
   }, [isCartOpen]);
 
+  // Scroll la top când trecem la detalii
   useEffect(() => {
     if (step === 'details' && scrollContainerRef.current) {
       scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }, [step]);
 
-  // ECOLET
+  // =================================================================
+  // ⭐ FIX-UL PENTRU EASYBOX WIDGET (LOGICĂ DE RETRY)
+  // =================================================================
   useEffect(() => {
-    if (shippingMethod === 'easybox' && step === 'details') {
+    // Rulăm doar dacă suntem pe EasyBox și pasul Details
+    if (shippingMethod === 'easybox' && step === 'details' && isCartOpen) {
+      
       const scriptId = 'ecolet-widget-script';
+      
+      // Funcția care încearcă să inițializeze widget-ul
+      const tryInitWidget = (attempts = 0) => {
+        // 1. Verificăm dacă există containerul în HTML
+        const container = document.getElementById('ecolet-locker-widget');
+        
+        // 2. Verificăm dacă scriptul s-a încărcat (avem obiectul global)
+        const isScriptLoaded = typeof window !== 'undefined' && window.EcoletWidget;
+
+        if (container && isScriptLoaded) {
+          console.log('✅ Ecolet: Container found & Script loaded. Initializing...');
+          
+          // Curățăm containerul înainte de a randa (evităm dublarea hărții)
+          container.innerHTML = ''; 
+
+          window.EcoletWidget.init({
+            containerId: 'ecolet-locker-widget',
+            onLockerSelected: (locker: any) => {
+              console.log('📦 Locker Selected:', locker);
+              setSelectedLocker({
+                lockerId: locker.id,
+                lockerName: locker.name,
+                city: locker.city,
+                county: locker.county
+              });
+              // Actualizăm automat orașul și județul în form
+              setFormData(prev => ({ 
+                ...prev, 
+                city: locker.city, 
+                county: locker.county 
+              }));
+            }
+          });
+        } else {
+          // Dacă nu e gata, mai încercăm de maxim 10 ori (la fiecare 300ms)
+          if (attempts < 10) {
+            console.log(`⏳ Ecolet: Waiting for DOM/Script... (Attempt ${attempts + 1})`);
+            setTimeout(() => tryInitWidget(attempts + 1), 300);
+          } else {
+            console.error('❌ Ecolet: Failed to initialize widget after multiple attempts.');
+          }
+        }
+      };
+
+      // 3. Logică de încărcare script
       if (!document.getElementById(scriptId)) {
         const script = document.createElement('script');
         script.id = scriptId;
         script.src = 'https://widget.ecolet.ro/locker-selector.js'; 
         script.async = true;
-        script.onload = () => initEcoletWidget();
+        script.onload = () => tryInitWidget(); // Când se termină descărcarea, încearcă init
         document.body.appendChild(script);
       } else {
-        initEcoletWidget();
+        // Scriptul există deja, încercăm direct init
+        tryInitWidget();
       }
     }
-  }, [shippingMethod, step]);
+  }, [shippingMethod, step, isCartOpen]);
 
-  const initEcoletWidget = () => {
-    if (typeof window !== 'undefined' && (window as any).EcoletWidget) {
-      (window as any).EcoletWidget.init({
-        containerId: 'ecolet-locker-widget',
-        onLockerSelected: (locker: any) => {
-          console.log('✅ Locker selected:', locker);
-          setSelectedLocker({
-            lockerId: locker.id,
-            lockerName: locker.name,
-            city: locker.city,
-            county: locker.county
-          });
-          setFormData(prev => ({ ...prev, city: locker.city, county: locker.county }));
-        }
-      });
-    }
-  };
-
+  // Funcție validare
   const validateField = (name: string, value: string) => {
     const errors = { ...validationErrors };
     if (name === 'phone') {
@@ -247,6 +297,7 @@ export const CartDrawer: React.FC = () => {
     setValidationErrors(errors);
   };
 
+  // Logică Discount
   const handleApplyDiscount = async () => {
     if (!discountCode.trim()) {
       setDiscountError('Introdu un cod');
@@ -287,23 +338,22 @@ export const CartDrawer: React.FC = () => {
     validateField(name, value);
   };
 
-  // ⭐ LOGICA ORIGINALĂ PENTRU COMANDĂ
+  // Submit Comandă
   const handleSubmitOrder = async (e?: React.MouseEvent) => {
     if (e) e.preventDefault();
     const errors: any = {};
     if (!formData.fullName) errors.fullName = 'Numele este obligatoriu';
     if (!formData.phone) errors.phone = 'Telefonul este obligatoriu';
     if (!formData.county) errors.county = 'Județul este obligatoriu';
-    if (!formData.city) errors.city = 'Orașul este obligatoriu';
-
-    // Pentru curier, validăm adresa Google
+    
+    // Validare Curier
     if (shippingMethod === 'courier') {
+         if (!formData.city) errors.city = 'Orașul este obligatoriu';
          if (!formData.street_name) errors.address = 'Selectează adresa din sugestiile Google';
-         // Permitem lipsa codului postal, dar e bine sa fie
-    } else {
-         if (!formData.address && !formData.street_name) errors.address = 'Adresa este obligatorie';
-    }
+         // Codul postal este recomandat, dar nu critic daca lipseste
+    } 
 
+    // Validare Easybox
     if (shippingMethod === 'easybox' && !selectedLocker) {
       errors.locker = 'Selectează un EasyBox pentru livrare';
     }
@@ -317,19 +367,26 @@ export const CartDrawer: React.FC = () => {
     setLoading(true);
 
     try {
-      // Calculăm adresa finală pentru DB, incluzând detaliile manuale
+      // Calculăm adresa finală pentru DB
       const finalAddressLine = `${formData.street_name} Nr. ${formData.street_number}, ${formData.details}`.trim();
 
       const orderPayload = {
             customerName: formData.fullName,
             customerEmail: formData.email || null,
             customerPhone: formData.phone,
-            // Aici structura de adresă cerută de backend-ul tău
+            
+            // Trimitem obiectul de adresă structurat
             address: {
                 county: formData.county,
                 city: formData.city,
-                line: finalAddressLine
+                line: finalAddressLine,
+                // Adăugăm și componentele separate pentru Ecolet
+                street_name: formData.street_name,
+                street_number: formData.street_number,
+                details: formData.details,
+                postalCode: formData.postalCode
             },
+            
             items: cart,
             subtotal,
             shippingMethod,
@@ -388,6 +445,9 @@ export const CartDrawer: React.FC = () => {
 
   return (
     <>
+      {/* ⭐ GOOGLE API LOADER - ÎNCĂRCAT MEREU CÂND E DESCHIS CART-UL (FIX LOAD ERROR) */}
+      {isCartOpen && apiKey && <gmpx-api-loader ref={loaderRef} />}
+
       <div className="fixed inset-0 bg-black/60 z-50 backdrop-blur-sm" onClick={toggleCart} />
 
       <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-2xl flex flex-col animate-slide-in-right">
@@ -482,72 +542,75 @@ export const CartDrawer: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Adresa Livrare - GOOGLE MAPS + PANOU SIMETRIC */}
-                <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
-                  <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">ADRESA LIVRARE</h3>
-                  
-                  {step === 'details' && apiKey && (<gmpx-api-loader ref={loaderRef} />)}
+                {/* ADRESA LIVRARE (Doar pentru Curier) */}
+                {shippingMethod === 'courier' && (
+                  <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
+                    <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">ADRESA LIVRARE</h3>
+                    
+                    {/* SEARCH BAR GOOGLE */}
+                    <div className="mb-2 relative">
+                        <label className="text-xs text-blue-600 font-bold ml-1 mb-1 block">🔍 Caută Adresa</label>
+                        <gmpx-place-picker 
+                            ref={pickerRef} 
+                            placeholder="Ex: Strada Libertății 4, București" 
+                            style={{ width: '100%' }} 
+                        />
+                    </div>
 
-                  {/* 1. SEARCH BAR GOOGLE */}
-                  <div className="mb-2 relative">
-                      <label className="text-xs text-blue-600 font-bold ml-1 mb-1 block">🔍 Caută Adresa</label>
-                      <gmpx-place-picker 
-                          ref={pickerRef} 
-                          placeholder="Centrul Vechi, Bucharest" 
-                          style={{ width: '100%' }} 
+                    {/* PANOU INFORMATIV SIMETRIC (READ ONLY) */}
+                    <div className="bg-gray-100 p-3 rounded-lg border border-gray-200 text-xs text-gray-700 grid grid-cols-12 gap-3 items-center">
+                        {/* Rând 1: Județ (stânga) și Oraș (dreapta) */}
+                        <div className="col-span-6 border-b border-gray-200 pb-2">
+                          <span className="text-[10px] text-gray-400 uppercase block mb-0.5">Județ</span>
+                          <div className="font-bold truncate">{formData.county || '–'}</div>
+                        </div>
+                        <div className="col-span-6 border-b border-gray-200 pb-2 text-right">
+                          <span className="text-[10px] text-gray-400 uppercase block mb-0.5">Oraș</span>
+                          <div className="font-bold truncate">{formData.city || '–'}</div>
+                        </div>
+                        
+                        {/* Rând 2: Stradă (lat) și Număr (îngust) */}
+                        <div className="col-span-8 border-b border-gray-200 pb-2">
+                          <span className="text-[10px] text-gray-400 uppercase block mb-0.5">Stradă</span>
+                          <div className="font-bold truncate">{formData.street_name || '–'}</div>
+                        </div>
+                        <div className="col-span-4 border-b border-gray-200 pb-2 text-right">
+                          <span className="text-[10px] text-gray-400 uppercase block mb-0.5">Nr.</span>
+                          <div className="font-bold">{formData.street_number || '–'}</div>
+                        </div>
+                        
+                        {/* Rând 3: Cod Poștal */}
+                        <div className="col-span-12">
+                          <span className="text-[10px] text-gray-400 uppercase block mb-0.5">Cod Poștal</span>
+                          <div className="font-bold font-mono tracking-wider">{formData.postalCode || '–'}</div>
+                        </div>
+                    </div>
+
+                    {/* DETALII EDITABILE */}
+                    <div>
+                      <label className="text-xs text-neutral-500 ml-1 mb-1 block">Detalii (Bl, Sc, Ap)</label>
+                      <input
+                        name="details"
+                        placeholder="Scara A, Etaj 2, Ap 10, Interfon..."
+                        value={formData.details}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFormData(prev => ({ ...prev, details: val }));
+                        }}
+                        className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors"
                       />
+                    </div>
                   </div>
+                )}
 
-                  {/* 2. PANOU INFORMATIV SIMETRIC (GRID) */}
-                  <div className="bg-gray-100 p-3 rounded-lg border border-gray-200 text-xs text-gray-700 grid grid-cols-12 gap-3 items-center">
-                      
-                      {/* Rând 1: Județ (stânga) și Oraș (dreapta) */}
-                      <div className="col-span-6 border-b border-gray-200 pb-2">
-                        <span className="text-[10px] text-gray-400 uppercase block mb-0.5">Județ</span>
-                        <div className="font-bold truncate">{formData.county || '–'}</div>
-                      </div>
-                      <div className="col-span-6 border-b border-gray-200 pb-2 text-right">
-                        <span className="text-[10px] text-gray-400 uppercase block mb-0.5">Oraș</span>
-                        <div className="font-bold truncate">{formData.city || '–'}</div>
-                      </div>
-                      
-                      {/* Rând 2: Stradă (lat) și Număr (îngust) */}
-                      <div className="col-span-8 border-b border-gray-200 pb-2">
-                        <span className="text-[10px] text-gray-400 uppercase block mb-0.5">Stradă</span>
-                        <div className="font-bold truncate">{formData.street_name || '–'}</div>
-                      </div>
-                      <div className="col-span-4 border-b border-gray-200 pb-2 text-right">
-                        <span className="text-[10px] text-gray-400 uppercase block mb-0.5">Nr.</span>
-                        <div className="font-bold">{formData.street_number || '–'}</div>
-                      </div>
-                      
-                      {/* Rând 3: Cod Poștal (Centrat sau stânga) */}
-                      <div className="col-span-12">
-                        <span className="text-[10px] text-gray-400 uppercase block mb-0.5">Cod Poștal</span>
-                        <div className="font-bold font-mono tracking-wider">{formData.postalCode || '–'}</div>
-                      </div>
-                  </div>
-
-                  {/* 3. DETALII EDITABILE */}
-                  <div>
-                    <label className="text-xs text-neutral-500 ml-1 mb-1 block">Detalii (Bl, Sc, Ap)</label>
-                    <input
-                      name="details"
-                      placeholder="Scara A, Etaj 2, Ap 10..."
-                      value={formData.details}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setFormData(prev => ({ ...prev, details: val }));
-                      }}
-                      className="w-full p-3 border border-neutral-200 rounded-lg focus:outline-none focus:border-black transition-colors"
-                    />
-                  </div>
-                </div>
-
+                {/* EASYBOX WIDGET */}
                 {shippingMethod === 'easybox' && (
                   <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
                     <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">📦 Selectează EasyBox</h3>
-                    <div id="ecolet-locker-widget" className="border border-neutral-200 rounded-lg p-4 min-h-[200px]"><p className="text-sm text-neutral-400 text-center">Se încarcă harta EasyBox...</p></div>
+                    {/* AICI ESTE FIX-UL: Container-ul gol așteaptă script-ul */}
+                    <div id="ecolet-locker-widget" className="border border-neutral-200 rounded-lg p-4 min-h-[300px] flex items-center justify-center">
+                      <p className="text-sm text-neutral-400 text-center">Se încarcă harta EasyBox...</p>
+                    </div>
                     {selectedLocker && (
                       <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                         <p className="text-sm font-bold text-green-700">✓ EasyBox selectat:</p>
@@ -605,6 +668,10 @@ export const CartDrawer: React.FC = () => {
 
       <style>{`
         .pac-container { z-index: 99999 !important; }
+        
+        /* FIX LEAFLET PENTRU EASYBOX */
+        .leaflet-container { z-index: 999 !important; }
+
         gmpx-place-picker { display: block; width: 100%; }
         gmpx-place-picker input { padding: 0.75rem !important; border-radius: 0.5rem !important; border: 1px solid #e5e5e5 !important; width: 100% !important; font-size: 0.875rem !important; box-sizing: border-box !important; background-color: white !important; height: auto !important; }
         gmpx-place-picker input:focus { outline: none !important; border-color: black !important; }
