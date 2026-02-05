@@ -92,6 +92,7 @@ export const CartDrawer: React.FC = () => {
     phone?: string;
     email?: string;
     postalCode?: string;
+    locker?: string;
   }>({});
 
   const toNumber = (v: unknown): number => {
@@ -117,7 +118,7 @@ export const CartDrawer: React.FC = () => {
       return city;
   };
 
-  // ⭐ FIX 1: BLOCARE SCROLL PAGINĂ PRINCIPALĂ CÂND COȘUL ESTE DESCHIS
+  // ⭐ MODIFICARE 1: BLOCARE SCROLL PAGINĂ
   useEffect(() => {
     if (isCartOpen) {
       document.body.style.overflow = 'hidden';
@@ -136,7 +137,7 @@ export const CartDrawer: React.FC = () => {
     }
   }, [shippingMethod]);
 
-  // ⭐ INITIALIZARE GOOGLE MAPS API (Cu fix pentru React Key)
+  // ⭐ INITIALIZARE GOOGLE MAPS API
   useEffect(() => {
     if (loaderRef.current && apiKey) {
       loaderRef.current.key = apiKey;
@@ -219,7 +220,7 @@ export const CartDrawer: React.FC = () => {
   }, [step]);
 
   // =================================================================
-  // ⭐ FIX HARTA EASYBOX: GEOLOCAȚIE PRECISĂ + PRELUARE COD + STIL MINIMALIST
+  // ⭐ MODIFICARE 2: HARTA EASYBOX + LOCATION FIX + STIL
   // =================================================================
   useEffect(() => {
     if (shippingMethod === 'easybox' && step === 'details' && isCartOpen) {
@@ -227,7 +228,7 @@ export const CartDrawer: React.FC = () => {
       const scriptId = 'ecolet-widget-script';
       const styleId = 'ecolet-widget-style';
 
-      // 1. Injectare CSS Widget (Oficial BliskaPaczka)
+      // 1. Injectare CSS Widget
       if (!document.getElementById(styleId)) {
         const link = document.createElement('link');
         link.id = styleId;
@@ -244,14 +245,14 @@ export const CartDrawer: React.FC = () => {
           console.log('✅ Ecolet: Initializing Widget v7...');
           container.innerHTML = ''; // Curățare
 
-          // ⭐ FIX 2: CONSTRUIRE LOCAȚIE PRECISĂ (ZOOM PE ADRESĂ, NU DOAR ORAȘ)
+          // ⭐ CALCUL LOCAȚIE PRECISĂ
           let startLocation = 'Bucuresti, Romania';
           if (formData.city) {
               const streetPart = formData.street_name ? formData.street_name : '';
               const numberPart = formData.street_number ? formData.street_number : '';
               
-              // Dacă avem stradă și număr, le folosim pentru precizie maximă
               if (streetPart) {
+                  // Zoom direct pe stradă și număr
                   startLocation = `${streetPart} ${numberPart}, ${formData.city}, Romania`;
               } else {
                   startLocation = `${formData.city}, Romania`;
@@ -262,7 +263,7 @@ export const CartDrawer: React.FC = () => {
             callback: (point: any) => {
               console.log('📦 Locker Selected:', point);
               const lockerName = point.name || point.description || point.operator + ' Locker';
-              const lockerId = point.id || point.code; // Aici e codul
+              const lockerId = point.id || point.code;
               const lockerCity = point.city || '';
               const lockerCounty = point.province || '';
 
@@ -273,7 +274,14 @@ export const CartDrawer: React.FC = () => {
                 county: lockerCounty
               });
               
-              // Actualizăm formularul cu datele locker-ului
+              // Ștergem eroarea dacă utilizatorul a selectat
+              setValidationErrors(prev => {
+                  const newErrors = {...prev};
+                  delete newErrors.locker;
+                  return newErrors;
+              });
+              
+              // Actualizăm formularul
               setFormData(prev => ({ 
                 ...prev, 
                 city: lockerCity, 
@@ -287,7 +295,7 @@ export const CartDrawer: React.FC = () => {
             operatorMarkers: true,
             codeSearch: true,
             countryCodes: 'RO',
-            initialAddress: startLocation, // Folosim locația precisă construită mai sus
+            initialAddress: startLocation, // Locația precisă
             operators: [
                 { operator: 'DPD' },
                 { operator: 'SAMEDAY' },
@@ -299,8 +307,6 @@ export const CartDrawer: React.FC = () => {
         } else {
           if (attempts < 10) {
             setTimeout(() => tryInitWidget(attempts + 1), 300);
-          } else {
-            console.error('❌ Ecolet: Widget failed to load.');
           }
         }
       };
@@ -317,7 +323,7 @@ export const CartDrawer: React.FC = () => {
         tryInitWidget();
       }
     }
-  }, [shippingMethod, step, isCartOpen, formData.city, formData.street_name]); // Adăugat dependențe pentru re-centrare
+  }, [shippingMethod, step, isCartOpen, formData.city, formData.street_name]);
 
   const validateField = (name: string, value: string) => {
     const errors = { ...validationErrors };
@@ -393,6 +399,9 @@ export const CartDrawer: React.FC = () => {
 
     if (shippingMethod === 'easybox' && !selectedLocker) {
       errors.locker = 'Selectează un EasyBox de pe hartă';
+      // Scroll to map for user convenience
+      const mapEl = document.getElementById('ecolet-locker-widget');
+      if (mapEl) mapEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
     if (Object.keys(errors).length > 0) {
@@ -622,12 +631,18 @@ export const CartDrawer: React.FC = () => {
                   </div>
                 </div>
 
-                {/* ⭐ EASYBOX WIDGET (Apare doar dacă selectezi EasyBox) */}
+                {/* ⭐ MODIFICARE 3: EASYBOX WIDGET CU COD AFIȘAT SUS */}
                 {shippingMethod === 'easybox' && (
                   <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
                     <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">📦 Selectează Locker</h3>
                     
-                    {/* ⭐ FIX 3: AFIȘARE COD DEASUPRA HĂRȚII */}
+                    {/* Mesaj Ajutător */}
+                    <p className="text-xs text-gray-400 mb-1">
+                        Selectează pin-ul roșu de pe hartă. <br/>
+                        <span className="text-red-500 font-bold">*Nu este nevoie să scrii codul manual în bara de căutare.</span>
+                    </p>
+
+                    {/* ZONA DE AFIȘARE COD */}
                     {selectedLocker ? (
                       <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-3 mb-2 animate-pulse-once">
                         <div className="flex justify-between items-center">
@@ -643,9 +658,15 @@ export const CartDrawer: React.FC = () => {
                         </div>
                       </div>
                     ) : (
-                        <div className="bg-gray-50 border border-dashed border-gray-300 rounded-lg p-3 mb-2 text-center">
-                            <p className="text-xs text-gray-500">Alege un locker de pe hartă pentru a continua</p>
-                        </div>
+                         validationErrors.locker ? (
+                            <div className="bg-red-50 border border-red-200 text-red-600 p-2 rounded text-xs font-bold mb-2">
+                                {validationErrors.locker}
+                            </div>
+                         ) : (
+                            <div className="bg-gray-50 border border-dashed border-gray-300 rounded-lg p-3 mb-2 text-center">
+                                <p className="text-xs text-gray-500">Alege un locker de pe hartă pentru a continua</p>
+                            </div>
+                         )
                     )}
 
                     {/* CONTAINER HARTA */}
@@ -745,10 +766,23 @@ export const CartDrawer: React.FC = () => {
         .pac-container { z-index: 99999 !important; }
         .leaflet-container { z-index: 999 !important; font-family: inherit !important; }
         
-        /* ⭐ FIX 4: DESIGN MINIMALIST (YELLOW/BLACK/WHITE) & ELIMINARE BRANDING */
-        /* Ascundere totală logo-uri widget */
-        .bp-widget-branding, .bp-widget-footer { display: none !important; }
+        /* ⭐ MODIFICARE 4: ELIMINARE BRANDING & DESIGN MINIMALIST */
+        /* Ascundere totală logo-uri widget & footer mov */
+        .bp-widget-branding, 
+        .bp-widget-footer,
+        .bp-powered-by { 
+            display: none !important; 
+            visibility: hidden !important;
+            height: 0 !important;
+            opacity: 0 !important;
+        }
         .bp-logo { display: none !important; opacity: 0 !important; }
+
+        /* Stil Bara Căutare Harta */
+        .bp-widget-top-bar {
+            background-color: white !important;
+            border-bottom: 1px solid #e5e5e5 !important;
+        }
 
         /* Stil butoane widget */
         .bp-widget-btn, .bp-widget-btn-primary { 
@@ -771,10 +805,12 @@ export const CartDrawer: React.FC = () => {
             border: 1px solid #e5e5e5 !important;
             border-radius: 8px !important;
             padding: 10px !important;
+            background-color: #f9f9f9 !important;
         }
         .bp-widget-input:focus {
             border-color: black !important;
             outline: none !important;
+            background-color: white !important;
         }
 
         /* Container hartă curat */
