@@ -1,5 +1,4 @@
-am codul asta dar intampin o problema chiar daca completez toate casutele nu ma lasa sa trec mai departe
-"import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useCart } from '../context/CartContext';
 import { Button } from './Button';
 import { API_URL } from '../constants';
@@ -833,4 +832,4 @@ export const CartDrawer: React.FC = () => {
       `}</style>
     </>
   );
-};"
+};
