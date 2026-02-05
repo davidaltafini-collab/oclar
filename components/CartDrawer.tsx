@@ -7,6 +7,7 @@ import { API_URL } from '../constants';
 import '@googlemaps/extended-component-library/place_picker.js';
 import '@googlemaps/extended-component-library/api_loader.js';
 
+// ⭐ DEFINIȚII TYPESCRIPT
 declare global {
   namespace JSX {
     interface IntrinsicElements {
@@ -63,7 +64,7 @@ export const CartDrawer: React.FC = () => {
   
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_KEY || (window as any).__GOOGLE_MAPS_KEY__;
 
-  // ⭐ STATE PENTRU ECOLET
+  // ⭐ STATE PENTRU LOCKER
   const [selectedLocker, setSelectedLocker] = useState<{
     lockerId: string;
     lockerName: string;
@@ -124,9 +125,7 @@ export const CartDrawer: React.FC = () => {
     } else {
       document.body.style.overflow = '';
     }
-    return () => {
-      document.body.style.overflow = '';
-    };
+    return () => { document.body.style.overflow = ''; };
   }, [isCartOpen]);
 
   useEffect(() => {
@@ -135,7 +134,7 @@ export const CartDrawer: React.FC = () => {
     }
   }, [shippingMethod]);
 
-  // ⭐ INITIALIZARE GOOGLE MAPS API
+  // ⭐ INITIALIZARE GOOGLE MAPS
   useEffect(() => {
     const isGoogleLoaded = window.google && window.google.maps && window.google.maps.places;
     if (!isGoogleLoaded && loaderRef.current && apiKey) {
@@ -145,7 +144,7 @@ export const CartDrawer: React.FC = () => {
     }
   }, [apiKey, isCartOpen]);
 
-  // ⭐ LISTENER PENTRU SELECTARE ADRESĂ
+  // ⭐ LISTENER ADRESĂ
   useEffect(() => {
     const timer = setTimeout(() => {
         const picker = pickerRef.current;
@@ -217,7 +216,7 @@ export const CartDrawer: React.FC = () => {
   }, [step]);
 
   // =================================================================
-  // ⭐ WIDGET EASYBOX
+  // ⭐ WIDGET EASYBOX - INITIALIZARE STANDARD (FĂRĂ CSS HACKS)
   // =================================================================
   useEffect(() => {
     if (shippingMethod === 'easybox' && step === 'details' && isCartOpen) {
@@ -239,7 +238,7 @@ export const CartDrawer: React.FC = () => {
 
         if (container && isScriptLoaded) {
           console.log('✅ Ecolet: Initializing Widget v7...');
-          container.innerHTML = '';
+          container.innerHTML = ''; 
 
           let startLocation = 'Bucuresti, Romania';
           if (formData.city) {
@@ -252,6 +251,7 @@ export const CartDrawer: React.FC = () => {
               }
           }
 
+          // Initializare conform documentației, fără niciun filtru
           window.BPWidget.init(container, {
             callback: (point: any) => {
               console.log('📦 Locker Selected:', point);
@@ -618,36 +618,23 @@ export const CartDrawer: React.FC = () => {
                          ) : null
                     )}
 
-                    {/* ⭐⭐⭐ BANDA ALBĂ DE MASCAT (WHITE PATCH) ⭐⭐⭐ */}
+                    {/* ⭐⭐⭐ BANDA ALBĂ URIAȘĂ (THE BIG WHITE PATCH) ⭐⭐⭐ */}
                     <div style={{ position: 'relative', overflow: 'hidden', borderRadius: '12px', border: '1px solid #e5e5e5' }}>
                         
                         {/* WIDGETUL */}
                         <div id="ecolet-locker-widget" style={{ width: '100%', height: '500px' }}></div>
                         
-                        {/* BANDA ALBĂ - JOS (Ascunde footer/branding) */}
+                        {/* MASCĂ MASIVĂ DE 60PX */}
                         <div style={{
                             position: 'absolute',
                             bottom: 0,
                             left: 0,
                             width: '100%',
-                            height: '35px', /* Ajustează înălțimea dacă se mai vede ceva */
+                            height: '60px', /* Mărit la 60px să fim siguri */
                             backgroundColor: 'white',
                             zIndex: 9999,
-                            pointerEvents: 'none' /* Ca să nu blocheze click-uri accidentale, doar ascunde vizual */
+                            pointerEvents: 'auto' /* Blochează clickurile pe steaguri */
                         }}></div>
-
-                         {/* BANDA ALBĂ - SUS (Opțional - pentru header dacă te enervează și ăla) */}
-                        <div style={{
-                            position: 'absolute',
-                            top: 0,
-                            left: 0,
-                            width: '100%',
-                            height: '2px', /* Doar o linie fină să curețe marginea */
-                            backgroundColor: 'white',
-                            zIndex: 9999,
-                            pointerEvents: 'none'
-                        }}></div>
-
                     </div>
                   </div>
                 )}
