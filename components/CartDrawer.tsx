@@ -117,7 +117,14 @@ export const CartDrawer: React.FC = () => {
       return city;
   };
 
-  // ⭐ INITIALIZARE GOOGLE MAPS API (FIX REACT 19 KEY)
+  // ⭐ FIX PLATĂ LOCKER: Dacă alegi EasyBox, forțăm Card
+  useEffect(() => {
+    if (shippingMethod === 'easybox') {
+      setPaymentMethod('card');
+    }
+  }, [shippingMethod]);
+
+  // ⭐ INITIALIZARE GOOGLE MAPS API
   useEffect(() => {
     if (loaderRef.current && apiKey) {
       loaderRef.current.key = apiKey;
@@ -200,7 +207,7 @@ export const CartDrawer: React.FC = () => {
   }, [step]);
 
   // =================================================================
-  // ⭐ FIX EASYBOX: NOUL WIDGET OFICIAL (BLISKA PACZKA / ALSENDO)
+  // ⭐ FIX EASYBOX: NOUL WIDGET OFICIAL (CONFIGURAȚIA TA)
   // =================================================================
   useEffect(() => {
     if (shippingMethod === 'easybox' && step === 'details' && isCartOpen) {
@@ -223,20 +230,17 @@ export const CartDrawer: React.FC = () => {
         const isScriptLoaded = typeof window !== 'undefined' && window.BPWidget;
 
         if (container && isScriptLoaded) {
-          console.log('✅ Ecolet: Initializing Widget v7...');
+          console.log('✅ Ecolet: Initializing Widget v7 (With Operators)...');
           container.innerHTML = ''; // Curățare
 
+          // ⭐ CONFIGURAȚIA DIN DOCUMENTAȚIA TA
           window.BPWidget.init(container, {
-            language: 'ro',
-            countryCodes: 'RO', // Doar România
-            posType: 'DELIVERY',
             callback: (point: any) => {
-              console.log('📦 Locker:', point);
-              // Extragem datele din structura nouă
-              const lockerName = point.name || point.description || 'EasyBox';
+              console.log('📦 Locker Selected:', point);
+              const lockerName = point.name || point.description || point.operator + ' Locker';
               const lockerId = point.id || point.code;
               const lockerCity = point.city || '';
-              const lockerCounty = point.province || ''; // Uneori vine ca province
+              const lockerCounty = point.province || '';
 
               setSelectedLocker({
                 lockerId: lockerId,
@@ -244,7 +248,27 @@ export const CartDrawer: React.FC = () => {
                 city: lockerCity,
                 county: lockerCounty
               });
-            }
+              
+              setFormData(prev => ({ 
+                ...prev, 
+                city: lockerCity, 
+                county: lockerCounty 
+              }));
+            },
+            posType: 'DELIVERY',
+            codOnly: false,
+            showCod: true,
+            language: 'ro',
+            operatorMarkers: true,
+            codeSearch: true,
+            countryCodes: 'RO', // Setare critică pentru România
+            operators: [
+                { operator: 'DPD' },
+                { operator: 'SAMEDAY' },
+                { operator: 'FAN_COURIER' },
+                { operator: 'CARGUS' },
+            ],
+            alias: 'ecolet-192872' // Alias-ul tău specific
           });
         } else {
           if (attempts < 10) {
@@ -337,7 +361,7 @@ export const CartDrawer: React.FC = () => {
     if (!formData.phone) errors.phone = 'Telefonul este obligatoriu';
     if (!formData.county) errors.county = 'Județul este obligatoriu';
     
-    // Validăm adresa pentru AMBELE metode (necesară pentru factură)
+    // Validăm adresa pentru AMBELE metode
     if (!formData.city) errors.city = 'Orașul este obligatoriu';
     if (!formData.street_name) errors.address = 'Te rugăm să completezi adresa pentru factură';
 
@@ -361,7 +385,6 @@ export const CartDrawer: React.FC = () => {
             customerEmail: formData.email || null,
             customerPhone: formData.phone,
             
-            // Adresa completă (Facturare)
             address: {
                 county: formData.county,
                 city: formData.city,
@@ -393,6 +416,7 @@ export const CartDrawer: React.FC = () => {
         if (!response.ok) throw new Error('Failed to create checkout session');
         const { url } = await response.json();
         if (url) window.location.href = url;
+        else throw new Error('No checkout URL received');
       } else {
         const response = await fetch(`${API_URL}/create-order-ramburs`, {
           method: 'POST',
@@ -573,13 +597,13 @@ export const CartDrawer: React.FC = () => {
                 {/* ⭐ EASYBOX WIDGET (Apare doar dacă selectezi EasyBox) */}
                 {shippingMethod === 'easybox' && (
                   <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
-                    <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">📦 Selectează EasyBox</h3>
+                    <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">📦 Selectează Locker</h3>
                     <div id="ecolet-locker-widget" className="border border-neutral-200 rounded-lg p-4 min-h-[350px] flex items-center justify-center">
                       <p className="text-sm text-neutral-400 text-center">Se încarcă harta...</p>
                     </div>
                     {selectedLocker && (
                       <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                        <p className="text-sm font-bold text-green-700">✓ EasyBox selectat:</p>
+                        <p className="text-sm font-bold text-green-700">✓ Punct selectat:</p>
                         <p className="text-xs text-green-600 mt-1">{selectedLocker.lockerName}</p>
                         <p className="text-xs text-green-600">{selectedLocker.city}</p>
                       </div>
@@ -590,13 +614,54 @@ export const CartDrawer: React.FC = () => {
                 <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
                   <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">Metoda Plată</h3>
                   <div className="grid grid-cols-1 gap-3">
-                    <label className={`flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all duration-200 ${paymentMethod === 'ramburs' ? 'border-black bg-neutral-50 shadow-inner' : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'}`}>
-                      <input type="radio" name="payment" checked={paymentMethod === 'ramburs'} onChange={() => setPaymentMethod('ramburs')} className="accent-black w-5 h-5" />
-                      <div><span className="font-bold block text-sm">Plata Ramburs (Cash)</span><span className="text-xs text-neutral-500">Plătești curierului la livrare</span></div>
+                    
+                    {/* ⭐ OPȚIUNEA RAMBURS - Dezactivată la EasyBox */}
+                    <label 
+                      className={`relative flex items-center gap-4 p-4 border rounded-xl transition-all duration-200 
+                      ${paymentMethod === 'ramburs' 
+                        ? 'border-black bg-neutral-50 shadow-inner' 
+                        : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
+                      }
+                      ${shippingMethod === 'easybox' ? 'opacity-50 cursor-not-allowed bg-gray-50' : 'cursor-pointer'}
+                      `}
+                    >
+                      <input 
+                        type="radio" 
+                        name="payment" 
+                        checked={paymentMethod === 'ramburs'} 
+                        onChange={() => setPaymentMethod('ramburs')} 
+                        className="accent-black w-5 h-5"
+                        disabled={shippingMethod === 'easybox'}
+                      />
+                      {/* SVG CASH REAMINTIT */}
+                      <div className="p-2 bg-white rounded-full border border-neutral-100 shadow-sm shrink-0">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="12" y1="1" x2="12" y2="23" />
+                          <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                        </svg>
+                      </div>
+                      <div>
+                        <span className="font-bold block text-sm">Plata Ramburs (Cash)</span>
+                        <span className="text-xs text-neutral-500">
+                          {shippingMethod === 'easybox' ? 'Indisponibil la Locker' : 'Plătești curierului la livrare'}
+                        </span>
+                      </div>
                     </label>
+
+                    {/* ⭐ OPȚIUNEA CARD */}
                     <label className={`relative flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all duration-200 ${paymentMethod === 'card' ? 'border-black bg-neutral-50 shadow-inner' : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'}`}>
                       <input type="radio" name="payment" checked={paymentMethod === 'card'} onChange={() => setPaymentMethod('card')} className="accent-black w-5 h-5" />
-                      <div><span className="font-bold block text-sm">Card Online</span><span className="text-xs text-neutral-500">Securizat prin Stripe</span></div>
+                      {/* SVG CARD REAMINTIT */}
+                      <div className="p-2 bg-white rounded-full border border-neutral-100 shadow-sm shrink-0">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+                          <line x1="1" y1="10" x2="23" y2="10" />
+                        </svg>
+                      </div>
+                      <div>
+                        <span className="font-bold block text-sm">Card Online</span>
+                        <span className="text-xs text-neutral-500">Securizat prin Stripe</span>
+                      </div>
                     </label>
                   </div>
                 </div>
