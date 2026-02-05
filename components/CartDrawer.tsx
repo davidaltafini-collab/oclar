@@ -589,7 +589,7 @@ export const CartDrawer: React.FC = () => {
                   </h3>
                   
                   <div className="mb-2 relative">
-                      <label className="text-xs text-blue-600 font-bold ml-1 mb-1 block">🔍 Caută Adresa</label>
+                      <label className="text-xs text-yellow-400 font-bold ml-1 mb-1 block">🔍 Caută Adresa</label>
                       <gmpx-place-picker 
                           ref={pickerRef} 
                           placeholder="Introdu adresa..." 
