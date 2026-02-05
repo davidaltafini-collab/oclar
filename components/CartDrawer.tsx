@@ -823,8 +823,25 @@ export const CartDrawer: React.FC = () => {
         }
         
         gmpx-place-picker { display: block; width: 100%; }
-        gmpx-place-picker input { padding: 0.75rem !important; border-radius: 0.5rem !important; border: 1px solid #e5e5e5 !important; width: 100% !important; font-size: 16px !important; font-size: 0.875rem !important; box-sizing: border-box !important; background-color: white !important; height: auto !important; }
-        gmpx-place-picker input:focus { outline: none !important; border-color: black !important; }
+        /* ⭐ FIX ZOOM PE MOBIL - FOLOSIM ::part(input) */
+        gmpx-place-picker::part(input) { 
+            padding: 0.75rem !important; 
+            border-radius: 0.5rem !important; 
+            border: 1px solid #e5e5e5 !important; 
+            width: 100% !important; 
+            box-sizing: border-box !important; 
+            background-color: white !important; 
+            height: auto !important; 
+            font-family: inherit !important;
+
+            /* ASTA E CHEIA: 16px este mărimea minimă ca să nu dea zoom */
+            font-size: 16px !important; 
+        }
+
+        gmpx-place-picker::part(input):focus { 
+            outline: none !important; 
+            border-color: black !important; 
+        }
         
         @media screen and (max-width: 768px) {
           input, select, textarea, gmpx-place-picker::part(input) { font-size: 16px !important; }
