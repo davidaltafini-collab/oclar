@@ -264,7 +264,7 @@ export const CartDrawer: React.FC = () => {
           }
 
           window.BPWidget.init(container, {
-            callback: (point: any) => {
+            onPointSelected: (point: any) => {
               console.log("DEBUG raw locker point:", point);
               console.log('📦 Locker Selected:', point);
               const lockerName = point.name || point.description || point.operator + ' Locker';
