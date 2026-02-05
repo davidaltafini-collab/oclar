@@ -47,7 +47,7 @@ export const CartDrawer: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('ramburs');
   const [shippingMethod, setShippingMethod] = useState<ShippingMethod>('courier');
-   
+    
   // Discount state
   const [discountCode, setDiscountCode] = useState('');
   const [appliedDiscount, setAppliedDiscount] = useState<{
@@ -116,6 +116,18 @@ export const CartDrawer: React.FC = () => {
       if (city === 'Bucharest' || city === 'București') return 'Bucuresti';
       return city;
   };
+
+  // ⭐ FIX 1: BLOCARE SCROLL PAGINĂ PRINCIPALĂ CÂND COȘUL ESTE DESCHIS
+  useEffect(() => {
+    if (isCartOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isCartOpen]);
 
   // ⭐ FIX PLATĂ LOCKER: Dacă alegi EasyBox, forțăm Card
   useEffect(() => {
@@ -207,7 +219,7 @@ export const CartDrawer: React.FC = () => {
   }, [step]);
 
   // =================================================================
-  // ⭐ FIX HARTA EASYBOX: CONFIGURAȚIA TA + STIL + SMART LOCATION
+  // ⭐ FIX HARTA EASYBOX: GEOLOCAȚIE PRECISĂ + PRELUARE COD + STIL MINIMALIST
   // =================================================================
   useEffect(() => {
     if (shippingMethod === 'easybox' && step === 'details' && isCartOpen) {
@@ -232,15 +244,25 @@ export const CartDrawer: React.FC = () => {
           console.log('✅ Ecolet: Initializing Widget v7...');
           container.innerHTML = ''; // Curățare
 
-          // Determinăm locația de start (Orașul clientului sau București default)
-          const startLocation = formData.city ? `${formData.city}, Romania` : 'Bucuresti, Romania';
+          // ⭐ FIX 2: CONSTRUIRE LOCAȚIE PRECISĂ (ZOOM PE ADRESĂ, NU DOAR ORAȘ)
+          let startLocation = 'Bucuresti, Romania';
+          if (formData.city) {
+              const streetPart = formData.street_name ? formData.street_name : '';
+              const numberPart = formData.street_number ? formData.street_number : '';
+              
+              // Dacă avem stradă și număr, le folosim pentru precizie maximă
+              if (streetPart) {
+                  startLocation = `${streetPart} ${numberPart}, ${formData.city}, Romania`;
+              } else {
+                  startLocation = `${formData.city}, Romania`;
+              }
+          }
 
-          // ⭐ CONFIGURAȚIA COMPLETĂ DIN DOCUMENTELE TALE
           window.BPWidget.init(container, {
             callback: (point: any) => {
               console.log('📦 Locker Selected:', point);
               const lockerName = point.name || point.description || point.operator + ' Locker';
-              const lockerId = point.id || point.code;
+              const lockerId = point.id || point.code; // Aici e codul
               const lockerCity = point.city || '';
               const lockerCounty = point.province || '';
 
@@ -265,14 +287,14 @@ export const CartDrawer: React.FC = () => {
             operatorMarkers: true,
             codeSearch: true,
             countryCodes: 'RO',
-            initialAddress: startLocation, // Smart Location
+            initialAddress: startLocation, // Folosim locația precisă construită mai sus
             operators: [
                 { operator: 'DPD' },
                 { operator: 'SAMEDAY' },
                 { operator: 'FAN_COURIER' },
                 { operator: 'CARGUS' },
             ],
-            alias: 'ecolet-192872' // Alias-ul tău
+            alias: 'ecolet-192872'
           });
         } else {
           if (attempts < 10) {
@@ -295,7 +317,7 @@ export const CartDrawer: React.FC = () => {
         tryInitWidget();
       }
     }
-  }, [shippingMethod, step, isCartOpen, formData.city]); // Re-inițializăm dacă se schimbă orașul!
+  }, [shippingMethod, step, isCartOpen, formData.city, formData.street_name]); // Adăugat dependențe pentru re-centrare
 
   const validateField = (name: string, value: string) => {
     const errors = { ...validationErrors };
@@ -605,16 +627,29 @@ export const CartDrawer: React.FC = () => {
                   <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
                     <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">📦 Selectează Locker</h3>
                     
-                    {/* CONTAINER HARTA CU STIL CORECT */}
-                    <div id="ecolet-locker-widget" style={{ width: '100%', height: '500px', borderRadius: '12px', overflow: 'hidden', border: '1px solid #e5e5e5' }}></div>
-                    
-                    {selectedLocker && (
-                      <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                        <p className="text-sm font-bold text-green-700">✓ Punct selectat:</p>
-                        <p className="text-xs text-green-600 mt-1">{selectedLocker.lockerName}</p>
-                        <p className="text-xs text-green-600">{selectedLocker.city}</p>
+                    {/* ⭐ FIX 3: AFIȘARE COD DEASUPRA HĂRȚII */}
+                    {selectedLocker ? (
+                      <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-3 mb-2 animate-pulse-once">
+                        <div className="flex justify-between items-center">
+                            <div>
+                                <p className="text-xs text-neutral-500 uppercase font-bold">Locker Selectat:</p>
+                                <p className="text-sm font-bold text-black">{selectedLocker.lockerName}</p>
+                                <p className="text-xs text-neutral-600">{selectedLocker.city}</p>
+                            </div>
+                            <div className="text-right bg-white px-3 py-1 rounded border border-black shadow-sm">
+                                <span className="text-[10px] text-gray-400 block uppercase">Cod</span>
+                                <span className="font-mono text-lg font-black tracking-wider text-black">{selectedLocker.lockerId}</span>
+                            </div>
+                        </div>
                       </div>
+                    ) : (
+                        <div className="bg-gray-50 border border-dashed border-gray-300 rounded-lg p-3 mb-2 text-center">
+                            <p className="text-xs text-gray-500">Alege un locker de pe hartă pentru a continua</p>
+                        </div>
                     )}
+
+                    {/* CONTAINER HARTA */}
+                    <div id="ecolet-locker-widget" style={{ width: '100%', height: '500px', borderRadius: '12px', overflow: 'hidden', border: '1px solid #e5e5e5' }}></div>
                   </div>
                 )}
 
@@ -622,7 +657,7 @@ export const CartDrawer: React.FC = () => {
                   <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">Metoda Plată</h3>
                   <div className="grid grid-cols-1 gap-3">
                     
-                    {/* ⭐ OPȚIUNEA RAMBURS - Dezactivată la EasyBox + SVG */}
+                    {/* ⭐ OPȚIUNEA RAMBURS */}
                     <label 
                       className={`relative flex items-center gap-4 p-4 border rounded-xl transition-all duration-200 
                       ${paymentMethod === 'ramburs' 
@@ -654,7 +689,7 @@ export const CartDrawer: React.FC = () => {
                       </div>
                     </label>
 
-                    {/* ⭐ OPȚIUNEA CARD + SVG */}
+                    {/* ⭐ OPȚIUNEA CARD */}
                     <label className={`relative flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all duration-200 ${paymentMethod === 'card' ? 'border-black bg-neutral-50 shadow-inner' : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'}`}>
                       <input type="radio" name="payment" checked={paymentMethod === 'card'} onChange={() => setPaymentMethod('card')} className="accent-black w-5 h-5" />
                       <div className="p-2 bg-white rounded-full border border-neutral-100 shadow-sm shrink-0">
@@ -710,9 +745,43 @@ export const CartDrawer: React.FC = () => {
         .pac-container { z-index: 99999 !important; }
         .leaflet-container { z-index: 999 !important; font-family: inherit !important; }
         
-        /* SLEEK WIDGET STYLE */
+        /* ⭐ FIX 4: DESIGN MINIMALIST (YELLOW/BLACK/WHITE) & ELIMINARE BRANDING */
+        /* Ascundere totală logo-uri widget */
         .bp-widget-branding, .bp-widget-footer { display: none !important; }
-        .bp-widget-btn, .bp-widget-btn-primary { background-color: black !important; color: white !important; border-radius: 6px !important; }
+        .bp-logo { display: none !important; opacity: 0 !important; }
+
+        /* Stil butoane widget */
+        .bp-widget-btn, .bp-widget-btn-primary { 
+            background-color: black !important; 
+            color: white !important; 
+            border: 1px solid black !important;
+            border-radius: 8px !important; 
+            font-weight: bold !important;
+            text-transform: uppercase !important;
+            font-size: 12px !important;
+        }
+        .bp-widget-btn:hover {
+            background-color: #fbbf24 !important; /* Yellow-400 */
+            color: black !important;
+            border-color: #fbbf24 !important;
+        }
+
+        /* Stil input-uri widget */
+        .bp-widget-input {
+            border: 1px solid #e5e5e5 !important;
+            border-radius: 8px !important;
+            padding: 10px !important;
+        }
+        .bp-widget-input:focus {
+            border-color: black !important;
+            outline: none !important;
+        }
+
+        /* Container hartă curat */
+        .bp-widget-container {
+            background-color: white !important;
+            font-family: inherit !important;
+        }
         
         gmpx-place-picker { display: block; width: 100%; }
         gmpx-place-picker input { padding: 0.75rem !important; border-radius: 0.5rem !important; border: 1px solid #e5e5e5 !important; width: 100% !important; font-size: 0.875rem !important; box-sizing: border-box !important; background-color: white !important; height: auto !important; }
