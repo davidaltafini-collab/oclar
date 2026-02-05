@@ -22,6 +22,7 @@ declare global {
       };
     }
   }
+  // Interfață pentru widget-ul Ecolet (BPWidget)
   interface Window {
     BPWidget: {
       init: (element: HTMLElement, config: any) => void;
@@ -141,14 +142,14 @@ export const CartDrawer: React.FC = () => {
     }
   }, [shippingMethod]);
 
-  // ⭐ INITIALIZARE GOOGLE MAPS API (DOAR DACĂ NU EXISTĂ)
+  // ⭐ INITIALIZARE GOOGLE MAPS API (Check if exists)
   useEffect(() => {
     const isGoogleLoaded = window.google && window.google.maps && window.google.maps.places;
     if (!isGoogleLoaded && loaderRef.current && apiKey) {
       loaderRef.current.key = apiKey;
       loaderRef.current.libraries = ['places'];
       loaderRef.current.region = 'RO'; 
-      // Setăm versiunea weekly pentru a evita warning-urile de deprecation
+      // Adăugăm version weekly pt stabilitate cu noile componente
       loaderRef.current.version = 'weekly';
     }
   }, [apiKey, isCartOpen]);
@@ -227,7 +228,7 @@ export const CartDrawer: React.FC = () => {
   }, [step]);
 
   // =================================================================
-  // ⭐ WIDGET EASYBOX - INITIALIZARE CLEAN (FĂRĂ CSS INTERN)
+  // ⭐ WIDGET EASYBOX - INITIALIZARE CLEAN
   // =================================================================
   useEffect(() => {
     if (shippingMethod === 'easybox' && step === 'details' && isCartOpen) {
@@ -235,7 +236,7 @@ export const CartDrawer: React.FC = () => {
       const scriptId = 'ecolet-widget-script';
       const styleId = 'ecolet-widget-style';
 
-      // 1. Injectare CSS Widget (Oficial)
+      // 1. Injectare CSS Widget (Oficial BliskaPaczka)
       if (!document.getElementById(styleId)) {
         const link = document.createElement('link');
         link.id = styleId;
@@ -252,12 +253,14 @@ export const CartDrawer: React.FC = () => {
           console.log('✅ Ecolet: Initializing Widget v7...');
           container.innerHTML = ''; // Curățare
 
-          // ⭐ LOCAȚIE INITIALĂ
+          // ⭐ LOCAȚIE PRECISĂ BAZATĂ PE ADRESA DE FACTURARE
           let startLocation = 'Bucuresti, Romania';
           if (formData.city) {
               const streetPart = formData.street_name ? formData.street_name : '';
+              const numberPart = formData.street_number ? formData.street_number : '';
+              
               if (streetPart) {
-                  startLocation = `${streetPart}, ${formData.city}, Romania`;
+                  startLocation = `${streetPart} ${numberPart}, ${formData.city}, Romania`;
               } else {
                   startLocation = `${formData.city}, Romania`;
               }
@@ -378,7 +381,6 @@ export const CartDrawer: React.FC = () => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
     validateField(name, value);
-    
     if (validationErrors[name as keyof typeof validationErrors]) {
          const newErrs = {...validationErrors};
          delete newErrs[name as keyof typeof validationErrors];
@@ -485,7 +487,7 @@ export const CartDrawer: React.FC = () => {
 
   return (
     <>
-      {/* ⭐ GOOGLE LOADER - LOAD ONCE */}
+      {/* ⭐ GOOGLE LOADER */}
       {shouldRenderLoader && <gmpx-api-loader ref={loaderRef} />}
 
       <div className="fixed inset-0 bg-black/60 z-50 backdrop-blur-sm" onClick={toggleCart} />
@@ -499,7 +501,7 @@ export const CartDrawer: React.FC = () => {
           <button onClick={toggleCart} className="p-2 hover:bg-neutral-100 rounded-full transition-colors">✕</button>
         </div>
 
-        {/* ⬇️ ZONA DE SCROLL (Footer-ul este INCLUS aici) */}
+        {/* CONTENT SCROLLABLE */}
         <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-5 space-y-4">
           {step === 'cart' ? (
             cart.length === 0 ? (
@@ -578,6 +580,7 @@ export const CartDrawer: React.FC = () => {
                   </div>
                 </div>
 
+                {/* ⭐ ADRESA DE FACTURARE */}
                 <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
                   <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">
                     Adresă Facturare
@@ -597,6 +600,7 @@ export const CartDrawer: React.FC = () => {
                       )}
                   </div>
 
+                  {/* READ ONLY ADDRESS */}
                   <div className="bg-gray-100 p-3 rounded-lg border border-gray-200 text-xs text-gray-700 grid grid-cols-12 gap-3 items-center">
                       <div className="col-span-6 border-b border-gray-200 pb-2">
                         <span className="text-[10px] text-gray-400 uppercase block mb-0.5">Județ</span>
@@ -635,7 +639,7 @@ export const CartDrawer: React.FC = () => {
                   </div>
                 </div>
 
-                {/* ⭐ EASYBOX WIDGET + MASCĂ ALBĂ */}
+                {/* ⭐ EASYBOX WIDGET CU MASCĂ ALBĂ + TEXT GALBEN */}
                 {shippingMethod === 'easybox' && (
                   <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
                     <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">📦 Selectează Locker</h3>
@@ -666,7 +670,7 @@ export const CartDrawer: React.FC = () => {
                     <div style={{ position: 'relative', overflow: 'hidden', borderRadius: '12px', border: '1px solid #e5e5e5' }}>
                         <div id="ecolet-locker-widget" style={{ width: '100%', height: '500px' }}></div>
                         
-                        {/* ⭐ BANDA ALBĂ (90px) - ASCUNDE BRANDING */}
+                        {/* ⭐ MASCĂ ALBĂ CU TEXT GALBEN "ALEGE LOCKER" */}
                         <div style={{
                             position: 'absolute',
                             bottom: 0,
@@ -675,8 +679,22 @@ export const CartDrawer: React.FC = () => {
                             height: '90px', 
                             backgroundColor: 'white',
                             zIndex: 9999,
-                            pointerEvents: 'auto'
-                        }}></div>
+                            pointerEvents: 'auto',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            borderTop: '1px solid #f3f4f6'
+                        }}>
+                            <span style={{ 
+                                color: '#EAB308', /* Yellow-500 */
+                                fontWeight: '900', 
+                                fontSize: '1.1rem', 
+                                textTransform: 'uppercase',
+                                letterSpacing: '1px'
+                            }}>
+                                Alege Locker
+                            </span>
+                        </div>
                     </div>
                   </div>
                 )}
@@ -733,7 +751,7 @@ export const CartDrawer: React.FC = () => {
               </form>
           )}
 
-          {/* ⭐ FOOTER - MUTAT AICI (NON-STICKY) */}
+          {/* ⭐ FOOTER - AICI, LA FINALUL LISTEI SCROLLABLE */}
           {cart.length > 0 && (
             <div className="p-6 border-t border-neutral-100 bg-white shadow-[0_-5px_15px_rgba(0,0,0,0.05)] rounded-xl mt-4">
               <div className="space-y-2 mb-4 text-sm">
@@ -769,8 +787,6 @@ export const CartDrawer: React.FC = () => {
       <style>{`
         .pac-container { z-index: 99999 !important; }
         .leaflet-container { z-index: 999 !important; font-family: inherit !important; }
-        
-        /* FĂRĂ CSS CARE SĂ ASCUNDĂ BUTOANELE! */
         
         gmpx-place-picker { display: block; width: 100%; }
         gmpx-place-picker input { padding: 0.75rem !important; border-radius: 0.5rem !important; border: 1px solid #e5e5e5 !important; width: 100% !important; font-size: 0.875rem !important; box-sizing: border-box !important; background-color: white !important; height: auto !important; }
