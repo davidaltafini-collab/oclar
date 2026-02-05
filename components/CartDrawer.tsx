@@ -23,7 +23,7 @@ declare global {
       };
     }
   }
-  // ⭐ INTERFAȚĂ PENTRU NOUL WIDGET (BPWidget - Alsendo/Ecolet)
+  // ⭐ INTERFAȚĂ PENTRU WIDGET (BPWidget)
   interface Window {
     BPWidget: {
       init: (element: HTMLElement, config: any) => void;
@@ -59,14 +59,14 @@ export const CartDrawer: React.FC = () => {
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // ⭐ REF-URI PENTRU GOOGLE MAPS
+  // ⭐ REF-URI
   const pickerRef = useRef<any>(null);
   const loaderRef = useRef<any>(null);
   
   // API Key
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_KEY || (window as any).__GOOGLE_MAPS_KEY__;
 
-  // ⭐ STATE PENTRU ECOLET
+  // ⭐ STATE ECOLET
   const [selectedLocker, setSelectedLocker] = useState<{
     lockerId: string;
     lockerName: string;
@@ -103,7 +103,7 @@ export const CartDrawer: React.FC = () => {
     return 0;
   };
 
-  // ⭐ HELPERE NORMALIZARE
+  // ⭐ HELPERE
   const normalizeName = (name: string) => {
     if (!name) return '';
     let clean = name.replace('Județul', '').replace('County', '').trim();
@@ -117,7 +117,7 @@ export const CartDrawer: React.FC = () => {
       return city;
   };
 
-  // ⭐ FIX PLATĂ LOCKER: Dacă alegi EasyBox, forțăm Card
+  // ⭐ FIX PLATĂ LOCKER: EasyBox forțează Card
   useEffect(() => {
     if (shippingMethod === 'easybox') {
       setPaymentMethod('card');
@@ -133,7 +133,7 @@ export const CartDrawer: React.FC = () => {
     }
   }, [apiKey, isCartOpen]);
 
-  // ⭐ LISTENER PENTRU SELECTARE ADRESĂ
+  // ⭐ LISTENER ADRESĂ
   useEffect(() => {
     const timer = setTimeout(() => {
         const picker = pickerRef.current;
@@ -207,7 +207,7 @@ export const CartDrawer: React.FC = () => {
   }, [step]);
 
   // =================================================================
-  // ⭐ FIX EASYBOX: NOUL WIDGET OFICIAL (CONFIGURAȚIA TA)
+  // ⭐ FIX HARTA EASYBOX (CSS & CONFIG)
   // =================================================================
   useEffect(() => {
     if (shippingMethod === 'easybox' && step === 'details' && isCartOpen) {
@@ -224,16 +224,15 @@ export const CartDrawer: React.FC = () => {
         document.head.appendChild(link);
       }
       
-      // Funcția de inițializare cu Retry
       const tryInitWidget = (attempts = 0) => {
         const container = document.getElementById('ecolet-locker-widget');
         const isScriptLoaded = typeof window !== 'undefined' && window.BPWidget;
 
         if (container && isScriptLoaded) {
-          console.log('✅ Ecolet: Initializing Widget v7 (With Operators)...');
+          console.log('✅ Ecolet: Initializing Widget v7...');
           container.innerHTML = ''; // Curățare
 
-          // ⭐ CONFIGURAȚIA DIN DOCUMENTAȚIA TA
+          // Configurația ta specifică
           window.BPWidget.init(container, {
             callback: (point: any) => {
               console.log('📦 Locker Selected:', point);
@@ -261,14 +260,14 @@ export const CartDrawer: React.FC = () => {
             language: 'ro',
             operatorMarkers: true,
             codeSearch: true,
-            countryCodes: 'RO', // Setare critică pentru România
+            countryCodes: 'RO',
             operators: [
                 { operator: 'DPD' },
                 { operator: 'SAMEDAY' },
                 { operator: 'FAN_COURIER' },
                 { operator: 'CARGUS' },
             ],
-            alias: 'ecolet-192872' // Alias-ul tău specific
+            alias: 'ecolet-192872'
           });
         } else {
           if (attempts < 10) {
@@ -385,6 +384,7 @@ export const CartDrawer: React.FC = () => {
             customerEmail: formData.email || null,
             customerPhone: formData.phone,
             
+            // Adresa completă (Facturare)
             address: {
                 county: formData.county,
                 city: formData.city,
@@ -598,9 +598,10 @@ export const CartDrawer: React.FC = () => {
                 {shippingMethod === 'easybox' && (
                   <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
                     <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">📦 Selectează Locker</h3>
-                    <div id="ecolet-locker-widget" className="border border-neutral-200 rounded-lg p-4 min-h-[350px] flex items-center justify-center">
-                      <p className="text-sm text-neutral-400 text-center">Se încarcă harta...</p>
-                    </div>
+                    
+                    {/* AICI ESTE FIX-UL VIZUAL: style cu height fix și fără flex centering */}
+                    <div id="ecolet-locker-widget" style={{ width: '100%', height: '500px' }}></div>
+                    
                     {selectedLocker && (
                       <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                         <p className="text-sm font-bold text-green-700">✓ Punct selectat:</p>
