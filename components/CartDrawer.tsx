@@ -73,9 +73,6 @@ export const CartDrawer: React.FC = () => {
     address: string;
   } | null>(null);
 
-  // ⭐ STATE COORDONATE (FIX PENTRU NOMINATIM/CORS ERROR)
-  const [coordinates, setCoordinates] = useState<{lat: number, lng: number} | null>(null);
-
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
@@ -143,13 +140,14 @@ export const CartDrawer: React.FC = () => {
     }
   }, [shippingMethod]);
 
-  // ⭐ INITIALIZARE GOOGLE MAPS API - UPDATE PENTRU VERSIUNE (FIX WARNING DEPRECATED)
+  // ⭐ INITIALIZARE GOOGLE MAPS API
   useEffect(() => {
     if (loaderRef.current && apiKey) {
       loaderRef.current.key = apiKey;
       loaderRef.current.libraries = ['places'];
-      loaderRef.current.region = 'RO'; 
-      // ⭐ FIX: Setăm versiunea weekly pentru a evita warning-urile de deprecation
+      loaderRef.current.region = 'RO';
+      // Folosim versiunea weekly pentru a evita unele erori de deprecation, 
+      // dar rămânem pe canalul stabil pentru compatibilitate
       loaderRef.current.version = 'weekly';
     }
   }, [apiKey, isCartOpen]);
@@ -162,15 +160,6 @@ export const CartDrawer: React.FC = () => {
           const handlePlaceChange = () => {
             const place = picker.value;
             if (!place) return;
-
-            // ⭐ FIX: Extragem coordonatele direct din Google Maps pentru a le pasa la Ecolet
-            if (place.location) {
-                const lat = typeof place.location.lat === 'function' ? place.location.lat() : place.location.lat;
-                const lng = typeof place.location.lng === 'function' ? place.location.lng() : place.location.lng;
-                if (lat && lng) {
-                    setCoordinates({ lat, lng });
-                }
-            }
 
             const addressComponents = place.addressComponents || [];
             let street = '', number = '', city = '', county = '', postal = '';
@@ -226,7 +215,6 @@ export const CartDrawer: React.FC = () => {
       setDiscountError('');
       setSelectedLocker(null);
       setValidationErrors({});
-      setCoordinates(null);
     }
   }, [isCartOpen]);
 
@@ -238,7 +226,7 @@ export const CartDrawer: React.FC = () => {
   }, [step]);
 
   // =================================================================
-  // ⭐ WIDGET EASYBOX - INITIALIZARE + FIX EROARE CORS NOMINATIM
+  // ⭐ WIDGET EASYBOX - INITIALIZARE ORIGINALĂ (REVERT LA LOGICA FUNCȚIONALĂ)
   // =================================================================
   useEffect(() => {
     if (shippingMethod === 'easybox' && step === 'details' && isCartOpen) {
@@ -263,8 +251,20 @@ export const CartDrawer: React.FC = () => {
           console.log('✅ Ecolet: Initializing Widget v7...');
           container.innerHTML = ''; // Curățare
 
-          // ⭐ CONFIGURARE WIDGET
-          const widgetConfig: any = {
+          // ⭐ LOCAȚIE BAZATĂ PE ADRESA TEXT (Cum era înainte)
+          // Eroarea CORS de la Nominatim este externă widget-ului, dar această metodă permite selecția
+          let startLocation = 'Bucuresti, Romania';
+          if (formData.city) {
+              const streetPart = formData.street_name ? formData.street_name : '';
+              
+              if (streetPart && formData.city) {
+                  startLocation = `${streetPart}, ${formData.city}, Romania`;
+              } else {
+                  startLocation = `${formData.city}, Romania`;
+              }
+          }
+
+          window.BPWidget.init(container, {
             callback: (point: any) => {
               console.log('📦 Locker Selected:', point);
               const lockerName = point.name || point.description || point.operator + ' Locker';
@@ -294,6 +294,7 @@ export const CartDrawer: React.FC = () => {
             operatorMarkers: true,
             codeSearch: true,
             countryCodes: 'RO',
+            initialAddress: startLocation, // Revenim la initialAddress
             operators: [
                 { operator: 'DPD' },
                 { operator: 'SAMEDAY' },
@@ -301,31 +302,7 @@ export const CartDrawer: React.FC = () => {
                 { operator: 'CARGUS' },
             ],
             alias: 'ecolet-192872'
-          };
-
-          // ⭐ FIX MAJOR CORS: Dacă avem coordonate din Google Maps, le folosim!
-          // Astfel widget-ul NU mai face request către Nominatim (care dă eroare 403)
-          if (coordinates && coordinates.lat && coordinates.lng) {
-             console.log("📍 Using Google Maps Coordinates for Widget:", coordinates);
-             // Majoritatea widget-urilor acceptă suprascrierea locației
-             widgetConfig.latitude = coordinates.lat;
-             widgetConfig.longitude = coordinates.lng;
-             // Ca fallback, setăm și adresa text, dar coordonatele au prioritate
-             widgetConfig.initialAddress = `${formData.city || 'Bucuresti'}, Romania`;
-          } else {
-             // Fallback clasic (sursa erorii, dar necesar dacă nu avem GPS)
-             let startLocation = 'Bucuresti, Romania';
-             if (formData.city) {
-                startLocation = `${formData.city}, Romania`;
-             }
-             widgetConfig.initialAddress = startLocation;
-          }
-
-          try {
-            window.BPWidget.init(container, widgetConfig);
-          } catch (err) {
-            console.error("Widget Init Error (handled):", err);
-          }
+          });
         } else {
           if (attempts < 10) {
             setTimeout(() => tryInitWidget(attempts + 1), 300);
@@ -347,7 +324,7 @@ export const CartDrawer: React.FC = () => {
         tryInitWidget();
       }
     }
-  }, [shippingMethod, step, isCartOpen, formData.city, coordinates]); // Adăugat coordinates la dependințe
+  }, [shippingMethod, step, isCartOpen, formData.city, formData.street_name]);
 
   const validateField = (name: string, value: string) => {
     const errors = { ...validationErrors };
@@ -416,17 +393,17 @@ export const CartDrawer: React.FC = () => {
     if (e) e.preventDefault();
     const errors: any = {};
     
-    // 1. VALIDARE DATE FACTURARE
+    // 1. VALIDARE DATE FACTURARE (MEREU OBLIGATORII)
     if (!formData.fullName) errors.fullName = 'Numele este obligatoriu';
     if (!formData.phone) errors.phone = 'Telefonul este obligatoriu';
     if (!formData.county) errors.county = 'Județul este obligatoriu';
     if (!formData.city) errors.city = 'Orașul este obligatoriu';
     if (!formData.street_name) errors.address = 'Adresa este obligatorie';
 
-    // 2. VALIDARE EASYBOX
+    // 2. VALIDARE EASYBOX (Doar dacă e selectat)
     if (shippingMethod === 'easybox') {
         if (!selectedLocker || !selectedLocker.lockerId) {
-            errors.locker = 'Selectează un locker de pe hartă!';
+            errors.locker = 'Te rugăm să selectezi un locker de pe hartă!';
             const mapEl = document.getElementById('ecolet-locker-widget');
             if (mapEl) mapEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
@@ -665,7 +642,7 @@ export const CartDrawer: React.FC = () => {
                   </div>
                 </div>
 
-                {/* ⭐ EASYBOX WIDGET */}
+                {/* ⭐ EASYBOX WIDGET - Revert la funcționalitatea originală */}
                 {shippingMethod === 'easybox' && (
                   <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
                     <h3 className="font-bold text-xs uppercase text-neutral-500 flex items-center gap-2">📦 Selectează Locker</h3>
@@ -750,29 +727,29 @@ export const CartDrawer: React.FC = () => {
           )}
         </div>
 
-        {/* ⭐ FOOTER COMPLET REDESENAT (COMPACT & CLEAN) */}
+        {/* ⭐ FOOTER SUPER COMPACT (REDIZAT PENTRU VIZIBILITATE) */}
         {cart.length > 0 && (
-          <div className="p-4 border-t border-neutral-100 bg-white shrink-0 shadow-[0_-5px_15px_rgba(0,0,0,0.05)] z-20">
-            <div className="space-y-1 mb-3 text-xs">
-              <div className="flex justify-between text-neutral-600"><span>Subtotal</span><span>{subtotal.toFixed(2)} RON</span></div>
-              <div className="flex justify-between text-neutral-600"><span>Transport</span><span>{shippingCost.toFixed(2)} RON</span></div>
-              {appliedDiscount && (
-                  <div className="flex justify-between text-green-600 font-bold"><span>Reducere</span><span>-{discountAmount.toFixed(2)} RON</span></div>
-              )}
+          <div className="p-3 border-t border-neutral-100 bg-white shrink-0 shadow-[0_-4px_10px_rgba(0,0,0,0.03)] z-20">
+            {/* Detaliile sunt mici, pe un singur rând deasupra */}
+            <div className="flex justify-between items-center text-[10px] text-neutral-500 mb-2 px-1">
+               <span>Subtotal: <b>{subtotal.toFixed(2)}</b> + Trans: <b>{shippingCost.toFixed(2)}</b></span>
+               {appliedDiscount && <span className="text-green-600 font-bold">-{discountAmount.toFixed(2)} (Reducere)</span>}
             </div>
 
-            <div className="flex justify-between items-center mb-3 pb-3 border-b border-dashed border-neutral-300">
-              <span className="text-xs text-neutral-500 uppercase font-bold">Total Final</span>
-              <span className="text-xl font-black">{finalTotal.toFixed(2)} RON</span>
+            <div className="flex gap-3">
+               <div className="flex flex-col justify-center">
+                   <span className="text-[9px] uppercase font-bold text-neutral-400 leading-none">Total</span>
+                   <span className="text-lg font-black leading-tight">{finalTotal.toFixed(2)} <small className="text-xs font-normal">RON</small></span>
+               </div>
+               
+               {step === 'cart' ? (
+                <Button fullWidth onClick={() => setStep('details')} className="py-2.5 text-sm flex-1">Continuă</Button>
+               ) : (
+                <Button fullWidth onClick={handleSubmitOrder} disabled={loading} type="button" className="shadow-md py-2.5 text-sm flex-1">
+                  {loading ? '...' : paymentMethod === 'ramburs' ? `Trimite Comanda` : `Plătește Card`}
+                </Button>
+               )}
             </div>
-
-            {step === 'cart' ? (
-              <Button fullWidth onClick={() => setStep('details')} className="py-3 text-sm">Continuă spre Checkout</Button>
-            ) : (
-              <Button fullWidth onClick={handleSubmitOrder} disabled={loading} type="button" className="shadow-lg py-3 text-sm">
-                {loading ? 'Se procesează...' : paymentMethod === 'ramburs' ? `Trimite Comanda` : `Plătește Card`}
-              </Button>
-            )}
           </div>
         )}
       </div>
@@ -781,7 +758,7 @@ export const CartDrawer: React.FC = () => {
         .pac-container { z-index: 99999 !important; }
         .leaflet-container { z-index: 999 !important; font-family: inherit !important; }
         
-        /* ⭐ CLEAN DESIGN - WIDGET ECOLET */
+        /* ⭐ STILIZARE MINIMALISTĂ WIDGET */
         .bp-widget-branding, 
         .bp-widget-footer,
         .bp-powered-by, .bp-logo { 
