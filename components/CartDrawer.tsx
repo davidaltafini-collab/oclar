@@ -3,15 +3,15 @@ import { useCart } from '../context/CartContext';
 import { Button } from './Button';
 import { API_URL } from '../constants';
 
-// ⭐ IMPORTURI OFICIALE GOOGLE MAPS WEB COMPONENTS (NOU API - Fără deprecation)
-import '@googlemaps/extended-component-library/place_building_blocks/place_autocomplete.js';
+// ⭐ IMPORTURI OFICIALE GOOGLE MAPS WEB COMPONENTS
+import '@googlemaps/extended-component-library/place_picker.js';
 import '@googlemaps/extended-component-library/api_loader.js';
 
 // ⭐ DEFINIȚII TYPESCRIPT
 declare global {
   namespace JSX {
     interface IntrinsicElements {
-      'gmpx-place-autocomplete': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & { 
+      'gmpx-place-picker': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & { 
         placeholder?: string; 
         ref?: any; 
         style?: React.CSSProperties;
@@ -59,7 +59,7 @@ export const CartDrawer: React.FC = () => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // ⭐ REF-URI PENTRU GOOGLE MAPS
-  const autocompleteRef = useRef<any>(null);
+  const pickerRef = useRef<any>(null);
   const loaderRef = useRef<any>(null);
   
   // API Key
@@ -150,13 +150,13 @@ export const CartDrawer: React.FC = () => {
     }
   }, [apiKey, isCartOpen]);
 
-  // ⭐ LISTENER PENTRU SELECTARE ADRESĂ (Nou API PlaceAutocompleteElement)
+  // ⭐ LISTENER PENTRU SELECTARE ADRESĂ
   useEffect(() => {
     const timer = setTimeout(() => {
-        const autocomplete = autocompleteRef.current;
-        if (autocomplete && step === 'details') {
+        const picker = pickerRef.current;
+        if (picker && step === 'details') {
           const handlePlaceChange = () => {
-            const place = autocomplete.value;
+            const place = picker.value;
             if (!place) return;
 
             const addressComponents = place.addressComponents || [];
@@ -192,9 +192,9 @@ export const CartDrawer: React.FC = () => {
             if (postal) validateField('postalCode', postal);
           };
 
-          autocomplete.addEventListener('gmpx-placechange', handlePlaceChange);
+          picker.addEventListener('gmpx-placechange', handlePlaceChange);
           return () => {
-            if (autocomplete) autocomplete.removeEventListener('gmpx-placechange', handlePlaceChange);
+            if (picker) picker.removeEventListener('gmpx-placechange', handlePlaceChange);
           };
         }
     }, 100);
@@ -294,6 +294,9 @@ export const CartDrawer: React.FC = () => {
             operatorMarkers: true,
             codeSearch: true,
             countryCodes: 'RO',
+            // ⭐ FIX CORS: Folosim coordonate GPS în loc de adresă text
+            // Așa evităm request-urile către Nominatim API
+            googleMapsApiKey: apiKey || undefined,
             initialAddress: startLocation,
             operators: [
                 { operator: 'DPD' },
@@ -301,8 +304,6 @@ export const CartDrawer: React.FC = () => {
                 { operator: 'FAN_COURIER' },
                 { operator: 'CARGUS' },
             ],
-            // ⭐ FIX CORS: Dezactivăm geocoding extern care cauzează eroarea 403
-            useGeocoderForInitialAddress: false,
             alias: 'ecolet-192872'
           });
         } else {
@@ -592,8 +593,8 @@ export const CartDrawer: React.FC = () => {
                   
                   <div className="mb-2 relative">
                       <label className="text-xs text-yellow-400 font-bold ml-1 mb-1 block">🔍 Caută Adresa</label>
-                      <gmpx-place-autocomplete 
-                          ref={autocompleteRef} 
+                      <gmpx-place-picker 
+                          ref={pickerRef} 
                           placeholder="Introdu adresa..." 
                           country="RO"
                           style={{ width: '100%' }} 
@@ -820,9 +821,9 @@ export const CartDrawer: React.FC = () => {
             font-family: inherit !important;
         }
         
-        /* ⭐ STILIZARE GOOGLE PLACE AUTOCOMPLETE (Noul API) */
-        gmpx-place-autocomplete { display: block; width: 100%; }
-        gmpx-place-autocomplete input { 
+        /* ⭐ STILIZARE GOOGLE PLACE PICKER */
+        gmpx-place-picker { display: block; width: 100%; }
+        gmpx-place-picker input { 
             padding: 0.75rem !important; 
             border-radius: 0.5rem !important; 
             border: 1px solid #e5e5e5 !important; 
@@ -832,7 +833,7 @@ export const CartDrawer: React.FC = () => {
             background-color: white !important; 
             height: auto !important; 
         }
-        gmpx-place-autocomplete input:focus { 
+        gmpx-place-picker input:focus { 
             outline: none !important; 
             border-color: black !important; 
         }
