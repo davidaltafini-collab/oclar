@@ -698,10 +698,10 @@ export const CartDrawer: React.FC = () => {
                       <div id="ecolet-locker-widget" style={{ width: '100%', height: '100%' }}></div>
 
                       {/* ⭐ BANDA ALBĂ DE JOS (MASCA) - Acoperă branding-ul */}
-                      <div className="absolute bottom-0 left-0 w-full h-10 bg-white z-20 border-t border-neutral-100 flex items-center justify-center">
+                      <div className="absolute bottom-0 left-0 w-full h-24 bg-white z-20 border-t border-neutral-100 flex items-center justify-center">
                           {/* Aici scrie "ALEGE LOCKER" ca să pară că e parte din site */}
-                          <div className="flex items-center gap-2 text-xs font-bold text-neutral-400 uppercase tracking-widest">
-                            <span>📍 Alege Locker</span>
+                          <div className="flex items-center gap-2 text-xs font-bold text-yellow-300 uppercase tracking-widest">
+                            <span>Alege Locker</span>
                           </div>
                       </div>
 
