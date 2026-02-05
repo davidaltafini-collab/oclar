@@ -504,13 +504,19 @@ export const CartDrawer: React.FC = () => {
           <button onClick={toggleCart} className="p-2 hover:bg-neutral-100 rounded-full transition-colors">✕</button>
         </div>
 
-        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-5 space-y-4">
-          {step === 'cart' ? .(
+              <div className="relative flex-1 overflow-hidden">
+                  <div
+                      ref={scrollContainerRef}
+                      className="absolute inset-0 overflow-y-auto p-5 space-y-4 pb-40"
+                  >
+
+          {step === 'cart' ? (
             cart.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center">
                 <div className="text-6xl mb-4">🛒</div>
                 <p className="text-neutral-500 text-lg">Coșul tău este gol</p>
-              </div>
+             </div>
+
             ) : (
               <div className="space-y-4">
                 {cart.map((item) => (
@@ -729,11 +735,15 @@ export const CartDrawer: React.FC = () => {
                 </div>
               </form>
           )}
-        </div>
+                  
+              </div>
+          </div>
 
         {/* Footer Complet */}
-        {cart.length > 0 && (
-          <div className="p-6 border-t border-neutral-100 bg-white shrink-0">
+              {cart.length > 0 && (
+              <div className="sticky bottom-0 z-40 bg-white border-t border-neutral-200 shadow-[0_-10px_30px_rgba(0,0,0,0.08)]">
+              <div className="p-6">
+
             <div className="space-y-2 mb-4 text-sm">
               <div className="flex justify-between text-neutral-600"><span>Subtotal produse</span><span>{subtotal.toFixed(2)} RON</span></div>
               <div className="flex justify-between text-neutral-600"><span>Transport ({shippingMethod === 'easybox' ? 'Easy Box' : 'Curier'})</span><span>{shippingCost.toFixed(2)} RON</span></div>
@@ -762,6 +772,7 @@ export const CartDrawer: React.FC = () => {
           </div>
         )}
       </div>
+     </div>
 
       <style>{`
         .pac-container { z-index: 99999 !important; }
