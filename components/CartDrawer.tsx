@@ -62,9 +62,6 @@ export const CartDrawer: React.FC = () => {
   const pickerRef = useRef<any>(null);
   const loaderRef = useRef<any>(null);
   
-  // ⭐ REF PENTRU A EVITA RE-INITIALIZAREA HĂRȚII LA TYPING (CRITIC PENTRU STABILITATE)
-  const widgetInitialized = useRef(false);
-
   // API Key
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_KEY || (window as any).__GOOGLE_MAPS_KEY__;
 
@@ -216,7 +213,6 @@ export const CartDrawer: React.FC = () => {
       setDiscountError('');
       setSelectedLocker(null);
       setValidationErrors({});
-      widgetInitialized.current = false; // Resetăm flag-ul la închidere
     }
   }, [isCartOpen]);
 
@@ -228,7 +224,7 @@ export const CartDrawer: React.FC = () => {
   }, [step]);
 
   // =================================================================
-  // ⭐ WIDGET EASYBOX - INITIALIZARE STABILĂ + LOCAȚIE PRECISĂ
+  // ⭐ WIDGET EASYBOX - INITIALIZARE + LOCAȚIE PRECISĂ
   // =================================================================
   useEffect(() => {
     if (shippingMethod === 'easybox' && step === 'details' && isCartOpen) {
@@ -250,14 +246,8 @@ export const CartDrawer: React.FC = () => {
         const isScriptLoaded = typeof window !== 'undefined' && window.BPWidget;
 
         if (container && isScriptLoaded) {
-          // ⭐ IMPORTANT: Dacă widgetul e deja desenat, nu îl redesenăm
-          if (container.childElementCount > 0 && widgetInitialized.current) {
-             return; 
-          }
-
           console.log('✅ Ecolet: Initializing Widget v7...');
-          container.innerHTML = ''; 
-          widgetInitialized.current = true; // Marcam ca initializat
+          container.innerHTML = ''; // Curățare
 
           // ⭐ LOCAȚIE PRECISĂ BAZATĂ PE ADRESA DE FACTURARE
           let startLocation = 'Bucuresti, Romania';
@@ -302,7 +292,7 @@ export const CartDrawer: React.FC = () => {
             showCod: true,
             language: 'ro',
             operatorMarkers: true,
-            codeSearch: true, // LĂSĂM ACTIV PENTRU CA AI CERUT BARA VIZIBILA
+            codeSearch: true,
             countryCodes: 'RO',
             initialAddress: startLocation,
             operators: [
@@ -334,7 +324,7 @@ export const CartDrawer: React.FC = () => {
         tryInitWidget();
       }
     }
-  }, [shippingMethod, step, isCartOpen]); // AM SCOS DEPENDENȚELE DE ADRESĂ PENTRU A EVITA RESETAREA HĂRȚII
+  }, [shippingMethod, step, isCartOpen, formData.city, formData.street_name]);
 
   const validateField = (name: string, value: string) => {
     const errors = { ...validationErrors };
@@ -741,12 +731,12 @@ export const CartDrawer: React.FC = () => {
           )}
         </div>
 
-        {/* ⭐ FOOTER COMPACT */}
+        {/* Footer Complet */}
         {cart.length > 0 && (
-          <div className="p-4 border-t border-neutral-100 bg-white shrink-0"> {/* PADDING REDUS */}
-            <div className="space-y-1 mb-2 text-xs text-neutral-600"> {/* FONT REDUS LA TEXT-XS */}
-              <div className="flex justify-between"><span>Subtotal</span><span>{subtotal.toFixed(2)} RON</span></div>
-              <div className="flex justify-between"><span>Transport ({shippingMethod === 'easybox' ? 'Easy Box' : 'Curier'})</span><span>{shippingCost.toFixed(2)} RON</span></div>
+          <div className="p-6 border-t border-neutral-100 bg-white shrink-0">
+            <div className="space-y-2 mb-4 text-sm">
+              <div className="flex justify-between text-neutral-600"><span>Subtotal produse</span><span>{subtotal.toFixed(2)} RON</span></div>
+              <div className="flex justify-between text-neutral-600"><span>Transport ({shippingMethod === 'easybox' ? 'Easy Box' : 'Curier'})</span><span>{shippingCost.toFixed(2)} RON</span></div>
               {appliedDiscount && (
                 <>
                   <div className="flex justify-between text-green-600 font-bold"><span>Reducere ({appliedDiscount.code})</span><span>-{discountAmount.toFixed(2)} RON</span></div>
@@ -755,18 +745,18 @@ export const CartDrawer: React.FC = () => {
               )}
             </div>
 
-            <div className="flex justify-between items-center mb-3 pb-3 border-b border-neutral-200"> {/* MARGINI REDUSE */}
-              <span className="font-bold uppercase text-sm">Total</span>
-              <span className="font-black text-xl">{finalTotal.toFixed(2)} RON</span>
+            <div className="flex justify-between items-center mb-4 pb-4 border-b-2 border-black">
+              <span className="text-sm text-neutral-500 uppercase font-bold">Total de plată</span>
+              <span className="text-2xl font-black">{finalTotal.toFixed(2)} RON</span>
             </div>
 
             {appliedDiscount && <p className="text-center text-sm text-green-600 mb-4">✓ Ai economisit <strong>{discountAmount.toFixed(2)} RON</strong>!</p>}
 
             {step === 'cart' ? (
-              <Button fullWidth onClick={() => setStep('details')} className="py-3 text-sm">Continuă spre Checkout</Button>
+              <Button fullWidth onClick={() => setStep('details')}>Continuă spre Checkout</Button>
             ) : (
-              <Button fullWidth onClick={handleSubmitOrder} disabled={loading} type="button" className="shadow-xl py-3 text-sm font-bold uppercase">
-                {loading ? 'Se procesează...' : paymentMethod === 'ramburs' ? `Trimite Comanda` : `Plătește cu Cardul`}
+              <Button fullWidth onClick={handleSubmitOrder} disabled={loading} type="button" className="shadow-xl">
+                {loading ? 'Se procesează...' : paymentMethod === 'ramburs' ? `Trimite Comanda (${finalTotal.toFixed(2)} RON)` : `Plătește cu Cardul (${finalTotal.toFixed(2)} RON)`}
               </Button>
             )}
           </div>
@@ -836,7 +826,6 @@ export const CartDrawer: React.FC = () => {
         gmpx-place-picker input { padding: 0.75rem !important; border-radius: 0.5rem !important; border: 1px solid #e5e5e5 !important; width: 100% !important; font-size: 0.875rem !important; box-sizing: border-box !important; background-color: white !important; height: auto !important; }
         gmpx-place-picker input:focus { outline: none !important; border-color: black !important; }
         
-        /* ⭐ FIX PENTRU ZOOM-UL AUTOMAT PE INPUT (iOS) */
         @media screen and (max-width: 768px) {
           input, select, textarea, gmpx-place-picker::part(input) { font-size: 16px !important; }
         }
