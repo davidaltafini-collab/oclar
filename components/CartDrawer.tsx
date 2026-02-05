@@ -26,6 +26,7 @@ declare global {
     BPWidget: {
       init: (element: HTMLElement, config: any) => void;
     }
+    google: any;
   }
 }
 
@@ -64,7 +65,7 @@ export const CartDrawer: React.FC = () => {
   // API Key
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_KEY || (window as any).__GOOGLE_MAPS_KEY__;
 
-  // ⭐ STATE PENTRU ECOLET & COORDONATE (FIX CORS)
+  // ⭐ STATE PENTRU ECOLET
   const [selectedLocker, setSelectedLocker] = useState<{
     lockerId: string;
     lockerName: string;
@@ -72,9 +73,6 @@ export const CartDrawer: React.FC = () => {
     county: string;
     address: string;
   } | null>(null);
-  
-  // Stocăm coordonatele pentru a le pasa direct widget-ului (evităm Nominatim)
-  const [mapCoordinates, setMapCoordinates] = useState<{lat: number, lng: number} | null>(null);
 
   const [formData, setFormData] = useState({
     fullName: '',
@@ -141,13 +139,15 @@ export const CartDrawer: React.FC = () => {
     }
   }, [shippingMethod]);
 
-  // ⭐ INITIALIZARE GOOGLE MAPS API - FIX InitializeAutocomplete
+  // ⭐ INITIALIZARE GOOGLE MAPS API - FIX "MULTIPLE INSTANCES"
   useEffect(() => {
-    if (loaderRef.current && apiKey) {
+    // Verificăm dacă Google Maps este deja încărcat global ca să nu mai dăm load a doua oară
+    const isGoogleLoaded = window.google && window.google.maps && window.google.maps.places;
+    
+    if (!isGoogleLoaded && loaderRef.current && apiKey) {
       loaderRef.current.key = apiKey;
       loaderRef.current.libraries = ['places'];
       loaderRef.current.region = 'RO'; 
-      // 🔥 FIX ESENȚIAL: Setăm versiunea pentru a evita erorile de deprecation
       loaderRef.current.version = 'weekly';
     }
   }, [apiKey, isCartOpen]);
@@ -160,16 +160,6 @@ export const CartDrawer: React.FC = () => {
           const handlePlaceChange = () => {
             const place = picker.value;
             if (!place) return;
-
-            // 🔥 EXTRAGERE COORDONATE PENTRU WIDGET (FIX CORS)
-            if (place.location) {
-                // Verificăm dacă sunt funcții sau valori directe (depinde de versiunea API)
-                const lat = typeof place.location.lat === 'function' ? place.location.lat() : place.location.lat;
-                const lng = typeof place.location.lng === 'function' ? place.location.lng() : place.location.lng;
-                if (lat && lng) {
-                    setMapCoordinates({ lat, lng });
-                }
-            }
 
             const addressComponents = place.addressComponents || [];
             let street = '', number = '', city = '', county = '', postal = '';
@@ -225,7 +215,6 @@ export const CartDrawer: React.FC = () => {
       setDiscountError('');
       setSelectedLocker(null);
       setValidationErrors({});
-      setMapCoordinates(null);
     }
   }, [isCartOpen]);
 
@@ -237,7 +226,7 @@ export const CartDrawer: React.FC = () => {
   }, [step]);
 
   // =================================================================
-  // ⭐ WIDGET EASYBOX - FIX CORS DEFINITIV
+  // ⭐ WIDGET EASYBOX - REVENIRE LA LOGICA CARE PERMITE SELECȚIA
   // =================================================================
   useEffect(() => {
     if (shippingMethod === 'easybox' && step === 'details' && isCartOpen) {
@@ -261,15 +250,15 @@ export const CartDrawer: React.FC = () => {
           console.log('✅ Ecolet: Initializing Widget v7...');
           container.innerHTML = ''; 
 
-          // 🔥 LOGICA INTELIGENTĂ PENTRU LOCAȚIE
-          // 1. Default: Coordonate generice București (ca să nu crape cu request-uri goale)
-          let finalLat = 44.4268; 
-          let finalLng = 26.1025;
-
-          // 2. Dacă avem coordonate din Google Picker, le folosim pe alea
-          if (mapCoordinates) {
-             finalLat = mapCoordinates.lat;
-             finalLng = mapCoordinates.lng;
+          // Logică Robustă pentru locație (Text)
+          let startLocation = 'Bucuresti, Romania';
+          if (formData.city) {
+              const streetPart = formData.street_name ? formData.street_name : '';
+              if (streetPart && formData.city) {
+                  startLocation = `${streetPart}, ${formData.city}, Romania`;
+              } else {
+                  startLocation = `${formData.city}, Romania`;
+              }
           }
 
           window.BPWidget.init(container, {
@@ -300,15 +289,9 @@ export const CartDrawer: React.FC = () => {
             showCod: true,
             language: 'ro',
             operatorMarkers: true,
-            codeSearch: true,
+            codeSearch: true, // Asta permite butoanele de căutare
             countryCodes: 'RO',
-            
-            // 🔥 FIX CORS: Folosim LAT/LNG direct, NU `initialAddress` string!
-            // Astfel widgetul nu mai sună la Nominatim să facă conversia.
-            latitude: finalLat,
-            longitude: finalLng,
-            initialAddress: null, // Resetăm explicit adresa text
-
+            initialAddress: startLocation,
             operators: [
                 { operator: 'DPD' },
                 { operator: 'SAMEDAY' },
@@ -337,7 +320,7 @@ export const CartDrawer: React.FC = () => {
         tryInitWidget();
       }
     }
-  }, [shippingMethod, step, isCartOpen, mapCoordinates]); // Adăugat mapCoordinates la dependințe
+  }, [shippingMethod, step, isCartOpen, formData.city, formData.street_name]);
 
   const validateField = (name: string, value: string) => {
     const errors = { ...validationErrors };
@@ -493,15 +476,17 @@ export const CartDrawer: React.FC = () => {
   const discountAmount = appliedDiscount ? appliedDiscount.amount : 0;
   const totalBeforeDiscount = subtotal + shippingCost;
   const finalTotal = totalBeforeDiscount - discountAmount;
+  
+  // Verificăm dacă Google Maps este deja în Window pentru a randa condiționat loaderul
+  const shouldRenderLoader = apiKey && (!window.google || !window.google.maps);
 
   return (
     <>
-      {/* ⭐ GOOGLE LOADER */}
-      {isCartOpen && apiKey && <gmpx-api-loader ref={loaderRef} />}
+      {/* ⭐ GOOGLE LOADER - SE ÎNCARCĂ DOAR DACĂ NU EXISTĂ DEJA */}
+      {isCartOpen && shouldRenderLoader && <gmpx-api-loader ref={loaderRef} />}
 
       <div className="fixed inset-0 bg-black/60 z-50 backdrop-blur-sm" onClick={toggleCart} />
 
-      {/* CONTAINER PRINCIPAL */}
       <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-2xl flex flex-col animate-slide-in-right">
         <div className="p-5 border-b border-neutral-100 flex items-center justify-between bg-white shrink-0">
           <h2 className="text-xl font-bold uppercase tracking-tight">
@@ -510,7 +495,7 @@ export const CartDrawer: React.FC = () => {
           <button onClick={toggleCart} className="p-2 hover:bg-neutral-100 rounded-full transition-colors">✕</button>
         </div>
 
-        {/* ⬇️ ZONA DE SCROLL - FOOTER-UL ESTE ACUM AICI, NU MAI E STICKY */}
+        {/* ⬇️ ZONA DE SCROLL */}
         <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-5 space-y-4">
           {step === 'cart' ? (
             cart.length === 0 ? (
@@ -728,7 +713,7 @@ export const CartDrawer: React.FC = () => {
               </form>
           )}
 
-          {/* ⭐ FOOTER-UL E ACUM AICI, ÎN INTERIORUL DIV-ULUI CU SCROLL, LA FINAL */}
+          {/* ⭐ FOOTER-UL E AICI (NON-STICKY) */}
           {cart.length > 0 && (
             <div className="p-6 border-t border-neutral-100 bg-white shadow-[0_-5px_15px_rgba(0,0,0,0.05)] rounded-xl mt-4">
               <div className="space-y-2 mb-4 text-sm">
@@ -765,16 +750,7 @@ export const CartDrawer: React.FC = () => {
         .pac-container { z-index: 99999 !important; }
         .leaflet-container { z-index: 999 !important; font-family: inherit !important; }
         
-        .bp-widget-branding, 
-        .bp-widget-footer,
-        .bp-powered-by { 
-            display: none !important; 
-            visibility: hidden !important;
-            height: 0 !important;
-            opacity: 0 !important;
-        }
-        .bp-logo { display: none !important; opacity: 0 !important; }
-
+        /* REVENIRE LA STILURI NORMALE - FĂRĂ ASCUNDERE */
         .bp-widget-top-bar {
             background-color: white !important;
             border-bottom: 1px solid #e5e5e5 !important;
@@ -810,9 +786,11 @@ export const CartDrawer: React.FC = () => {
             background-color: white !important;
         }
 
+        /* ASIGURARE CĂ HARTA E VIZIBILĂ */
         .bp-widget-container {
             background-color: white !important;
             font-family: inherit !important;
+            z-index: 99999 !important; 
         }
         
         gmpx-place-picker { display: block; width: 100%; }
