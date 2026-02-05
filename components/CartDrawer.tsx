@@ -87,6 +87,7 @@ export const CartDrawer: React.FC = () => {
   }, []);
 
   // ⭐ STATE PENTRU ECOLET
+  const [isMapActive, setIsMapActive] = useState(false);
   const [selectedLocker, setSelectedLocker] = useState<{
     lockerId: string;
     lockerName: string;
@@ -226,6 +227,7 @@ export const CartDrawer: React.FC = () => {
   useEffect(() => {
     if (!isCartOpen) {
       setStep('cart');
+      setIsMapActive(false);
       setPaymentMethod('ramburs');
       setShippingMethod('courier');
       setLoading(false);
@@ -691,10 +693,29 @@ export const CartDrawer: React.FC = () => {
                          ) : null
                     )}
 
-                    {/* CONTAINER HARTA */}
-                    <div id="ecolet-locker-widget" style={{ width: '100%', height: '500px', borderRadius: '12px', overflow: 'hidden', border: '1px solid #e5e5e5' }}></div>
-                  </div>
-                )}
+               {/* CONTAINER HARTA CU MASCĂ DE PROTECȚIE */}
+                    <div className="relative w-full h-[500px] rounded-xl overflow-hidden border border-neutral-200 bg-white">
+                      
+                      {/* ⭐ ZONA VIZUALĂ (SCRISUL) - DISPARE CÂND DAI CLICK */}
+                      {!isMapActive && (
+                        <div 
+                          onClick={() => setIsMapActive(true)}
+                          className="absolute inset-0 z-20 bg-white flex flex-col items-center justify-center cursor-pointer group"
+                        >
+                          {/* Aici e doar design-ul vizual (scrisul în chenar negru) */}
+                          <div className="bg-black text-white px-8 py-4 rounded-full font-bold shadow-xl transform transition-transform group-hover:scale-105 flex items-center gap-3">
+                            <span className="text-xl">📍</span>
+                            <span>ALEGE LOCKER</span>
+                          </div>
+                          <p className="text-xs text-neutral-400 mt-4 uppercase tracking-widest font-bold">Apasă pentru a încărca harta</p>
+                        </div>
+                      )}
+
+                      {/* HARTA PROPRIU-ZISĂ (Care stă dedesubt) */}
+                      <div id="ecolet-locker-widget" style={{ width: '100%', height: '100%' }}></div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
                   <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">Metoda Plată</h3>
