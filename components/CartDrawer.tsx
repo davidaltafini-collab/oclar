@@ -23,6 +23,7 @@ declare global {
       };
     }
   }
+  // Interfață pentru widget-ul Ecolet (BPWidget)
   interface Window {
     BPWidget: {
       init: (element: HTMLElement, config: any) => void;
@@ -58,14 +59,14 @@ export const CartDrawer: React.FC = () => {
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // ⭐ REF-URI
+  // ⭐ REF-URI PENTRU GOOGLE MAPS
   const pickerRef = useRef<any>(null);
   const loaderRef = useRef<any>(null);
   
   // API Key
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_KEY || (window as any).__GOOGLE_MAPS_KEY__;
 
-  // ⭐ STATE ECOLET
+  // ⭐ STATE PENTRU ECOLET
   const [selectedLocker, setSelectedLocker] = useState<{
     lockerId: string;
     lockerName: string;
@@ -79,13 +80,14 @@ export const CartDrawer: React.FC = () => {
     phone: '',
     county: '',
     city: '',
-    address: '',
+    address: '', // Adresa completă vizuală
     postalCode: '',
     street_name: '',
     street_number: '',
     details: '' 
   });
   
+  // ⭐ VALIDĂRI
   const [validationErrors, setValidationErrors] = useState<{
     phone?: string;
     email?: string;
@@ -101,7 +103,7 @@ export const CartDrawer: React.FC = () => {
     return 0;
   };
 
-  // ⭐ HELPERE
+  // ⭐ HELPERE PENTRU NORMALIZARE
   const normalizeName = (name: string) => {
     if (!name) return '';
     let clean = name.replace('Județul', '').replace('County', '').trim();
@@ -115,7 +117,7 @@ export const CartDrawer: React.FC = () => {
       return city;
   };
 
-  // ⭐ FIX PLATĂ LOCKER
+  // ⭐ FIX PLATĂ LOCKER: Dacă alegi EasyBox, forțăm Card
   useEffect(() => {
     if (shippingMethod === 'easybox') {
       setPaymentMethod('card');
@@ -131,7 +133,7 @@ export const CartDrawer: React.FC = () => {
     }
   }, [apiKey, isCartOpen]);
 
-  // ⭐ LISTENER ADRESĂ
+  // ⭐ LISTENER PENTRU SELECTARE ADRESĂ
   useEffect(() => {
     const timer = setTimeout(() => {
         const picker = pickerRef.current;
@@ -205,7 +207,7 @@ export const CartDrawer: React.FC = () => {
   }, [step]);
 
   // =================================================================
-  // ⭐ FIX HARTA EASYBOX: PRECIZIE & STYLING
+  // ⭐ FIX HARTA EASYBOX: "SLEEK & SMART" + GEOLOCATION
   // =================================================================
   useEffect(() => {
     if (shippingMethod === 'easybox' && step === 'details' && isCartOpen) {
@@ -213,6 +215,7 @@ export const CartDrawer: React.FC = () => {
       const scriptId = 'ecolet-widget-script';
       const styleId = 'ecolet-widget-style';
 
+      // 1. Injectare CSS Widget (Oficial)
       if (!document.getElementById(styleId)) {
         const link = document.createElement('link');
         link.id = styleId;
@@ -221,106 +224,82 @@ export const CartDrawer: React.FC = () => {
         document.head.appendChild(link);
       }
       
-      const tryInitWidget = (attempts = 0) => {
+      const tryInitWidget = async (attempts = 0) => {
         const container = document.getElementById('ecolet-locker-widget');
         const isScriptLoaded = typeof window !== 'undefined' && window.BPWidget;
 
         if (container && isScriptLoaded) {
-          console.log('✅ Ecolet: Initializing Sleek Widget...');
-          container.innerHTML = ''; 
+          console.log('✅ Ecolet: Initializing Sleek & Smart Widget...');
+          container.innerHTML = ''; // Curățare
 
-          // ⭐ LOGICĂ PRECIZIE LOCAȚIE
-          // 1. Prioritate Maximă: Adresa exactă selectată în Google Picker
-          let startLocation = formData.street_name 
-              ? `${formData.street_name} ${formData.street_number}, ${formData.city}`
-              : (formData.city ? `${formData.city}, Romania` : 'Bucuresti');
+          // 1. Determinăm locația de start
+          let initialLocation = 'Bucuresti'; 
 
-          // 2. Funcție de fallback: Geolocația browser-ului (dacă nu avem adresă)
-          const initMap = (location: string) => {
-              window.BPWidget.init(container, {
-                callback: (point: any) => {
-                  console.log('📦 Locker Selected:', point);
-                  const lockerName = point.name || point.description || point.operator + ' Locker';
-                  const lockerId = point.id || point.code;
-                  const lockerCity = point.city || '';
-                  const lockerCounty = point.province || '';
-
-                  setSelectedLocker({
-                    lockerId: lockerId,
-                    lockerName: lockerName,
-                    city: lockerCity,
-                    county: lockerCounty
-                  });
-                  
-                  setFormData(prev => ({ 
-                    ...prev, 
-                    city: lockerCity, 
-                    county: lockerCounty 
-                  }));
-                },
-                posType: 'DELIVERY',
-                codOnly: false,
-                showCod: true,
-                language: 'ro',
-                operatorMarkers: true,
-                codeSearch: true,
-                countryCodes: 'RO',
-                
-                // Aici trimitem adresa precisă
-                initialAddress: location, 
-                
-                operators: [
-                    { operator: 'DPD' },
-                    { operator: 'SAMEDAY' },
-                    { operator: 'FAN_COURIER' },
-                    { operator: 'CARGUS' },
-                ],
-                alias: 'ecolet-192872'
-              });
-          };
-
-          // Dacă nu avem adresă completată, încercăm să luăm locația userului
-          if (!formData.street_name && navigator.geolocation) {
-             navigator.geolocation.getCurrentPosition(
-               (position) => {
-                 // Widget-ul suportă coordonate? De obicei vrea string.
-                 // Vom lăsa widgetul să se ocupe de asta dacă nu îi dăm initialAddress,
-                 // SAU îi dăm lat/lng dacă API-ul permite (dar doc-ul cere string).
-                 // Cel mai sigur: Dacă avem coordonate, widget-ul ar putea avea un parametru 'initialCoordinates',
-                 // dar în lipsa documentației exacte pe asta, rămânem la fallback pe oraș.
-                 // Totuși, BPWidget are de obicei detecție automată dacă nu îi dai nimic.
-                 // Așa că, dacă nu avem date, nu trimitem initialAddress deloc!
-                 if(!formData.city) {
-                    // Inițializare FĂRĂ initialAddress => Auto-detect
-                     window.BPWidget.init(container, {
-                        callback: (point: any) => { /* acelasi callback */
-                            const lockerName = point.name || point.description || point.operator + ' Locker';
-                            const lockerId = point.id || point.code;
-                            const lockerCity = point.city || '';
-                            const lockerCounty = point.province || '';
-                            setSelectedLocker({ lockerId, lockerName, city: lockerCity, county: lockerCounty });
-                            setFormData(prev => ({ ...prev, city: lockerCity, county: lockerCounty }));
-                        },
-                        posType: 'DELIVERY',
-                        codOnly: false,
-                        showCod: true,
-                        language: 'ro',
-                        operatorMarkers: true,
-                        codeSearch: true,
-                        countryCodes: 'RO',
-                        operators: [{ operator: 'DPD' }, { operator: 'SAMEDAY' }, { operator: 'FAN_COURIER' }, { operator: 'CARGUS' }],
-                        alias: 'ecolet-192872'
-                     });
-                 } else {
-                    initMap(startLocation);
-                 }
-               }, 
-               () => initMap(startLocation) // Error -> Fallback address
-             );
-          } else {
-             initMap(startLocation);
+          // a. Dacă utilizatorul a completat deja o adresă/oraș, o folosim pe aceea (cea mai mare prioritate)
+          if (formData.street_name && formData.city) {
+             initialLocation = `${formData.street_name} ${formData.street_number}, ${formData.city}`;
+          } else if (formData.city) {
+             initialLocation = `${formData.city}, Romania`;
+          }
+          // b. Altfel, încercăm Geolocation din browser
+          else if (navigator.geolocation) {
+             try {
+                // Așteptăm o secundă să vedem dacă primim coordonate
+                const pos: any = await new Promise((resolve, reject) => 
+                   navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 4000 })
+                );
+                // Dacă avem succes, widget-ul Ecolet (BPWidget) știe să folosească Lat/Long?
+                // Documentația zice "initialAddress" string. 
+                // Totuși, BPWidget are un feature ascuns: dacă NU îi dai "initialAddress", încearcă el să te localizeze.
+                // Așa că strategia este: Dacă avem permisiune, lăsăm initialAddress GOL ca să facă el auto-detect.
+                console.log("📍 Geolocație detectată, activăm auto-detect widget.");
+                initialLocation = ''; 
+             } catch (e) {
+                console.warn("⚠️ Geolocația a eșuat sau timeout, folosim fallback București.");
+             }
           }
 
+          // ⭐ CONFIGURAȚIA COMPLETĂ
+          window.BPWidget.init(container, {
+            callback: (point: any) => {
+              console.log('📦 Locker Selected:', point);
+              const lockerName = point.name || point.description || point.operator + ' Locker';
+              const lockerId = point.id || point.code;
+              const lockerCity = point.city || '';
+              const lockerCounty = point.province || '';
+
+              setSelectedLocker({
+                lockerId: lockerId,
+                lockerName: lockerName,
+                city: lockerCity,
+                county: lockerCounty
+              });
+              
+              setFormData(prev => ({ 
+                ...prev, 
+                city: lockerCity, 
+                county: lockerCounty 
+              }));
+            },
+            posType: 'DELIVERY',
+            codOnly: false,
+            showCod: true,
+            language: 'ro',
+            operatorMarkers: true,
+            codeSearch: true,
+            countryCodes: 'RO',
+            
+            // Dacă e gol, face auto-detect. Dacă are text, caută textul.
+            initialAddress: initialLocation, 
+            
+            operators: [
+                { operator: 'DPD' },
+                { operator: 'SAMEDAY' },
+                { operator: 'FAN_COURIER' },
+                { operator: 'CARGUS' },
+            ],
+            alias: 'ecolet-192872'
+          });
         } else {
           if (attempts < 10) {
             setTimeout(() => tryInitWidget(attempts + 1), 300);
@@ -330,6 +309,7 @@ export const CartDrawer: React.FC = () => {
         }
       };
 
+      // 2. Injectare JS Widget
       if (!document.getElementById(scriptId)) {
         const script = document.createElement('script');
         script.id = scriptId;
@@ -341,7 +321,7 @@ export const CartDrawer: React.FC = () => {
         tryInitWidget();
       }
     }
-  }, [shippingMethod, step, isCartOpen, formData.street_name, formData.city]); // DEPENDENȚĂ NOUĂ: formData.street_name
+  }, [shippingMethod, step, isCartOpen, formData.city, formData.street_name]); // Re-init la schimbare oraș/stradă
 
   const validateField = (name: string, value: string) => {
     const errors = { ...validationErrors };
@@ -352,7 +332,7 @@ export const CartDrawer: React.FC = () => {
     }
     if (name === 'email' && value) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(value)) errors.email = 'Email invalid';
+      if (value && !emailRegex.test(value)) errors.email = 'Email invalid';
       else delete errors.email;
     }
     if (name === 'postalCode') {
@@ -411,6 +391,7 @@ export const CartDrawer: React.FC = () => {
     if (!formData.phone) errors.phone = 'Telefonul este obligatoriu';
     if (!formData.county) errors.county = 'Județul este obligatoriu';
     
+    // Validăm adresa pentru AMBELE metode (facturare)
     if (!formData.city) errors.city = 'Orașul este obligatoriu';
     if (!formData.street_name) errors.address = 'Te rugăm să completezi adresa pentru factură';
 
@@ -434,6 +415,7 @@ export const CartDrawer: React.FC = () => {
             customerEmail: formData.email || null,
             customerPhone: formData.phone,
             
+            // Adresa completă
             address: {
                 county: formData.county,
                 city: formData.city,
@@ -643,13 +625,13 @@ export const CartDrawer: React.FC = () => {
                   </div>
                 </div>
 
-                {/* ⭐ EASYBOX WIDGET (SLEEK & PRECISE) */}
+                {/* ⭐ EASYBOX WIDGET (Apare doar dacă selectezi EasyBox) */}
                 {shippingMethod === 'easybox' && (
                   <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
-                    <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">📦 Selectează Locker</h3>
+                    <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">📦 Selectează Locker (Aproape de tine)</h3>
                     
-                    {/* CONTAINER HARTA CU CSS "SLEEK" */}
-                    <div id="ecolet-locker-widget" style={{ width: '100%', height: '500px', borderRadius: '12px', overflow: 'hidden', border: '1px solid #e5e5e5' }}></div>
+                    {/* CONTAINER HARTA CU CSS "SLEEK" (Grayscale) */}
+                    <div id="ecolet-locker-widget" style={{ width: '100%', height: '500px', borderRadius: '12px', overflow: 'hidden', border: '1px solid #e5e5e5', filter: 'grayscale(100%) contrast(1.1)' }}></div>
                     
                     {selectedLocker && (
                       <div className="bg-green-50 border border-green-200 rounded-lg p-3">
@@ -665,14 +647,14 @@ export const CartDrawer: React.FC = () => {
                   <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">Metoda Plată</h3>
                   <div className="grid grid-cols-1 gap-3">
                     
-                    {/* ⭐ RAMBURS (DISABLED + SVG) */}
+                    {/* ⭐ OPȚIUNEA RAMBURS - Dezactivată la EasyBox + SVG */}
                     <label 
                       className={`relative flex items-center gap-4 p-4 border rounded-xl transition-all duration-200 
                       ${paymentMethod === 'ramburs' 
                         ? 'border-black bg-neutral-50 shadow-inner' 
                         : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
                       }
-                      ${shippingMethod === 'easybox' ? 'opacity-50 cursor-not-allowed bg-gray-50' : 'cursor-pointer'}
+                      ${shippingMethod === 'easybox' ? 'opacity-50 cursor-not-allowed bg-gray-100' : 'cursor-pointer'}
                       `}
                     >
                       <input 
@@ -697,7 +679,7 @@ export const CartDrawer: React.FC = () => {
                       </div>
                     </label>
 
-                    {/* ⭐ CARD (SVG) */}
+                    {/* ⭐ OPȚIUNEA CARD + SVG */}
                     <label className={`relative flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-all duration-200 ${paymentMethod === 'card' ? 'border-black bg-neutral-50 shadow-inner' : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'}`}>
                       <input type="radio" name="payment" checked={paymentMethod === 'card'} onChange={() => setPaymentMethod('card')} className="accent-black w-5 h-5" />
                       <div className="p-2 bg-white rounded-full border border-neutral-100 shadow-sm shrink-0">
@@ -737,22 +719,24 @@ export const CartDrawer: React.FC = () => {
         </div>
       </div>
 
-      {/* ⭐ CSS SLEEK & MONOCHROME */}
+      {/* ⭐ CSS PENTRU LOOK "SLEEK" & GRAYSCALE */}
       <style>{`
         .pac-container { z-index: 99999 !important; }
+        .leaflet-container { z-index: 999 !important; font-family: inherit !important; }
         
-        /* Harta Alb-Negru (Grayscale) */
+        /* Harta Alb-Negru */
         .leaflet-tile {
             filter: grayscale(100%);
         }
 
-        /* Fix Leaflet */
-        .leaflet-container { z-index: 999 !important; font-family: inherit !important; }
+        /* Ascundem branding-ul mov urât */
+        .bp-widget-branding, .bp-widget-footer { display: none !important; }
         
-        /* Styling Input Google */
+        /* Input-urile Google */
         gmpx-place-picker { display: block; width: 100%; }
         gmpx-place-picker input { padding: 0.75rem !important; border-radius: 0.5rem !important; border: 1px solid #e5e5e5 !important; width: 100% !important; font-size: 0.875rem !important; box-sizing: border-box !important; background-color: white !important; height: auto !important; }
         gmpx-place-picker input:focus { outline: none !important; border-color: black !important; }
+        
         @media screen and (max-width: 768px) {
           input, select, textarea, gmpx-place-picker::part(input) { font-size: 16px !important; }
         }
