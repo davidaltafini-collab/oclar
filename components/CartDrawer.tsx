@@ -72,7 +72,6 @@ export const CartDrawer: React.FC = () => {
     lockerName: string;
     city: string;
     county: string;
-    address: string;
   } | null>(null);
 
   const [formData, setFormData] = useState({
@@ -125,7 +124,7 @@ export const CartDrawer: React.FC = () => {
     }
   }, [shippingMethod]);
 
-  // ⭐ INITIALIZARE GOOGLE MAPS API
+  // ⭐ INITIALIZARE GOOGLE MAPS API (Cu fix pentru React Key)
   useEffect(() => {
     if (loaderRef.current && apiKey) {
       loaderRef.current.key = apiKey;
@@ -208,7 +207,7 @@ export const CartDrawer: React.FC = () => {
   }, [step]);
 
   // =================================================================
-  // ⭐ WIDGET EASYBOX - CU GEOLOCAȚIE ȘI CENTRARE PE ROMÂNIA
+  // ⭐ FIX HARTA EASYBOX: CONFIGURAȚIA TA + STIL + SMART LOCATION
   // =================================================================
   useEffect(() => {
     if (shippingMethod === 'easybox' && step === 'details' && isCartOpen) {
@@ -216,7 +215,7 @@ export const CartDrawer: React.FC = () => {
       const scriptId = 'ecolet-widget-script';
       const styleId = 'ecolet-widget-style';
 
-      // 1. Injectare CSS Widget (Oficial)
+      // 1. Injectare CSS Widget (Oficial BliskaPaczka)
       if (!document.getElementById(styleId)) {
         const link = document.createElement('link');
         link.id = styleId;
@@ -225,131 +224,39 @@ export const CartDrawer: React.FC = () => {
         document.head.appendChild(link);
       }
       
-      const initWidget = async () => {
+      const tryInitWidget = (attempts = 0) => {
         const container = document.getElementById('ecolet-locker-widget');
         const isScriptLoaded = typeof window !== 'undefined' && window.BPWidget;
 
         if (container && isScriptLoaded) {
-          console.log('✅ Ecolet: Initializing Widget...');
+          console.log('✅ Ecolet: Initializing Widget v7...');
           container.innerHTML = ''; // Curățare
 
-          // ⭐ GEOLOCAȚIE FUNCȚIONALĂ
-          let initialAddress = 'București, Romania'; // Default fallback
-          let detectedCity = '';
+          // Determinăm locația de start (Orașul clientului sau București default)
+          const startLocation = formData.city ? `${formData.city}, Romania` : 'Bucuresti, Romania';
 
-          // Prioritate 1: Adresa completată de user
-          if (formData.street_name && formData.city) {
-            initialAddress = `${formData.street_name} ${formData.street_number}, ${formData.city}, Romania`;
-            console.log('📍 Using user address:', initialAddress);
-          } 
-          // Prioritate 2: Orașul user-ului
-          else if (formData.city) {
-            initialAddress = `${formData.city}, Romania`;
-            console.log('📍 Using user city:', initialAddress);
-          }
-          // Prioritate 3: GEOLOCAȚIE BROWSER
-          else {
-            try {
-              console.log('🔍 Attempting geolocation...');
-              
-              const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-                if (!navigator.geolocation) {
-                  console.warn('⚠️ Geolocation not supported');
-                  reject(new Error('Geolocation not supported'));
-                  return;
-                }
-                
-                navigator.geolocation.getCurrentPosition(
-                  resolve, 
-                  reject, 
-                  {
-                    timeout: 8000,
-                    enableHighAccuracy: false, // Mai rapid
-                    maximumAge: 300000 // Cache 5 min
-                  }
-                );
-              });
-
-              const lat = position.coords.latitude;
-              const lng = position.coords.longitude;
-              
-              console.log('✅ Geolocation success:', lat, lng);
-              
-              // Reverse Geocoding cu Google Maps
-              if (apiKey) {
-                try {
-                  const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}&language=ro`;
-                  const geocodeResponse = await fetch(geocodeUrl);
-                  const geocodeData = await geocodeResponse.json();
-                  
-                  if (geocodeData.results && geocodeData.results[0]) {
-                    const result = geocodeData.results[0];
-                    let city = '';
-                    let county = '';
-                    
-                    result.address_components.forEach((comp: any) => {
-                      if (comp.types.includes('locality')) {
-                        city = normalizeCity(comp.long_name);
-                      }
-                      if (comp.types.includes('administrative_area_level_1')) {
-                        county = normalizeName(comp.long_name);
-                      }
-                    });
-                    
-                    if (city) {
-                      detectedCity = city;
-                      initialAddress = `${city}, Romania`;
-                      console.log('✅ Geocoded address:', initialAddress);
-                      
-                      // Auto-fill city și county
-                      setFormData(prev => ({
-                        ...prev,
-                        city: city,
-                        county: county
-                      }));
-                    }
-                  }
-                } catch (geoError) {
-                  console.warn('⚠️ Geocoding failed:', geoError);
-                }
-              }
-              
-            } catch (geoError: any) {
-              console.warn('⚠️ Geolocation failed:', geoError.message);
-              // Folosim fallback-ul București
-            }
-          }
-
-          // ⭐ CONFIGURAȚIA WIDGET-ULUI
-          const config: any = {
+          // ⭐ CONFIGURAȚIA COMPLETĂ DIN DOCUMENTELE TALE
+          window.BPWidget.init(container, {
             callback: (point: any) => {
               console.log('📦 Locker Selected:', point);
-              
-              const lockerName = point.name || point.description || `${point.operator} Locker`;
-              const lockerId = point.code || point.id;
+              const lockerName = point.name || point.description || point.operator + ' Locker';
+              const lockerId = point.id || point.code;
               const lockerCity = point.city || '';
               const lockerCounty = point.province || '';
-              const lockerAddress = point.street || point.address || '';
 
-              // ⭐ COMPLETARE AUTOMATĂ FORMULAR
               setSelectedLocker({
                 lockerId: lockerId,
                 lockerName: lockerName,
                 city: lockerCity,
-                county: lockerCounty,
-                address: lockerAddress
+                county: lockerCounty
               });
               
-              // Auto-fill formular cu datele locker-ului
+              // Actualizăm formularul cu datele locker-ului
               setFormData(prev => ({ 
                 ...prev, 
-                city: lockerCity,
-                county: lockerCounty,
-                street_name: lockerAddress.split(',')[0] || lockerAddress,
-                address: lockerAddress
+                city: lockerCity, 
+                county: lockerCounty 
               }));
-
-              console.log('✅ Form auto-filled with locker data');
             },
             posType: 'DELIVERY',
             codOnly: false,
@@ -358,20 +265,21 @@ export const CartDrawer: React.FC = () => {
             operatorMarkers: true,
             codeSearch: true,
             countryCodes: 'RO',
-            initialAddress: initialAddress,
+            initialAddress: startLocation, // Smart Location
             operators: [
-              { operator: 'SAMEDAY' },
-              { operator: 'DPD' },
-              { operator: 'FAN_COURIER' },
-              { operator: 'CARGUS' },
+                { operator: 'DPD' },
+                { operator: 'SAMEDAY' },
+                { operator: 'FAN_COURIER' },
+                { operator: 'CARGUS' },
             ],
-            alias: 'ecolet-192872'
-          };
-
-          window.BPWidget.init(container, config);
-          console.log('✅ Widget initialized with address:', initialAddress);
+            alias: 'ecolet-192872' // Alias-ul tău
+          });
         } else {
-          console.error('❌ Widget container or BPWidget not available');
+          if (attempts < 10) {
+            setTimeout(() => tryInitWidget(attempts + 1), 300);
+          } else {
+            console.error('❌ Ecolet: Widget failed to load.');
+          }
         }
       };
 
@@ -381,19 +289,13 @@ export const CartDrawer: React.FC = () => {
         script.id = scriptId;
         script.src = 'https://widget.bliskapaczka.pl/v7/main.js';
         script.async = true;
-        script.onload = () => {
-          console.log('✅ Ecolet script loaded');
-          setTimeout(initWidget, 500);
-        };
-        script.onerror = () => {
-          console.error('❌ Failed to load Ecolet script');
-        };
+        script.onload = () => tryInitWidget();
         document.body.appendChild(script);
       } else {
-        setTimeout(initWidget, 300);
+        tryInitWidget();
       }
     }
-  }, [shippingMethod, step, isCartOpen]);
+  }, [shippingMethod, step, isCartOpen, formData.city]); // Re-inițializăm dacă se schimbă orașul!
 
   const validateField = (name: string, value: string) => {
     const errors = { ...validationErrors };
@@ -404,7 +306,7 @@ export const CartDrawer: React.FC = () => {
     }
     if (name === 'email' && value) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (value && !emailRegex.test(value)) errors.email = 'Email invalid';
+      if (!emailRegex.test(value)) errors.email = 'Email invalid';
       else delete errors.email;
     }
     if (name === 'postalCode') {
@@ -472,7 +374,7 @@ export const CartDrawer: React.FC = () => {
     }
 
     if (Object.keys(errors).length > 0) {
-      alert('Te rugăm să completezi toate câmpurile obligatorii.');
+      alert('Te rugăm să completezi toate câmpurile.');
       setValidationErrors(errors);
       return;
     }
@@ -480,9 +382,7 @@ export const CartDrawer: React.FC = () => {
     setLoading(true);
 
     try {
-      const finalAddressLine = shippingMethod === 'easybox' 
-        ? selectedLocker?.address || `${formData.street_name} Nr. ${formData.street_number}`.trim()
-        : `${formData.street_name} Nr. ${formData.street_number}, ${formData.details}`.trim();
+      const finalAddressLine = `${formData.street_name} Nr. ${formData.street_number}, ${formData.details}`.trim();
 
       const orderPayload = {
             customerName: formData.fullName,
@@ -509,7 +409,6 @@ export const CartDrawer: React.FC = () => {
             totalAmount: finalTotal,
             postalCode: formData.postalCode,
             lockerId: selectedLocker?.lockerId || null,
-            lockerName: selectedLocker?.lockerName || null,
       };
 
       if (paymentMethod === 'card') {
@@ -662,6 +561,7 @@ export const CartDrawer: React.FC = () => {
                       />
                   </div>
 
+                  {/* Informații adresă Read Only */}
                   <div className="bg-gray-100 p-3 rounded-lg border border-gray-200 text-xs text-gray-700 grid grid-cols-12 gap-3 items-center">
                       <div className="col-span-6 border-b border-gray-200 pb-2">
                         <span className="text-[10px] text-gray-400 uppercase block mb-0.5">Județ</span>
@@ -703,36 +603,16 @@ export const CartDrawer: React.FC = () => {
                 {/* ⭐ EASYBOX WIDGET (Apare doar dacă selectezi EasyBox) */}
                 {shippingMethod === 'easybox' && (
                   <div className="bg-white p-4 rounded-lg shadow-sm space-y-3">
-                    <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">
-                      📦 Selectează Locker-ul Tău
-                    </h3>
+                    <h3 className="font-bold text-sm uppercase text-neutral-500 flex items-center gap-2">📦 Selectează Locker</h3>
                     
-                    {/* ⭐ CONTAINER HARTA - FĂRĂ FILTRE CSS */}
-                    <div 
-                      id="ecolet-locker-widget" 
-                      style={{ 
-                        width: '100%', 
-                        height: '500px', 
-                        borderRadius: '12px', 
-                        overflow: 'hidden', 
-                        border: '1px solid #e5e5e5',
-                        position: 'relative'
-                      }}
-                    >
-                      <div className="flex items-center justify-center h-full">
-                        <div className="text-center">
-                          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
-                          <p className="text-sm text-neutral-500">Se încarcă harta...</p>
-                        </div>
-                      </div>
-                    </div>
+                    {/* CONTAINER HARTA CU STIL CORECT */}
+                    <div id="ecolet-locker-widget" style={{ width: '100%', height: '500px', borderRadius: '12px', overflow: 'hidden', border: '1px solid #e5e5e5' }}></div>
                     
                     {selectedLocker && (
                       <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                        <p className="text-sm font-bold text-green-700">✓ Locker selectat:</p>
-                        <p className="text-xs text-green-600 mt-1 font-bold">{selectedLocker.lockerName}</p>
-                        <p className="text-xs text-green-600">{selectedLocker.address}</p>
-                        <p className="text-xs text-green-600">{selectedLocker.city}, {selectedLocker.county}</p>
+                        <p className="text-sm font-bold text-green-700">✓ Punct selectat:</p>
+                        <p className="text-xs text-green-600 mt-1">{selectedLocker.lockerName}</p>
+                        <p className="text-xs text-green-600">{selectedLocker.city}</p>
                       </div>
                     )}
                   </div>
@@ -749,7 +629,7 @@ export const CartDrawer: React.FC = () => {
                         ? 'border-black bg-neutral-50 shadow-inner' 
                         : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
                       }
-                      ${shippingMethod === 'easybox' ? 'opacity-50 cursor-not-allowed bg-gray-100' : 'cursor-pointer'}
+                      ${shippingMethod === 'easybox' ? 'opacity-50 cursor-not-allowed bg-gray-50' : 'cursor-pointer'}
                       `}
                     >
                       <input 
@@ -794,119 +674,52 @@ export const CartDrawer: React.FC = () => {
           )}
         </div>
 
-        <div className="p-4 border-t border-neutral-100 bg-white shrink-0">
-          <div className="space-y-1 mb-3 text-xs">
-            <div className="flex justify-between text-neutral-600"><span>Subtotal</span><span>{subtotal.toFixed(2)} RON</span></div>
-            <div className="flex justify-between text-neutral-600"><span>Transport</span><span>{shippingCost.toFixed(2)} RON</span></div>
-            {appliedDiscount && <div className="flex justify-between text-green-600 font-bold"><span>Reducere</span><span>-{discountAmount.toFixed(2)} RON</span></div>}
-          </div>
+        {/* Footer Complet */}
+        {cart.length > 0 && (
+          <div className="p-6 border-t border-neutral-100 bg-white shrink-0">
+            <div className="space-y-2 mb-4 text-sm">
+              <div className="flex justify-between text-neutral-600"><span>Subtotal produse</span><span>{subtotal.toFixed(2)} RON</span></div>
+              <div className="flex justify-between text-neutral-600"><span>Transport ({shippingMethod === 'easybox' ? 'Easy Box' : 'Curier'})</span><span>{shippingCost.toFixed(2)} RON</span></div>
+              {appliedDiscount && (
+                <>
+                  <div className="flex justify-between text-green-600 font-bold"><span>Reducere ({appliedDiscount.code})</span><span>-{discountAmount.toFixed(2)} RON</span></div>
+                  <div className="flex justify-between text-neutral-400 line-through text-xs pt-2 border-t border-neutral-100"><span>Fără reducere</span><span>{totalBeforeDiscount.toFixed(2)} RON</span></div>
+                </>
+              )}
+            </div>
 
-          <div className="flex justify-between items-center mb-3 pb-2 border-b border-black">
-            <span className="text-xs text-neutral-500 uppercase font-bold">Total</span>
-            <span className="text-xl font-black">{finalTotal.toFixed(2)} RON</span>
-          </div>
+            <div className="flex justify-between items-center mb-4 pb-4 border-b-2 border-black">
+              <span className="text-sm text-neutral-500 uppercase font-bold">Total de plată</span>
+              <span className="text-2xl font-black">{finalTotal.toFixed(2)} RON</span>
+            </div>
 
-          {step === 'cart' ? (
-            <Button fullWidth onClick={() => setStep('details')}>Continuă</Button>
-          ) : (
-            <Button fullWidth onClick={handleSubmitOrder} disabled={loading} type="button" className="shadow-xl">{loading ? 'Se procesează...' : paymentMethod === 'ramburs' ? `Trimite Comanda (${finalTotal.toFixed(2)} RON)` : `Plătește cu Cardul (${finalTotal.toFixed(2)} RON)`}</Button>
-          )}
-        </div>
+            {appliedDiscount && <p className="text-center text-sm text-green-600 mb-4">✓ Ai economisit <strong>{discountAmount.toFixed(2)} RON</strong>!</p>}
+
+            {step === 'cart' ? (
+              <Button fullWidth onClick={() => setStep('details')}>Continuă spre Checkout</Button>
+            ) : (
+              <Button fullWidth onClick={handleSubmitOrder} disabled={loading} type="button" className="shadow-xl">
+                {loading ? 'Se procesează...' : paymentMethod === 'ramburs' ? `Trimite Comanda (${finalTotal.toFixed(2)} RON)` : `Plătește cu Cardul (${finalTotal.toFixed(2)} RON)`}
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* ⭐ CSS OPTIMIZAT - HARTĂ CURATĂ ȘI CENTRATĂ */}
       <style>{`
-        /* Google Places Autocomplete */
         .pac-container { z-index: 99999 !important; }
+        .leaflet-container { z-index: 999 !important; font-family: inherit !important; }
         
-        /* Leaflet Map Container */
-        .leaflet-container { 
-          z-index: 999 !important; 
-          font-family: inherit !important;
-          background: #f5f5f5 !important;
-        }
-
-        /* ⭐ ASCUNDEM TOT BRANDING-UL ȘI FOOTER-UL */
-        .bp-widget-branding, 
-        .bp-widget-footer,
-        .bp-widget-logo,
-        .bp-widget-header,
-        a[href*="bliskapaczka"],
-        a[href*="leaflet"],
-        .leaflet-control-attribution { 
-          display: none !important; 
-          opacity: 0 !important;
-          visibility: hidden !important;
-          height: 0 !important;
-          overflow: hidden !important;
-        }
-
-        /* Ascundem linkurile Leaflet de jos */
-        .leaflet-bottom.leaflet-right {
-          display: none !important;
-        }
-
-        /* Input Search Locker */
-        #ecolet-locker-widget input[type="text"] {
-          width: 100% !important;
-          padding: 12px !important;
-          border: 1px solid #e5e5e5 !important;
-          border-radius: 8px !important;
-          font-size: 14px !important;
-          margin-bottom: 8px !important;
-        }
-
-        /* Butonul de play mov */
-        .bp-widget-footer button,
-        button[style*="background: rgb(108, 42, 145)"],
-        button[style*="background: rgb(103, 26, 145)"] {
-          display: none !important;
-        }
+        /* SLEEK WIDGET STYLE */
+        .bp-widget-branding, .bp-widget-footer { display: none !important; }
+        .bp-widget-btn, .bp-widget-btn-primary { background-color: black !important; color: white !important; border-radius: 6px !important; }
         
-        /* Google Maps Input Styling */
         gmpx-place-picker { display: block; width: 100%; }
-        gmpx-place-picker input { 
-          padding: 0.75rem !important; 
-          border-radius: 0.5rem !important; 
-          border: 1px solid #e5e5e5 !important; 
-          width: 100% !important; 
-          font-size: 0.875rem !important; 
-          box-sizing: border-box !important; 
-          background-color: white !important; 
-          height: auto !important; 
-        }
-        gmpx-place-picker input:focus { 
-          outline: none !important; 
-          border-color: black !important; 
-        }
+        gmpx-place-picker input { padding: 0.75rem !important; border-radius: 0.5rem !important; border: 1px solid #e5e5e5 !important; width: 100% !important; font-size: 0.875rem !important; box-sizing: border-box !important; background-color: white !important; height: auto !important; }
+        gmpx-place-picker input:focus { outline: none !important; border-color: black !important; }
         
-        /* Mobile Font Size Fix */
         @media screen and (max-width: 768px) {
-          input, select, textarea, gmpx-place-picker::part(input) { 
-            font-size: 16px !important; 
-          }
-        }
-
-        /* Widget Container */
-        #ecolet-locker-widget {
-          position: relative;
-        }
-
-        #ecolet-locker-widget > div {
-          border-radius: 12px;
-        }
-
-        /* Loading Animation */
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-        .animate-spin {
-          animation: spin 1s linear infinite;
-        }
-
-        /* Markere pe hartă - mai vizibile */
-        .leaflet-marker-icon {
-          filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+          input, select, textarea, gmpx-place-picker::part(input) { font-size: 16px !important; }
         }
       `}</style>
     </>
