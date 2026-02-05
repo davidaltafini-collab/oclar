@@ -382,9 +382,9 @@ export const CartDrawer: React.FC = () => {
     
     // Curățăm erorile pe măsură ce scrie userul
     if (validationErrors[name as keyof typeof validationErrors]) {
-          const newErrs = {...validationErrors};
-          delete newErrs[name as keyof typeof validationErrors];
-          setValidationErrors(newErrs);
+         const newErrs = {...validationErrors};
+         delete newErrs[name as keyof typeof validationErrors];
+         setValidationErrors(newErrs);
     }
   };
 
@@ -496,22 +496,15 @@ export const CartDrawer: React.FC = () => {
 
       <div className="fixed inset-0 bg-black/60 z-50 backdrop-blur-sm" onClick={toggleCart} />
 
-      {/* ⭐ FIX LAYOUT: 
-         - h-[100dvh] asigură înălțimea completă pe mobil fără a fi acoperită de bara browserului.
-         - flex-col + flex-1 la conținut împinge footerul jos.
-      */}
-      <div className="fixed top-0 right-0 z-50 h-[100dvh] w-full max-w-md bg-white shadow-2xl flex flex-col animate-slide-in-right">
-        
-        {/* ⭐ HEADER FIX (Sticky vizual prin structura Flex) */}
-        <div className="p-5 border-b border-neutral-100 flex items-center justify-between bg-white shrink-0 relative z-20">
+      <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-2xl flex flex-col animate-slide-in-right">
+        <div className="p-5 border-b border-neutral-100 flex items-center justify-between bg-white shrink-0">
           <h2 className="text-xl font-bold uppercase tracking-tight">
             {step === 'cart' ? 'Coșul Tău' : 'Detalii Livrare'}
           </h2>
           <button onClick={toggleCart} className="p-2 hover:bg-neutral-100 rounded-full transition-colors">✕</button>
         </div>
 
-        {/* ⭐ ZONA DE SCROLL (Conținutul) - flex-1 ocupă tot spațiul rămas */}
-        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-5 space-y-4 relative z-10">
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-5">
           {step === 'cart' ? (
             cart.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center">
@@ -570,6 +563,31 @@ export const CartDrawer: React.FC = () => {
                     </label>
                   </div>
                 </div>
+
+                {/* Footer pentru cart step */}
+                {cart.length > 0 && (
+                  <div className="bg-white p-6 rounded-xl border border-neutral-100 shadow-sm space-y-4">
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between text-neutral-600"><span>Subtotal produse</span><span>{subtotal.toFixed(2)} RON</span></div>
+                      <div className="flex justify-between text-neutral-600"><span>Transport ({shippingMethod === 'easybox' ? 'Easy Box' : 'Curier'})</span><span>{shippingCost.toFixed(2)} RON</span></div>
+                      {appliedDiscount && (
+                        <>
+                          <div className="flex justify-between text-green-600 font-bold"><span>Reducere ({appliedDiscount.code})</span><span>-{discountAmount.toFixed(2)} RON</span></div>
+                          <div className="flex justify-between text-neutral-400 line-through text-xs pt-2 border-t border-neutral-100"><span>Fără reducere</span><span>{totalBeforeDiscount.toFixed(2)} RON</span></div>
+                        </>
+                      )}
+                    </div>
+
+                    <div className="flex justify-between items-center pb-4 border-b-2 border-black">
+                      <span className="text-sm text-neutral-500 uppercase font-bold">Total de plată</span>
+                      <span className="text-2xl font-black">{finalTotal.toFixed(2)} RON</span>
+                    </div>
+
+                    {appliedDiscount && <p className="text-center text-sm text-green-600">✓ Ai economisit <strong>{discountAmount.toFixed(2)} RON</strong>!</p>}
+
+                    <Button fullWidth onClick={() => setStep('details')}>Continuă spre Checkout</Button>
+                  </div>
+                )}
               </div>
             )
           ) : (
@@ -670,15 +688,43 @@ export const CartDrawer: React.FC = () => {
                         </div>
                       </div>
                     ) : (
-                          validationErrors.locker ? (
+                         validationErrors.locker ? (
                             <div className="bg-red-50 border border-red-200 text-red-600 p-2 rounded text-xs font-bold mb-2">
                                 ⚠️ {validationErrors.locker}
                             </div>
-                          ) : null
+                         ) : null
                     )}
 
-                    {/* CONTAINER HARTA */}
-                    <div id="ecolet-locker-widget" style={{ width: '100%', height: '500px', borderRadius: '12px', overflow: 'hidden', border: '1px solid #e5e5e5' }}></div>
+                    {/* CONTAINER HARTA + OVERLAY */}
+                    <div style={{ position: 'relative', width: '100%', height: '500px', borderRadius: '12px', overflow: 'hidden', border: '1px solid #e5e5e5' }}>
+                      {/* Widget original - neatins */}
+                      <div id="ecolet-locker-widget" style={{ width: '100%', height: '100%' }}></div>
+                      
+                      {/* Overlay vizual non-interactiv */}
+                      <div style={{
+                        position: 'absolute',
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        height: '15%',
+                        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                        pointerEvents: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderTop: '1px solid #e5e5e5'
+                      }}>
+                        <span style={{
+                          fontSize: '14px',
+                          fontWeight: 'bold',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.05em',
+                          color: '#000'
+                        }}>
+                          ALEGE LOCKER
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -734,40 +780,36 @@ export const CartDrawer: React.FC = () => {
                     </label>
                   </div>
                 </div>
+
+                {/* Footer pentru details step - INTEGRAT ÎN FLUX */}
+                {cart.length > 0 && (
+                  <div className="bg-white p-6 rounded-xl border border-neutral-100 shadow-sm space-y-4">
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between text-neutral-600"><span>Subtotal produse</span><span>{subtotal.toFixed(2)} RON</span></div>
+                      <div className="flex justify-between text-neutral-600"><span>Transport ({shippingMethod === 'easybox' ? 'Easy Box' : 'Curier'})</span><span>{shippingCost.toFixed(2)} RON</span></div>
+                      {appliedDiscount && (
+                        <>
+                          <div className="flex justify-between text-green-600 font-bold"><span>Reducere ({appliedDiscount.code})</span><span>-{discountAmount.toFixed(2)} RON</span></div>
+                          <div className="flex justify-between text-neutral-400 line-through text-xs pt-2 border-t border-neutral-100"><span>Fără reducere</span><span>{totalBeforeDiscount.toFixed(2)} RON</span></div>
+                        </>
+                      )}
+                    </div>
+
+                    <div className="flex justify-between items-center pb-4 border-b-2 border-black">
+                      <span className="text-sm text-neutral-500 uppercase font-bold">Total de plată</span>
+                      <span className="text-2xl font-black">{finalTotal.toFixed(2)} RON</span>
+                    </div>
+
+                    {appliedDiscount && <p className="text-center text-sm text-green-600">✓ Ai economisit <strong>{discountAmount.toFixed(2)} RON</strong>!</p>}
+
+                    <Button fullWidth onClick={handleSubmitOrder} disabled={loading} type="button" className="shadow-xl">
+                      {loading ? 'Se procesează...' : paymentMethod === 'ramburs' ? `Trimite Comanda (${finalTotal.toFixed(2)} RON)` : `Plătește cu Cardul (${finalTotal.toFixed(2)} RON)`}
+                    </Button>
+                  </div>
+                )}
               </form>
           )}
         </div>
-
-        {/* ⭐ FOOTER STICKY (Fixat jos prin structura Flexbox) */}
-        {cart.length > 0 && (
-          <div className="p-6 border-t border-neutral-100 bg-white shrink-0 relative z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-            <div className="space-y-2 mb-4 text-sm">
-              <div className="flex justify-between text-neutral-600"><span>Subtotal produse</span><span>{subtotal.toFixed(2)} RON</span></div>
-              <div className="flex justify-between text-neutral-600"><span>Transport ({shippingMethod === 'easybox' ? 'Easy Box' : 'Curier'})</span><span>{shippingCost.toFixed(2)} RON</span></div>
-              {appliedDiscount && (
-                <>
-                  <div className="flex justify-between text-green-600 font-bold"><span>Reducere ({appliedDiscount.code})</span><span>-{discountAmount.toFixed(2)} RON</span></div>
-                  <div className="flex justify-between text-neutral-400 line-through text-xs pt-2 border-t border-neutral-100"><span>Fără reducere</span><span>{totalBeforeDiscount.toFixed(2)} RON</span></div>
-                </>
-              )}
-            </div>
-
-            <div className="flex justify-between items-center mb-4 pb-4 border-b-2 border-black">
-              <span className="text-sm text-neutral-500 uppercase font-bold">Total de plată</span>
-              <span className="text-2xl font-black">{finalTotal.toFixed(2)} RON</span>
-            </div>
-
-            {appliedDiscount && <p className="text-center text-sm text-green-600 mb-4">✓ Ai economisit <strong>{discountAmount.toFixed(2)} RON</strong>!</p>}
-
-            {step === 'cart' ? (
-              <Button fullWidth onClick={() => setStep('details')}>Continuă spre Checkout</Button>
-            ) : (
-              <Button fullWidth onClick={handleSubmitOrder} disabled={loading} type="button" className="shadow-xl">
-                {loading ? 'Se procesează...' : paymentMethod === 'ramburs' ? `Trimite Comanda (${finalTotal.toFixed(2)} RON)` : `Plătește cu Cardul (${finalTotal.toFixed(2)} RON)`}
-              </Button>
-            )}
-          </div>
-        )}
       </div>
 
       <style>{`
