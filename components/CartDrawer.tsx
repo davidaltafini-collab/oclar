@@ -243,6 +243,7 @@ export const CartDrawer: React.FC = () => {
       
       const tryInitWidget = (attempts = 0) => {
         const container = document.getElementById('ecolet-locker-widget');
+        console.log("DEBUG container:", container);
         const isScriptLoaded = typeof window !== 'undefined' && window.BPWidget;
 
         if (container && isScriptLoaded) {
