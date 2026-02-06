@@ -39,6 +39,8 @@ export const Footer: React.FC = () => {
            <h4 className="font-bold uppercase text-[10px] tracking-widest text-neutral-600 mb-2">Informații Legale</h4>
            <Link to="/terms" className="text-neutral-400 hover:text-brand-yellow hover:translate-x-1 transition-all text-sm">Termeni și Condiții</Link>
            <Link to="/privacy" className="text-neutral-400 hover:text-brand-yellow hover:translate-x-1 transition-all text-sm">Politica de Confidențialitate</Link>
+           <Link to="/cookies" className="text-neutral-400 hover:text-brand-yellow hover:translate-x-1 transition-all text-sm">Politică Cookies</Link>
+           <Link to="/contact" className="text-neutral-400 hover:text-brand-yellow hover:translate-x-1 transition-all text-sm">Contact</Link>
            <a href="https://anpc.ro" target="_blank" rel="noopener noreferrer" className="text-neutral-400 hover:text-brand-yellow hover:translate-x-1 transition-all text-sm">ANPC</a>
         </div>
 
