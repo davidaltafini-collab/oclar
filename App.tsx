@@ -11,9 +11,8 @@ import { Admin } from './pages/Admin';
 import { Diagnostics } from './pages/Diagnostics';
 import { Terms } from './pages/Terms';
 import { Privacy } from './pages/Privacy';
-// Dacă ai creat paginile sugerate anterior, decomentează liniile de mai jos:
-// import { Contact } from './pages/Contact';
-// import { Cookies } from './pages/Cookies';
+import { Contact } from './pages/Contact';
+import { Cookies } from './pages/Cookies';
 
 import { CartProvider } from './context/CartContext';
 import { CartDrawer } from './components/CartDrawer';
@@ -110,10 +109,9 @@ function App() {
               <Route path="/diagnostics" element={<Diagnostics />} />
               <Route path="/terms" element={<Terms />} />
               <Route path="/privacy" element={<Privacy />} />
-              
-              {/* Rutele noi pentru Contact și Cookies (dacă le-ai creat) */}
-              {/* <Route path="/contact" element={<Contact />} /> */}
-              {/* <Route path="/cookies" element={<Cookies />} /> */}
+              <Route path="/contact" element={<Contact />} />
+              <Route path="/cookies" element={<Cookies />}
+
             </Routes>
             
             <Footer />
