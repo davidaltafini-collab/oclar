@@ -55,7 +55,7 @@ export const Footer: React.FC = () => {
             {/* Folosim exact parametrii tăi: orizontal și culoarea 0b0b0b */}
             <div className="w-fit hover:opacity-90 transition-opacity bg-white/5 rounded p-1">
               <NTPLogo 
-                color="#0b0b0b" 
+                color="#0c0c0c" 
                 version="orizontal" 
                 secret="160509" 
               />
