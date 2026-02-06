@@ -218,4 +218,31 @@ export const Privacy: React.FC = () => {
             Securitatea Datelor
           </h2>
           <p>
-            Oclar
+            Oclar a implementat măsuri tehnice și organizatorice adecvate pentru a asigura securitatea datelor dumneavoastră împotriva distrugerii accidentale sau ilegale, pierderii, modificării, dezvăluirii sau accesului neautorizat.
+            <br/><br/>
+            Comunicațiile cu serverul sunt criptate prin protocol HTTPS (certificat SSL), iar plățile sunt securizate prin standardul 3D Secure oferit de Netopia Payments. Accesul la bazele de date este restricționat și monitorizat.
+          </p>
+        </section>
+
+        {/* 8. COOKIES */}
+        <section>
+          <h2 className="text-lg font-bold uppercase mb-4 flex items-center">
+            <span className="bg-neutral-900 text-white w-8 h-8 flex items-center justify-center mr-3 text-sm">08</span>
+            Politica de Cookie-uri
+          </h2>
+          <p className="mb-2">
+            Site-ul www.oclar.ro folosește cookie-uri pentru a îmbunătăți experiența de navigare și funcționalitatea magazinului (ex: păstrarea produselor în coș).
+          </p>
+          <p className="text-xs text-neutral-500 italic">
+            Puteți gestiona preferințele privind cookie-urile direct din setările browser-ului dumneavoastră sau prin intermediul banner-ului de consimțământ afișat la prima accesare a site-ului.
+          </p>
+        </section>
+
+        <section className="pt-8 border-t border-neutral-200 text-xs text-neutral-400 text-center">
+          <p>© {new Date().getFullYear()} ALTMAR GROUP S.R.L. Toate drepturile rezervate.</p>
+        </section>
+
+      </div>
+    </main>
+  );
+};
