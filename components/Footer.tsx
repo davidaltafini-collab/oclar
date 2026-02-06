@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-// @ts-ignore - Ignorăm eroarea de tipare dacă pachetul nu are definiții TS incluse
+// @ts-ignore - Ignorăm eroarea de tipare dacă pachetul nu are definiții TS
 import NTPLogo from 'ntp-logo-react';
 
 export const Footer: React.FC = () => {
@@ -32,7 +32,6 @@ export const Footer: React.FC = () => {
           <h4 className="font-bold uppercase text-[10px] tracking-widest text-neutral-600 mb-2">Explorează</h4>
           <Link to="/" className="text-neutral-400 hover:text-brand-yellow hover:translate-x-1 transition-all text-sm">Colecția</Link>
           <Link to="/about" className="text-neutral-400 hover:text-brand-yellow hover:translate-x-1 transition-all text-sm">Povestea Noastră</Link>
-          <Link to="/diagnostics" className="text-neutral-400 hover:text-brand-yellow hover:translate-x-1 transition-all text-sm">Testare</Link>
         </div>
 
         {/* COLOANA 3: LEGAL */}
@@ -43,20 +42,19 @@ export const Footer: React.FC = () => {
            <a href="https://anpc.ro" target="_blank" rel="noopener noreferrer" className="text-neutral-400 hover:text-brand-yellow hover:translate-x-1 transition-all text-sm">ANPC</a>
         </div>
 
-        {/* COLOANA 4: PLĂȚI & NETOPIA (COMPONENTA OFICIALĂ) */}
+        {/* COLOANA 4: PLĂȚI & NETOPIA */}
         <div className="flex flex-col gap-4">
             <h4 className="font-bold uppercase text-[10px] tracking-widest text-neutral-600 mb-2">Plăți Securizate</h4>
             <p className="text-xs text-neutral-500 mb-2">
               Plățile sunt procesate securizat prin:
             </p>
             
-            {/* Componenta Oficială Netopia 
-                color="#0b0b0b" -> Îi spune componentei că fundalul e negru, deci va afișa text alb.
-            */}
-            <div className="w-fit hover:opacity-90 transition-opacity">
+            {/* Componenta Oficială Netopia */}
+            {/* Folosim exact parametrii tăi: orizontal și culoarea 0b0b0b */}
+            <div className="w-fit hover:opacity-90 transition-opacity bg-white/5 rounded p-1">
               <NTPLogo 
                 color="#0b0b0b" 
-                version="horizontal" 
+                version="orizontal" 
                 secret="160509" 
               />
             </div>

@@ -15,6 +15,8 @@ import { CartProvider } from './context/CartContext';
 import { CartDrawer } from './components/CartDrawer';
 import { CookieConsent } from './components/CookieConsent';
 import { CookieChoice } from './types'; // Asigură-te că exporți CookieChoice din types.ts
+import { Contact } from './pages/Contact'; // <-- Adaugă asta
+import { Cookies } from './pages/Cookies'; // <-- Adaugă asta
 
 // --- ANALYTICS MANAGER ---
 // Această componentă ascultă schimbările de pagină și cookie-urile
@@ -105,6 +107,8 @@ function App() {
               <Route path="/diagnostics" element={<Diagnostics />} />
               <Route path="/terms" element={<Terms />} />
               <Route path="/privacy" element={<Privacy />} />
+              <Route path="/contact" element={<Contact />} />
+              <Route path="/cookies" element={<Cookies />} />
             </Routes>
             
             <Footer />
