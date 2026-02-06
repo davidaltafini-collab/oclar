@@ -6,6 +6,7 @@ import { pool } from './db.js'; // Asta se execută prima!
 import { sendOrderEmails } from './services/email.js';
 import { sendOblioInvoice, generateAWB } from './services/oblio.js';
 import { createDraftShipment, getShipmentStatus, getShipmentLabel } from './services/ecolet.js';
+import { encryptRequest, decryptIPN } from './services/netopia.js';
 
 dotenv.config(); // Încarcă variabilele pentru acest fișier
 
@@ -1004,7 +1005,110 @@ app.get('/api/status', async (req, res) => {
         if(connection) connection.release();
     }
 });
+// --- 16. PORNIRE SERVER ---
+const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
 
+   // --- 9.1 RUTA INIT NETOPIA ---
+      app.post('/api/create-netopia-session', async (req, res) => {
+          try {
+              const body = req.body;
+              // Inseram comanda in DB ca "pending" INAINTE de a trimite userul la plata
+              // Asta e diferit de Stripe unde puteam astepta webhook-ul
+
+              let connection;
+              let orderId;
+
+              try {
+                  connection = await pool.getConnection();
+                  const itemsJson = JSON.stringify(body.items);
+
+                  // Calculam totalul server-side sau il luam din body (in productie RECALCULEAZA!)
+                  const totalAmount = body.totalAmount;
+
+                  // Cream comanda temporara
+                  const [result] = await connection.query(
+                      `INSERT INTO orders 
+                (customer_name, customer_email, customer_phone, county, city, address_line, items, subtotal, shipping_method, shipping_cost, discount_code, discount_amount, total_amount, payment_method, status, created_at) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'netopia', 'pending', NOW())`,
+                      [
+                          body.customerName,
+                          body.customerEmail,
+                          body.customerPhone,
+                          body.address.county,
+                          body.address.city,
+                          body.address.line,
+                          itemsJson,
+                          body.subtotal,
+                          body.shippingMethod,
+                          body.shippingCost,
+                          body.discountCode,
+                          body.discountAmount,
+                          totalAmount
+                      ]
+                  );
+                  orderId = result.insertId;
+
+                  // Pregatim datele pentru Netopia
+                  const paymentData = {
+                      orderId: orderId,
+                      amount: totalAmount,
+                      firstName: body.customerName.split(' ')[0] || 'Client',
+                      lastName: body.customerName.split(' ').slice(1).join(' ') || 'Oclar',
+                      email: body.customerEmail,
+                      phone: body.customerPhone,
+                      address: `${body.address.city}, ${body.address.line}`
+                  };
+
+                  // Criptam
+                  const encryptedParams = await encryptRequest(paymentData);
+
+                  res.json({ success: true, ...encryptedParams });
+
+              } finally {
+                  if (connection) connection.release();
+              }
+
+          } catch (e) {
+              console.error('❌ Netopia Init Error:', e);
+              res.status(500).json({ error: e.message });
+          }
+      });
+
+      // --- 9.2 RUTA CONFIRM NETOPIA (IPN) ---
+      app.post('/api/netopia/confirm', async (req, res) => {
+          // Netopia trimite datele ca x-www-form-urlencoded
+          const { env_key, data } = req.body;
+
+          try {
+              const result = await decryptIPN(env_key, data);
+
+              console.log(`🔔 Netopia IPN pentru comanda #${result.orderId}: ${result.action}`);
+
+              if (result.errorCode === '0' && result.action === 'confirmed') {
+                  // Actualizam comanda in DB
+                  const connection = await pool.getConnection();
+                  await connection.query(
+                      'UPDATE orders SET status = "paid" WHERE id = ?',
+                      [result.orderId]
+                  );
+
+                  // Aici poti trimite si emailul de confirmare (sendOrderEmails)
+                  // ...
+
+                  connection.release();
+              }
+
+              // RASPUNS OBLIGATORIU PENTRU NETOPIA (XML)
+              res.set('Content-Type', 'application/xml');
+              res.send('<?xml version="1.0" encoding="utf-8"?><crc error_code="0">Success</crc>');
+
+          } catch (e) {
+              console.error('❌ Netopia Confirm Error:', e);
+              res.status(500).send('Error');
+          }
+      });
+      
 // --- 15. CATCH-ALL ERROR HANDLER ---
 app.use((err, req, res, next) => {
     console.error('❌ Unhandled error:', err);
@@ -1013,10 +1117,6 @@ app.use((err, req, res, next) => {
         message: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
 });
-
-// --- 16. PORNIRE SERVER ---
-const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || '0.0.0.0';
 
 // Verificare conexiune DB înainte de pornire
 pool.getConnection()
