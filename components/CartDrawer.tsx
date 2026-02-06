@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useCart } from '../context/CartContext';
 import { Button } from './Button';
 import { API_URL } from '../constants';
+import { processNetopiaPayment } from '../utils/payment';
 
 // ⭐ IMPORTURI OFICIALE GOOGLE MAPS WEB COMPONENTS
 import '@googlemaps/extended-component-library/place_picker.js';
@@ -469,17 +470,9 @@ export const CartDrawer: React.FC = () => {
       };
 
       if (paymentMethod === 'card') {
-        const response = await fetch(`${API_URL}/create-checkout-session`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(orderPayload),
-        });
-
-        if (!response.ok) throw new Error('Failed to create checkout session');
-        const { url } = await response.json();
-        if (url) window.location.href = url;
-        else throw new Error('No checkout URL received');
-      } else {
+        // Apelăm funcția Netopia care face redirectul invizibil
+        await processNetopiaPayment(orderPayload);
+      } else {
         const response = await fetch(`${API_URL}/create-order-ramburs`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -698,7 +691,7 @@ export const CartDrawer: React.FC = () => {
                       <div id="ecolet-locker-widget" style={{ width: '100%', height: '100%' }}></div>
 
                       {/* ⭐ BANDA ALBĂ DE JOS (MASCA) - Acoperă branding-ul */}
-                      <div className="absolute bottom-0 left-0 w-full h-24 bg-white z-20 border-t border-neutral-100 flex items-center justify-center">
+                      <div className="absolute bottom-0 left-0 w-full h-26 bg-white z-20 border-t border-neutral-100 flex items-center justify-center">
                           {/* Aici scrie "ALEGE LOCKER" ca să pară că e parte din site */}
                           <div className="flex items-center gap-2 text-s font-bold text-yellow-300 uppercase tracking-widest">
                             <span>Alege Locker</span>
@@ -756,7 +749,7 @@ export const CartDrawer: React.FC = () => {
                       </div>
                       <div>
                         <span className="font-bold block text-sm">Card Online</span>
-                        <span className="text-xs text-neutral-500">Securizat prin Stripe</span>
+                        <span className="text-xs text-neutral-500">Securizat prin Netopia Payments</span>
                       </div>
                     </label>
                   </div>
