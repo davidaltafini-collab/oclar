@@ -97,7 +97,7 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
         const [result] = await connection.query(
           `INSERT INTO orders 
            (stripe_session_id, customer_name, customer_email, customer_phone, shipping_address, items, subtotal, shipping_method, shipping_cost, discount_code, discount_amount, total_amount, payment_method, status, created_at) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'card', 'paid', NOW())`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'card', 'pending', NOW())`,
           [orderData.stripe_session_id, orderData.customer_name, orderData.customer_email, orderData.customer_phone, orderData.shipping_address, orderData.items, orderData.subtotal, orderData.shipping_method, orderData.shipping_cost, orderData.discount_code, orderData.discount_amount, orderData.total_amount]
         );
 
@@ -1108,7 +1108,7 @@ const HOST = process.env.HOST || '0.0.0.0';
               res.status(500).send('Error');
           }
       });
-      
+
 // --- 15. CATCH-ALL ERROR HANDLER ---
 app.use((err, req, res, next) => {
     console.error('❌ Unhandled error:', err);
