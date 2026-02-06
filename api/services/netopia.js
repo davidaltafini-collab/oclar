@@ -11,6 +11,7 @@ const NETOPIA_CONFIG = {
 };
 
 // --- Algoritm RC4 Manual (Compatibil 1:1 cu PHP SDK) ---
+// Folosim asta ca sa evitam erorile Node 20 si sa avem control total pe bytes
 function rc4Encrypt(keyBuffer, dataBuffer) {
     let S = [];
     for (let i = 0; i < 256; i++) S[i] = i;
@@ -34,14 +35,14 @@ function rc4Encrypt(keyBuffer, dataBuffer) {
     return output;
 }
 
+// --- 1. CRIPTARE CERERE (SEND) ---
 export const encryptRequest = async (paymentData) => {
   try {
-    // 1. Verificăm semnătura înainte să începem
     if (!NETOPIA_CONFIG.signature || NETOPIA_CONFIG.signature.length < 10) {
         throw new Error("Semnatura Netopia lipseste sau este invalida in .env");
     }
 
-    // 2. Citim cheia publică
+    // Citim cheia publică
     const publicKeyPem = fs.readFileSync(NETOPIA_CONFIG.publicKeyPath, 'utf8');
     let publicKey;
     try {
@@ -51,19 +52,19 @@ export const encryptRequest = async (paymentData) => {
         publicKey = forge.pki.publicKeyFromPem(publicKeyPem);
     }
 
-    // 3. Generăm XML-ul și îl transformăm în Buffer
+    // Generăm XML-ul și îl transformăm în Buffer
     const xmlData = buildXml(paymentData);
     const xmlBuffer = Buffer.from(xmlData, 'utf8');
 
-    // 4. Generăm cheia RC4 (16 bytes)
+    // Generăm cheia RC4 (16 bytes)
     const rc4KeyString = forge.random.getBytesSync(16);
     const rc4KeyBuffer = Buffer.from(rc4KeyString, 'binary');
 
-    // 5. Criptăm datele (RC4 Manual) -> Rezultat HEX Uppercase
+    // Criptăm datele (RC4 Manual) -> Rezultat HEX Uppercase
     const encryptedBuffer = rc4Encrypt(rc4KeyBuffer, xmlBuffer);
     const encryptedData = encryptedBuffer.toString('hex').toUpperCase();
 
-    // 6. Criptăm cheia RC4 (RSA cu padding vechi pentru Sandbox)
+    // Criptăm cheia RC4 (RSA cu padding vechi pentru Sandbox)
     const encryptedKey = publicKey.encrypt(rc4KeyString, 'RSAES-PKCS1-V1_5');
     const envKey = forge.util.encode64(encryptedKey);
 
@@ -78,8 +79,43 @@ export const encryptRequest = async (paymentData) => {
   }
 };
 
-// ... funcția decryptIPN rămâne la fel (vezi mesajul anterior) sau o poți omite momentan ...
-// Include aici și decryptIPN dacă ai nevoie de confirmare, dar prioritatea e plata.
+// --- 2. DECRIPTARE RASPUNS (CONFIRM) ---
+export const decryptIPN = async (envKey, encryptedData) => {
+    try {
+        const privateKeyPem = fs.readFileSync(NETOPIA_CONFIG.privateKeyPath, 'utf8');
+        const privateKey = forge.pki.privateKeyFromPem(privateKeyPem);
+
+        // Decriptăm cheia RSA (RC4 Key)
+        // Atentie: Netopia trimite cheia tot base64, trebuie decodata inainte de decrypt
+        const rc4KeyString = privateKey.decrypt(forge.util.decode64(envKey), 'RSAES-PKCS1-V1_5');
+        const rc4KeyBuffer = Buffer.from(rc4KeyString, 'binary');
+
+        // Decriptăm datele (RC4 Manual)
+        // Convertim string-ul HEX primit inapoi in Buffer
+        const encryptedBuffer = Buffer.from(encryptedData, 'hex');
+        
+        // RC4 este simetric: aceeasi functie cripteaza si decripteaza
+        const decryptedBuffer = rc4Encrypt(rc4KeyBuffer, encryptedBuffer);
+        
+        const xmlContent = decryptedBuffer.toString('utf8');
+
+        // Parsare simpla Regex
+        const orderIdMatch = xmlContent.match(/id="([^"]+)"/);
+        const actionMatch = xmlContent.match(/<action>([^<]+)<\/action>/);
+        const errorMatch = xmlContent.match(/<error code="([^"]+)">/);
+
+        return {
+            orderId: orderIdMatch ? orderIdMatch[1] : null,
+            action: actionMatch ? actionMatch[1] : null,
+            errorCode: errorMatch ? errorMatch[1] : null,
+            xml: xmlContent
+        };
+
+    } catch (error) {
+        console.error("Netopia Decrypt Error:", error);
+        throw error;
+    }
+};
 
 function buildXml(data) {
     const clean = (str) => String(str || '').replace(/[<>&'"]/g, '').trim();
