@@ -11,6 +11,7 @@ import { Admin } from './pages/Admin';
 import { Diagnostics } from './pages/Diagnostics';
 import { Terms } from './pages/Terms';
 import { Privacy } from './pages/Privacy';
+// IMPORTĂM PAGINILE NOI (TREBUIE SĂ EXISTE FIȘIERELE create anterior)
 import { Contact } from './pages/Contact';
 import { Cookies } from './pages/Cookies';
 
@@ -19,7 +20,7 @@ import { CartDrawer } from './components/CartDrawer';
 import { CookieConsent } from './components/CookieConsent';
 import { CookieChoice } from './types';
 
-// --- 1. COMPONENTA SCROLL TO TOP (NOUĂ) ---
+// --- 1. COMPONENTA SCROLL TO TOP ---
 // Aceasta forțează fereastra să meargă sus (0,0) la fiecare schimbare de rută
 const ScrollToTop = () => {
   const { pathname } = useLocation();
@@ -92,7 +93,7 @@ function App() {
   return (
     <HelmetProvider>
       <Router>
-        {/* Adăugăm ScrollToTop aici, în interiorul Router-ului */}
+        {/* ScrollToTop trebuie să fie aici, imediat după Router */}
         <ScrollToTop />
         
         <CartProvider>
@@ -109,9 +110,10 @@ function App() {
               <Route path="/diagnostics" element={<Diagnostics />} />
               <Route path="/terms" element={<Terms />} />
               <Route path="/privacy" element={<Privacy />} />
+              
+              {/* Rutele noi activate */}
               <Route path="/contact" element={<Contact />} />
-              <Route path="/cookies" element={<Cookies />}
-
+              <Route path="/cookies" element={<Cookies />} />
             </Routes>
             
             <Footer />
