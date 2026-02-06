@@ -38,16 +38,17 @@ export const Footer: React.FC = () => {
         </div>
       </div>
       
-      {/* Stickere ANPC - SAL și SOL */}
+     {/* Stickere ANPC - SAL și SOL */}
       <div className="max-w-7xl mx-auto border-t border-neutral-900 pt-8 flex flex-col md:flex-row justify-between items-center gap-6">
         
-        {/* Imaginile ANPC - Aici am adăugat clasele 'border-0 no-underline outline-none' */}
         <div className="flex gap-4">
           <a 
             href="https://anpc.ro/ce-este-sal/" 
             target="_blank" 
             rel="noopener noreferrer"
-            className="border-0 no-underline outline-none hover:opacity-100 transition-opacity opacity-80"
+            // Am adaugat !border-none !no-underline !shadow-none ca sa fortam stilul
+            className="!border-none !no-underline !shadow-none !outline-none opacity-80 hover:opacity-100 transition-opacity"
+            style={{ border: 'none', textDecoration: 'none', boxShadow: 'none' }} // Dubla siguranta cu stil inline
           >
             <img src="/anpc-sal.svg" alt="ANPC SAL" className="h-6 w-auto block border-0" />
           </a>
@@ -56,7 +57,8 @@ export const Footer: React.FC = () => {
             href="https://ec.europa.eu/consumers/odr" 
             target="_blank" 
             rel="noopener noreferrer"
-            className="border-0 no-underline outline-none hover:opacity-100 transition-opacity opacity-80"
+            className="!border-none !no-underline !shadow-none !outline-none opacity-80 hover:opacity-100 transition-opacity"
+            style={{ border: 'none', textDecoration: 'none', boxShadow: 'none' }}
           >
             <img src="/anpc-sol.svg" alt="ANPC SOL" className="h-6 w-auto block border-0" />
           </a>
