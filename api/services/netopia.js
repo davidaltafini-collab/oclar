@@ -2,50 +2,22 @@ import forge from 'node-forge';
 import fs from 'fs';
 import path from 'path';
 
+// ⭐ HARDCODĂM SEMNĂTURA TEMPORAR PENTRU SIGURANȚĂ
+// Verifică să fie exact cea din poză: 39IB-FQJV-WABH-2FHI-O4ZQ
+const MY_SIGNATURE = process.env.NETOPIA_SIGNATURE || '39IB-FQJV-WABH-2FHI-O4ZQ';
+
 const NETOPIA_CONFIG = {
   url: 'https://sandboxsecure.mobilpay.ro',
-  signature: process.env.NETOPIA_SIGNATURE, 
+  signature: MY_SIGNATURE,
   publicKeyPath: path.join(process.cwd(), 'api', 'certs', 'public.cer'),
   privateKeyPath: path.join(process.cwd(), 'api', 'certs', 'private.key')
 };
 
-// --- ALGORITM RC4 MANUAL (Ca să nu dea eroare Node v20) ---
-function rc4(key, str) {
-    var s = [], j = 0, x, res = '';
-    for (var i = 0; i < 256; i++) { s[i] = i; }
-    for (i = 0; i < 256; i++) {
-        j = (j + s[i] + key.charCodeAt(i % key.length)) % 256;
-        x = s[i]; s[i] = s[j]; s[j] = x;
-    }
-    i = 0; j = 0;
-    for (var y = 0; y < str.length; y++) {
-        i = (i + 1) % 256;
-        j = (j + s[i]) % 256;
-        x = s[i]; s[i] = s[j]; s[j] = x;
-        res += String.fromCharCode(str.charCodeAt(y) ^ s[(s[i] + s[j]) % 256]);
-    }
-    return res;
-}
-
-function stringToHex(str) {
-    let hex = '';
-    for(let i=0;i<str.length;i++) {
-        hex += ''+str.charCodeAt(i).toString(16).padStart(2, '0');
-    }
-    return hex.toUpperCase();
-}
-
-function hexToString(hex) {
-    let str = '';
-    for (let i = 0; i < hex.length; i += 2) {
-        str += String.fromCharCode(parseInt(hex.substr(i, 2), 16));
-    }
-    return str;
-}
-// ---------------------------------------------------------
-
 export const encryptRequest = async (paymentData) => {
   try {
+    console.log(`[Netopia] Incepem criptarea pentru comanda #${paymentData.orderId}`);
+    
+    // 1. Citim Certificatul Public
     const publicKeyPem = fs.readFileSync(NETOPIA_CONFIG.publicKeyPath, 'utf8');
     let publicKey;
     try {
@@ -56,19 +28,23 @@ export const encryptRequest = async (paymentData) => {
     }
 
     const xmlData = buildXml(paymentData);
-
-    // 1. Criptare RC4 (MANUAL - Fără erori de sistem)
-    // Generăm cheia ca string random
-    const rc4Key = forge.random.getBytesSync(16);
     
-    // Criptăm XML-ul cu funcția noastră matematică
-    const encryptedRaw = rc4(rc4Key, xmlData);
-    const encryptedData = stringToHex(encryptedRaw);
+    // 2. Generăm Cheia RC4 (16 bytes)
+    const rc4Key = forge.random.getBytesSync(16);
 
-    // 2. Criptare RSA (Aici folosim librăria, că e greu manual)
-    // ⭐ FOLOSIM PADDING-UL VECHI (PKCS1_V1_5) PENTRU SANDBOX
+    // 3. Criptăm XML-ul folosind RC4 (Pure JS - Fără eroare Node 20)
+    // Folosim forge.rc4.create() care nu apelează OpenSSL
+    const cipher = forge.rc4.create();
+    cipher.start(rc4Key);
+    cipher.update(forge.util.createBuffer(xmlData, 'utf8'));
+    const encryptedData = cipher.output.toHex().toUpperCase();
+
+    // 4. Criptăm cheia RC4 folosind RSA
+    // CRITIC: Folosim padding-ul vechi pentru Sandbox
     const encryptedKey = publicKey.encrypt(rc4Key, 'RSAES-PKCS1-V1_5');
     const envKey = forge.util.encode64(encryptedKey);
+
+    console.log(`[Netopia] Criptare reusita. Semnatura folosita: ${NETOPIA_CONFIG.signature}`);
 
     return {
       url: NETOPIA_CONFIG.url,
@@ -86,12 +62,14 @@ export const decryptIPN = async (envKey, encryptedData) => {
         const privateKeyPem = fs.readFileSync(NETOPIA_CONFIG.privateKeyPath, 'utf8');
         const privateKey = forge.pki.privateKeyFromPem(privateKeyPem);
 
-        // Decriptăm cheia RSA folosind padding-ul vechi
+        // Decriptăm cheia RSA
         const rc4Key = privateKey.decrypt(forge.util.decode64(envKey), 'RSAES-PKCS1-V1_5');
 
-        // Decriptăm datele (hex -> string -> rc4 decrypt)
-        const encryptedStr = hexToString(encryptedData);
-        const xmlContent = rc4(rc4Key, encryptedStr);
+        // Decriptăm datele RC4
+        const decipher = forge.rc4.create();
+        decipher.start(rc4Key);
+        decipher.update(forge.util.createBuffer(forge.util.hexToBytes(encryptedData)));
+        const xmlContent = decipher.output.toString();
 
         const orderIdMatch = xmlContent.match(/id="([^"]+)"/);
         const actionMatch = xmlContent.match(/<action>([^<]+)<\/action>/);
@@ -111,10 +89,20 @@ export const decryptIPN = async (envKey, encryptedData) => {
 };
 
 function buildXml(data) {
+    // Curățare agresivă a datelor
     const clean = (str) => String(str || '').replace(/[<>&'"]/g, '').trim();
     
+    // Formatarea datei
+    const d = new Date();
+    const dateStr = d.getFullYear() + '-' + 
+                   String(d.getMonth() + 1).padStart(2, '0') + '-' + 
+                   String(d.getDate()).padStart(2, '0') + ' ' + 
+                   String(d.getHours()).padStart(2, '0') + ':' + 
+                   String(d.getMinutes()).padStart(2, '0') + ':' + 
+                   String(d.getSeconds()).padStart(2, '0');
+
     return `<?xml version="1.0" encoding="utf-8"?>
-<order type="card" timestamp="${Date.now()}">
+<order type="card" timestamp="${dateStr}">
   <signature>${NETOPIA_CONFIG.signature}</signature>
   <url>
     <return>https://oclar.ro/#/success</return>
