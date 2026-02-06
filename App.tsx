@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
-import { HelmetProvider } from 'react-helmet-async'; // <--- IMPORT NOU PENTRU SEO
+import { HelmetProvider } from 'react-helmet-async';
 
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
@@ -11,31 +11,39 @@ import { Admin } from './pages/Admin';
 import { Diagnostics } from './pages/Diagnostics';
 import { Terms } from './pages/Terms';
 import { Privacy } from './pages/Privacy';
+// Dacă ai creat paginile sugerate anterior, decomentează liniile de mai jos:
+// import { Contact } from './pages/Contact';
+// import { Cookies } from './pages/Cookies';
+
 import { CartProvider } from './context/CartContext';
 import { CartDrawer } from './components/CartDrawer';
 import { CookieConsent } from './components/CookieConsent';
-import { CookieChoice } from './types'; // Asigură-te că exporți CookieChoice din types.ts
-import { Contact } from './pages/Contact'; // <-- Adaugă asta
-import { Cookies } from './pages/Cookies'; // <-- Adaugă asta
+import { CookieChoice } from './types';
 
-// --- ANALYTICS MANAGER ---
-// Această componentă ascultă schimbările de pagină și cookie-urile
+// --- 1. COMPONENTA SCROLL TO TOP (NOUĂ) ---
+// Aceasta forțează fereastra să meargă sus (0,0) la fiecare schimbare de rută
+const ScrollToTop = () => {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+
+  return null;
+};
+
+// --- 2. ANALYTICS MANAGER ---
 const AnalyticsManager = () => {
   const location = useLocation();
 
   useEffect(() => {
-    // Verificăm dacă avem permisiunea utilizatorului
     const consent = localStorage.getItem('lumina_cookie_consent');
 
-    // Executăm codul de tracking DOAR dacă avem 'ACCEPTED_ALL'
-    // Verificăm ambele variante pentru siguranță (string sau enum)
     if (consent === CookieChoice.ACCEPTED_ALL || consent === 'ACCEPTED_ALL') {
-      
       console.log('Analytics Enabled: User accepted cookies.');
 
-      // 1. GOOGLE ANALYTICS 4
-      const gaId = 'G-XXXXXXXXXX'; // <--- PUNE AICI ID-UL TAU GA4 CAND IL AI
-      
+      const gaId = 'G-XXXXXXXXXX'; // PUNE ID-ul TĂU
+
       // @ts-ignore
       if (!window.dataLayer) {
         // @ts-ignore
@@ -47,19 +55,16 @@ const AnalyticsManager = () => {
         // @ts-ignore
         gtag('config', gaId);
 
-        // Injectăm scriptul Google în <head>
         const script = document.createElement('script');
         script.src = `https://www.googletagmanager.com/gtag/js?id=${gaId}`;
         script.async = true;
         document.head.appendChild(script);
       } else {
-        // Dacă e deja încărcat, trimitem doar un semnal de "page view" nou
         // @ts-ignore
         if (window.gtag) window.gtag('config', gaId, { page_path: location.pathname });
       }
 
-      // 2. META PIXEL (FACEBOOK)
-      const pixelId = '123456789012345'; // <--- PUNE AICI ID-UL TAU PIXEL CAND IL AI
+      const pixelId = '123456789012345'; // PUNE ID-ul TĂU
       
       // @ts-ignore
       if (!window.fbq) {
@@ -76,27 +81,25 @@ const AnalyticsManager = () => {
         // @ts-ignore
         window.fbq('init', pixelId);
       }
-      
-      // Trimitem evenimentul de vizualizare
       // @ts-ignore
       if (window.fbq) window.fbq('track', 'PageView');
     }
-  }, [location]); // Se reactivează la fiecare schimbare de rută (pagină)
+  }, [location]);
 
   return null;
 };
 
 function App() {
   return (
-    // Învelim totul în HelmetProvider pentru SEO
     <HelmetProvider>
       <Router>
+        {/* Adăugăm ScrollToTop aici, în interiorul Router-ului */}
+        <ScrollToTop />
+        
         <CartProvider>
           <div className="min-h-screen bg-neutral-50 flex flex-col font-sans text-neutral-900 selection:bg-brand-yellow selection:text-black">
             <Navbar />
             <CartDrawer />
-            
-            {/* Componenta invizibilă care se ocupă de tracking */}
             <AnalyticsManager />
             
             <Routes>
@@ -107,8 +110,10 @@ function App() {
               <Route path="/diagnostics" element={<Diagnostics />} />
               <Route path="/terms" element={<Terms />} />
               <Route path="/privacy" element={<Privacy />} />
-              <Route path="/contact" element={<Contact />} />
-              <Route path="/cookies" element={<Cookies />} />
+              
+              {/* Rutele noi pentru Contact și Cookies (dacă le-ai creat) */}
+              {/* <Route path="/contact" element={<Contact />} /> */}
+              {/* <Route path="/cookies" element={<Cookies />} /> */}
             </Routes>
             
             <Footer />
