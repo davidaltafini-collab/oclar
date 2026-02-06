@@ -4,11 +4,45 @@ import path from 'path';
 
 const NETOPIA_CONFIG = {
   url: 'https://sandboxsecure.mobilpay.ro',
-  // FOLOSIM .ENV (Sigur)
   signature: process.env.NETOPIA_SIGNATURE, 
   publicKeyPath: path.join(process.cwd(), 'api', 'certs', 'public.cer'),
   privateKeyPath: path.join(process.cwd(), 'api', 'certs', 'private.key')
 };
+
+// --- ALGORITM RC4 MANUAL (Ca să nu dea eroare Node v20) ---
+function rc4(key, str) {
+    var s = [], j = 0, x, res = '';
+    for (var i = 0; i < 256; i++) { s[i] = i; }
+    for (i = 0; i < 256; i++) {
+        j = (j + s[i] + key.charCodeAt(i % key.length)) % 256;
+        x = s[i]; s[i] = s[j]; s[j] = x;
+    }
+    i = 0; j = 0;
+    for (var y = 0; y < str.length; y++) {
+        i = (i + 1) % 256;
+        j = (j + s[i]) % 256;
+        x = s[i]; s[i] = s[j]; s[j] = x;
+        res += String.fromCharCode(str.charCodeAt(y) ^ s[(s[i] + s[j]) % 256]);
+    }
+    return res;
+}
+
+function stringToHex(str) {
+    let hex = '';
+    for(let i=0;i<str.length;i++) {
+        hex += ''+str.charCodeAt(i).toString(16).padStart(2, '0');
+    }
+    return hex.toUpperCase();
+}
+
+function hexToString(hex) {
+    let str = '';
+    for (let i = 0; i < hex.length; i += 2) {
+        str += String.fromCharCode(parseInt(hex.substr(i, 2), 16));
+    }
+    return str;
+}
+// ---------------------------------------------------------
 
 export const encryptRequest = async (paymentData) => {
   try {
@@ -23,17 +57,16 @@ export const encryptRequest = async (paymentData) => {
 
     const xmlData = buildXml(paymentData);
 
-    // 1. Criptare RC4 (Datele)
+    // 1. Criptare RC4 (MANUAL - Fără erori de sistem)
+    // Generăm cheia ca string random
     const rc4Key = forge.random.getBytesSync(16);
-    const cipher = forge.cipher.createCipher('RC4', rc4Key);
-    cipher.start();
-    cipher.update(forge.util.createBuffer(xmlData, 'utf8'));
-    cipher.finish();
-    const encryptedData = cipher.output.toHex().toUpperCase();
+    
+    // Criptăm XML-ul cu funcția noastră matematică
+    const encryptedRaw = rc4(rc4Key, xmlData);
+    const encryptedData = stringToHex(encryptedRaw);
 
-    // 2. Criptare Cheie RC4 (RSA)
-    // ⭐ AICI E SCHIMBAREA CRITICĂ: Folosim 'RSAES-PKCS1-V1_5' (Standardul vechi pt Sandbox)
-    // Înainte era 'RSA-OAEP' și de asta dădea fail, chiar dacă cheile erau bune.
+    // 2. Criptare RSA (Aici folosim librăria, că e greu manual)
+    // ⭐ FOLOSIM PADDING-UL VECHI (PKCS1_V1_5) PENTRU SANDBOX
     const encryptedKey = publicKey.encrypt(rc4Key, 'RSAES-PKCS1-V1_5');
     const envKey = forge.util.encode64(encryptedKey);
 
@@ -53,17 +86,13 @@ export const decryptIPN = async (envKey, encryptedData) => {
         const privateKeyPem = fs.readFileSync(NETOPIA_CONFIG.privateKeyPath, 'utf8');
         const privateKey = forge.pki.privateKeyFromPem(privateKeyPem);
 
-        // La fel și la decriptare, folosim standardul vechi
+        // Decriptăm cheia RSA folosind padding-ul vechi
         const rc4Key = privateKey.decrypt(forge.util.decode64(envKey), 'RSAES-PKCS1-V1_5');
 
-        const decipher = forge.cipher.createDecipher('RC4', rc4Key);
-        decipher.start();
-        decipher.update(forge.util.createBuffer(forge.util.hexToBytes(encryptedData)));
-        decipher.finish();
-        
-        const xmlContent = decipher.output.toString();
+        // Decriptăm datele (hex -> string -> rc4 decrypt)
+        const encryptedStr = hexToString(encryptedData);
+        const xmlContent = rc4(rc4Key, encryptedStr);
 
-        // Extragem datele
         const orderIdMatch = xmlContent.match(/id="([^"]+)"/);
         const actionMatch = xmlContent.match(/<action>([^<]+)<\/action>/);
         const errorMatch = xmlContent.match(/<error code="([^"]+)">/);
