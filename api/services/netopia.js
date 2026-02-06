@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 const NETOPIA_CONFIG = {
-  url: 'http://sandboxsecure.mobilpay.ro', // Sandbox
+  url: 'https://sandboxsecure.mobilpay.ro', // Sandbox
   signature: process.env.NETOPIA_SIGNATURE, 
   publicKeyPath: path.join(process.cwd(), 'api', 'certs', 'public.cer'),
   privateKeyPath: path.join(process.cwd(), 'api', 'certs', 'private.key')
