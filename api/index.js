@@ -1030,7 +1030,7 @@ const HOST = process.env.HOST || '0.0.0.0';
                   const [result] = await connection.query(
                       `INSERT INTO orders 
                 (customer_name, customer_email, customer_phone, county, city, address_line, items, subtotal, shipping_method, shipping_cost, discount_code, discount_amount, total_amount, payment_method, status, created_at) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'netopia', 'pending', NOW())`,
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'card', 'pending', NOW())`,
                       [
                           body.customerName,
                           body.customerEmail,
