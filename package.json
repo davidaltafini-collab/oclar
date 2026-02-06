@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "start:server": "node api/index.js"
+    "start:server": "NODE_OPTIONS=--openssl-legacy-provider node api/index.js"
   },
   "dependencies": {
     "@googlemaps/extended-component-library": "^0.6.11",
