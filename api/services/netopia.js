@@ -3,8 +3,11 @@ import fs from 'fs';
 import path from 'path';
 
 const NETOPIA_CONFIG = {
-  // ⭐ SCHIMBARE CRITICĂ: Folosim HTTP pentru Sandbox ca să evităm redirect-urile care șterg datele POST
+  // ⭐ FIX CRITIC: Folosim HTTP (fără S) pentru Sandbox.
+  // HTTPS cauzează redirect-uri care șterg datele POST și dau eroarea "Signature missing".
   url: 'http://sandboxsecure.mobilpay.ro',
+  
+  // Ne asigurăm că nu există spații goale în semnătură
   signature: (process.env.NETOPIA_SIGNATURE || '39IB-FQJV-WABH-2FHI-O4ZQ').trim(),
   publicKeyPath: path.join(process.cwd(), 'api', 'certs', 'public.cer'),
   privateKeyPath: path.join(process.cwd(), 'api', 'certs', 'private.key')
@@ -34,9 +37,14 @@ function rc4Encrypt(keyBuffer, dataBuffer) {
     return output;
 }
 
-// --- 1. CRIPTARE CERERE ---
+// --- 1. CRIPTARE CERERE (SEND) ---
 export const encryptRequest = async (paymentData) => {
   try {
+    if (!NETOPIA_CONFIG.signature || NETOPIA_CONFIG.signature.length < 10) {
+        throw new Error("Semnatura Netopia lipseste sau este invalida in .env");
+    }
+
+    // Citim cheia publică
     const publicKeyPem = fs.readFileSync(NETOPIA_CONFIG.publicKeyPath, 'utf8');
     let publicKey;
     try {
@@ -46,19 +54,19 @@ export const encryptRequest = async (paymentData) => {
         publicKey = forge.pki.publicKeyFromPem(publicKeyPem);
     }
 
-    // Construim XML și Buffer
+    // Generăm XML-ul și îl transformăm în Buffer
     const xmlData = buildXml(paymentData);
     const xmlBuffer = Buffer.from(xmlData, 'utf8');
 
-    // Generăm cheia RC4
+    // Generăm cheia RC4 (16 bytes)
     const rc4KeyString = forge.random.getBytesSync(16);
     const rc4KeyBuffer = Buffer.from(rc4KeyString, 'binary');
 
-    // Criptăm datele (RC4 Manual)
+    // Criptăm datele (RC4 Manual) -> Rezultat HEX Uppercase
     const encryptedBuffer = rc4Encrypt(rc4KeyBuffer, xmlBuffer);
     const encryptedData = encryptedBuffer.toString('hex').toUpperCase();
 
-    // Criptăm cheia RC4 (RSA PKCS1 v1.5 pentru Sandbox)
+    // Criptăm cheia RC4 (RSA cu padding vechi pentru Sandbox)
     const encryptedKey = publicKey.encrypt(rc4KeyString, 'RSAES-PKCS1-V1_5');
     const envKey = forge.util.encode64(encryptedKey);
 
@@ -73,19 +81,23 @@ export const encryptRequest = async (paymentData) => {
   }
 };
 
-// --- 2. DECRIPTARE RĂSPUNS ---
+// --- 2. DECRIPTARE RĂSPUNS (CONFIRM) ---
 export const decryptIPN = async (envKey, encryptedData) => {
     try {
         const privateKeyPem = fs.readFileSync(NETOPIA_CONFIG.privateKeyPath, 'utf8');
         const privateKey = forge.pki.privateKeyFromPem(privateKeyPem);
 
+        // Decriptăm cheia RSA (RC4 Key)
         const rc4KeyString = privateKey.decrypt(forge.util.decode64(envKey), 'RSAES-PKCS1-V1_5');
         const rc4KeyBuffer = Buffer.from(rc4KeyString, 'binary');
 
+        // Decriptăm datele (RC4 Manual)
         const encryptedBuffer = Buffer.from(encryptedData, 'hex');
         const decryptedBuffer = rc4Encrypt(rc4KeyBuffer, encryptedBuffer);
+        
         const xmlContent = decryptedBuffer.toString('utf8');
 
+        // Parsare simpla Regex
         const orderIdMatch = xmlContent.match(/id="([^"]+)"/);
         const actionMatch = xmlContent.match(/<action>([^<]+)<\/action>/);
         const errorMatch = xmlContent.match(/<error code="([^"]+)">/);
@@ -96,6 +108,7 @@ export const decryptIPN = async (envKey, encryptedData) => {
             errorCode: errorMatch ? errorMatch[1] : null,
             xml: xmlContent
         };
+
     } catch (error) {
         console.error("Netopia Decrypt Error:", error);
         throw error;
@@ -104,13 +117,12 @@ export const decryptIPN = async (envKey, encryptedData) => {
 
 function buildXml(data) {
     const clean = (str) => String(str || '').replace(/[<>&'"]/g, '').trim();
-    
-    // Format dată Netopia
+    // Format dată Netopia: YYYY-MM-DD HH:MM:SS
     const now = new Date();
     const pad = (n) => String(n).padStart(2, '0');
     const dateStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 
-    // ⭐ SCHIMBARE: Am adăugat id="${data.orderId}" în tag-ul <order>
+    // ⭐ FIX: Am adăugat id="${data.orderId}" în tag-ul <order>
     return `<?xml version="1.0" encoding="utf-8"?>
 <order type="card" id="${data.orderId}" timestamp="${dateStr}">
   <signature>${NETOPIA_CONFIG.signature}</signature>
