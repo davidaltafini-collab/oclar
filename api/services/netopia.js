@@ -2,21 +2,43 @@ import forge from 'node-forge';
 import fs from 'fs';
 import path from 'path';
 
-// ⭐ HARDCODĂM SEMNĂTURA TEMPORAR PENTRU SIGURANȚĂ
-// Verifică să fie exact cea din poză: 39IB-FQJV-WABH-2FHI-O4ZQ
-const MY_SIGNATURE = process.env.NETOPIA_SIGNATURE || '39IB-FQJV-WABH-2FHI-O4ZQ';
-
+// Configurare
 const NETOPIA_CONFIG = {
   url: 'https://sandboxsecure.mobilpay.ro',
-  signature: MY_SIGNATURE,
+  signature: process.env.NETOPIA_SIGNATURE || '39IB-FQJV-WABH-2FHI-O4ZQ', 
   publicKeyPath: path.join(process.cwd(), 'api', 'certs', 'public.cer'),
   privateKeyPath: path.join(process.cwd(), 'api', 'certs', 'private.key')
 };
 
+// --- ALGORITM RC4 MANUAL (Pe baza de Buffer - Sigur 100%) ---
+function rc4Encrypt(keyBuffer, dataBuffer) {
+    let S = [];
+    for (let i = 0; i < 256; i++) S[i] = i;
+    
+    let j = 0;
+    for (let i = 0; i < 256; i++) {
+        j = (j + S[i] + keyBuffer[i % keyBuffer.length]) % 256;
+        [S[i], S[j]] = [S[j], S[i]]; // Swap
+    }
+
+    let i = 0; 
+    j = 0;
+    let output = Buffer.alloc(dataBuffer.length);
+
+    for (let k = 0; k < dataBuffer.length; k++) {
+        i = (i + 1) % 256;
+        j = (j + S[i]) % 256;
+        [S[i], S[j]] = [S[j], S[i]]; // Swap
+        output[k] = dataBuffer[k] ^ S[(S[i] + S[j]) % 256];
+    }
+    return output;
+}
+// -----------------------------------------------------------
+
 export const encryptRequest = async (paymentData) => {
   try {
-    console.log(`[Netopia] Incepem criptarea pentru comanda #${paymentData.orderId}`);
-    
+    console.log(`[Netopia] Start criptare comanda #${paymentData.orderId}`);
+
     // 1. Citim Certificatul Public
     const publicKeyPem = fs.readFileSync(NETOPIA_CONFIG.publicKeyPath, 'utf8');
     let publicKey;
@@ -27,24 +49,25 @@ export const encryptRequest = async (paymentData) => {
         publicKey = forge.pki.publicKeyFromPem(publicKeyPem);
     }
 
+    // 2. Pregătim datele
     const xmlData = buildXml(paymentData);
-    
-    // 2. Generăm Cheia RC4 (16 bytes)
-    const rc4Key = forge.random.getBytesSync(16);
+    const xmlBuffer = Buffer.from(xmlData, 'utf8'); // Convertim XML in Buffer
 
-    // 3. Criptăm XML-ul folosind RC4 (Pure JS - Fără eroare Node 20)
-    // Folosim forge.rc4.create() care nu apelează OpenSSL
-    const cipher = forge.rc4.create();
-    cipher.start(rc4Key);
-    cipher.update(forge.util.createBuffer(xmlData, 'utf8'));
-    const encryptedData = cipher.output.toHex().toUpperCase();
+    // 3. Generăm Cheia RC4 (16 bytes)
+    const rc4KeyString = forge.random.getBytesSync(16);
+    const rc4KeyBuffer = Buffer.from(rc4KeyString, 'binary');
 
-    // 4. Criptăm cheia RC4 folosind RSA
-    // CRITIC: Folosim padding-ul vechi pentru Sandbox
-    const encryptedKey = publicKey.encrypt(rc4Key, 'RSAES-PKCS1-V1_5');
+    // 4. Criptăm XML cu algoritmul nostru manual
+    // Rezultatul este un Buffer, pe care îl facem HEX UPPERCASE imediat
+    const encryptedBuffer = rc4Encrypt(rc4KeyBuffer, xmlBuffer);
+    const encryptedData = encryptedBuffer.toString('hex').toUpperCase();
+
+    // 5. Criptăm cheia RC4 cu RSA (folosind Forge și padding vechi)
+    // Forge vrea string "binary", nu Buffer, deci folosim rc4KeyString
+    const encryptedKey = publicKey.encrypt(rc4KeyString, 'RSAES-PKCS1-V1_5');
     const envKey = forge.util.encode64(encryptedKey);
 
-    console.log(`[Netopia] Criptare reusita. Semnatura folosita: ${NETOPIA_CONFIG.signature}`);
+    console.log(`[Netopia] Criptare Gata. Lungime date: ${encryptedData.length}`);
 
     return {
       url: NETOPIA_CONFIG.url,
@@ -62,15 +85,18 @@ export const decryptIPN = async (envKey, encryptedData) => {
         const privateKeyPem = fs.readFileSync(NETOPIA_CONFIG.privateKeyPath, 'utf8');
         const privateKey = forge.pki.privateKeyFromPem(privateKeyPem);
 
-        // Decriptăm cheia RSA
-        const rc4Key = privateKey.decrypt(forge.util.decode64(envKey), 'RSAES-PKCS1-V1_5');
+        // Decriptăm cheia RC4 (RSA)
+        const rc4KeyString = privateKey.decrypt(forge.util.decode64(envKey), 'RSAES-PKCS1-V1_5');
+        const rc4KeyBuffer = Buffer.from(rc4KeyString, 'binary');
 
-        // Decriptăm datele RC4
-        const decipher = forge.rc4.create();
-        decipher.start(rc4Key);
-        decipher.update(forge.util.createBuffer(forge.util.hexToBytes(encryptedData)));
-        const xmlContent = decipher.output.toString();
+        // Decriptăm datele (RC4)
+        // Convertim inputul din Hex în Buffer
+        const encryptedBuffer = Buffer.from(encryptedData, 'hex');
+        const decryptedBuffer = rc4Encrypt(rc4KeyBuffer, encryptedBuffer); // RC4 e simetric, aceeasi functie
+        
+        const xmlContent = decryptedBuffer.toString('utf8');
 
+        // Parsare simpla
         const orderIdMatch = xmlContent.match(/id="([^"]+)"/);
         const actionMatch = xmlContent.match(/<action>([^<]+)<\/action>/);
         const errorMatch = xmlContent.match(/<error code="([^"]+)">/);
@@ -89,17 +115,10 @@ export const decryptIPN = async (envKey, encryptedData) => {
 };
 
 function buildXml(data) {
-    // Curățare agresivă a datelor
     const clean = (str) => String(str || '').replace(/[<>&'"]/g, '').trim();
-    
-    // Formatarea datei
-    const d = new Date();
-    const dateStr = d.getFullYear() + '-' + 
-                   String(d.getMonth() + 1).padStart(2, '0') + '-' + 
-                   String(d.getDate()).padStart(2, '0') + ' ' + 
-                   String(d.getHours()).padStart(2, '0') + ':' + 
-                   String(d.getMinutes()).padStart(2, '0') + ':' + 
-                   String(d.getSeconds()).padStart(2, '0');
+    // Format simplu de dată YYYY-MM-DD HH:MM:SS
+    const now = new Date();
+    const dateStr = now.toISOString().replace(/T/, ' ').replace(/\..+/, '');
 
     return `<?xml version="1.0" encoding="utf-8"?>
 <order type="card" timestamp="${dateStr}">
