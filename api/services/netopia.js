@@ -4,7 +4,7 @@ import path from 'path';
 
 const NETOPIA_CONFIG = {
   // ⭐ SCHIMBAT PENTRU LIVE (Productie)
-  url: 'https://secure.mobilpay.ro', 
+  url: 'http://sandboxsecure.mobilpay.ro', 
   // Semnatura se ia din .env, sau poti pune string-ul direct aici daca vrei
   signature: process.env.NETOPIA_SIGNATURE, 
   publicKeyPath: path.join(process.cwd(), 'api', 'certs', 'public.cer'),
