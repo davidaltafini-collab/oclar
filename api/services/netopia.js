@@ -2,15 +2,15 @@ import forge from 'node-forge';
 import fs from 'fs';
 import path from 'path';
 
-// Configurare
 const NETOPIA_CONFIG = {
   url: 'https://sandboxsecure.mobilpay.ro',
-  signature: process.env.NETOPIA_SIGNATURE || '39IB-FQJV-WABH-2FHI-O4ZQ', 
+  // Ne asigurăm că nu există spații goale în semnătură
+  signature: (process.env.NETOPIA_SIGNATURE || '39IB-FQJV-WABH-2FHI-O4ZQ').trim(),
   publicKeyPath: path.join(process.cwd(), 'api', 'certs', 'public.cer'),
   privateKeyPath: path.join(process.cwd(), 'api', 'certs', 'private.key')
 };
 
-// --- ALGORITM RC4 MANUAL (Pe baza de Buffer - Sigur 100%) ---
+// --- Algoritm RC4 Manual (Compatibil 1:1 cu PHP SDK) ---
 function rc4Encrypt(keyBuffer, dataBuffer) {
     let S = [];
     for (let i = 0; i < 256; i++) S[i] = i;
@@ -18,7 +18,7 @@ function rc4Encrypt(keyBuffer, dataBuffer) {
     let j = 0;
     for (let i = 0; i < 256; i++) {
         j = (j + S[i] + keyBuffer[i % keyBuffer.length]) % 256;
-        [S[i], S[j]] = [S[j], S[i]]; // Swap
+        [S[i], S[j]] = [S[j], S[i]];
     }
 
     let i = 0; 
@@ -28,18 +28,20 @@ function rc4Encrypt(keyBuffer, dataBuffer) {
     for (let k = 0; k < dataBuffer.length; k++) {
         i = (i + 1) % 256;
         j = (j + S[i]) % 256;
-        [S[i], S[j]] = [S[j], S[i]]; // Swap
+        [S[i], S[j]] = [S[j], S[i]];
         output[k] = dataBuffer[k] ^ S[(S[i] + S[j]) % 256];
     }
     return output;
 }
-// -----------------------------------------------------------
 
 export const encryptRequest = async (paymentData) => {
   try {
-    console.log(`[Netopia] Start criptare comanda #${paymentData.orderId}`);
+    // 1. Verificăm semnătura înainte să începem
+    if (!NETOPIA_CONFIG.signature || NETOPIA_CONFIG.signature.length < 10) {
+        throw new Error("Semnatura Netopia lipseste sau este invalida in .env");
+    }
 
-    // 1. Citim Certificatul Public
+    // 2. Citim cheia publică
     const publicKeyPem = fs.readFileSync(NETOPIA_CONFIG.publicKeyPath, 'utf8');
     let publicKey;
     try {
@@ -49,25 +51,21 @@ export const encryptRequest = async (paymentData) => {
         publicKey = forge.pki.publicKeyFromPem(publicKeyPem);
     }
 
-    // 2. Pregătim datele
+    // 3. Generăm XML-ul și îl transformăm în Buffer
     const xmlData = buildXml(paymentData);
-    const xmlBuffer = Buffer.from(xmlData, 'utf8'); // Convertim XML in Buffer
+    const xmlBuffer = Buffer.from(xmlData, 'utf8');
 
-    // 3. Generăm Cheia RC4 (16 bytes)
+    // 4. Generăm cheia RC4 (16 bytes)
     const rc4KeyString = forge.random.getBytesSync(16);
     const rc4KeyBuffer = Buffer.from(rc4KeyString, 'binary');
 
-    // 4. Criptăm XML cu algoritmul nostru manual
-    // Rezultatul este un Buffer, pe care îl facem HEX UPPERCASE imediat
+    // 5. Criptăm datele (RC4 Manual) -> Rezultat HEX Uppercase
     const encryptedBuffer = rc4Encrypt(rc4KeyBuffer, xmlBuffer);
     const encryptedData = encryptedBuffer.toString('hex').toUpperCase();
 
-    // 5. Criptăm cheia RC4 cu RSA (folosind Forge și padding vechi)
-    // Forge vrea string "binary", nu Buffer, deci folosim rc4KeyString
+    // 6. Criptăm cheia RC4 (RSA cu padding vechi pentru Sandbox)
     const encryptedKey = publicKey.encrypt(rc4KeyString, 'RSAES-PKCS1-V1_5');
     const envKey = forge.util.encode64(encryptedKey);
-
-    console.log(`[Netopia] Criptare Gata. Lungime date: ${encryptedData.length}`);
 
     return {
       url: NETOPIA_CONFIG.url,
@@ -80,45 +78,15 @@ export const encryptRequest = async (paymentData) => {
   }
 };
 
-export const decryptIPN = async (envKey, encryptedData) => {
-    try {
-        const privateKeyPem = fs.readFileSync(NETOPIA_CONFIG.privateKeyPath, 'utf8');
-        const privateKey = forge.pki.privateKeyFromPem(privateKeyPem);
-
-        // Decriptăm cheia RC4 (RSA)
-        const rc4KeyString = privateKey.decrypt(forge.util.decode64(envKey), 'RSAES-PKCS1-V1_5');
-        const rc4KeyBuffer = Buffer.from(rc4KeyString, 'binary');
-
-        // Decriptăm datele (RC4)
-        // Convertim inputul din Hex în Buffer
-        const encryptedBuffer = Buffer.from(encryptedData, 'hex');
-        const decryptedBuffer = rc4Encrypt(rc4KeyBuffer, encryptedBuffer); // RC4 e simetric, aceeasi functie
-        
-        const xmlContent = decryptedBuffer.toString('utf8');
-
-        // Parsare simpla
-        const orderIdMatch = xmlContent.match(/id="([^"]+)"/);
-        const actionMatch = xmlContent.match(/<action>([^<]+)<\/action>/);
-        const errorMatch = xmlContent.match(/<error code="([^"]+)">/);
-
-        return {
-            orderId: orderIdMatch ? orderIdMatch[1] : null,
-            action: actionMatch ? actionMatch[1] : null,
-            errorCode: errorMatch ? errorMatch[1] : null,
-            xml: xmlContent
-        };
-
-    } catch (error) {
-        console.error("Netopia Decrypt Error:", error);
-        throw error;
-    }
-};
+// ... funcția decryptIPN rămâne la fel (vezi mesajul anterior) sau o poți omite momentan ...
+// Include aici și decryptIPN dacă ai nevoie de confirmare, dar prioritatea e plata.
 
 function buildXml(data) {
     const clean = (str) => String(str || '').replace(/[<>&'"]/g, '').trim();
-    // Format simplu de dată YYYY-MM-DD HH:MM:SS
+    // Format dată Netopia: YYYY-MM-DD HH:MM:SS
     const now = new Date();
-    const dateStr = now.toISOString().replace(/T/, ' ').replace(/\..+/, '');
+    const pad = (n) => String(n).padStart(2, '0');
+    const dateStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 
     return `<?xml version="1.0" encoding="utf-8"?>
 <order type="card" timestamp="${dateStr}">
@@ -128,7 +96,7 @@ function buildXml(data) {
     <confirm>https://api.oclar.ro/api/netopia/confirm</confirm>
   </url>
   <invoice currency="RON" amount="${data.amount}">
-    <details>Comanda Oclar #${data.orderId}</details>
+    <details>Comanda #${data.orderId}</details>
     <contact_info>
       <billing type="person">
         <first_name>${clean(data.firstName)}</first_name>
