@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Product } from '../types';
 import { Button } from '../components/Button';
+import { SEO } from '../components/SEO';
 import { useCart } from '../context/CartContext';
 import { API_URL, MOCK_PRODUCTS } from '../constants';
 import { Oclar3D } from '../components/Oclar3D';
@@ -64,6 +65,11 @@ export const Home: React.FC = () => {
   }, [loading, products]);
 
   return (
+    <>
+    <SEO 
+        title="Acasă" 
+        description="Oclar - Ochelari premium cu protecție împotriva luminii albastre. Design minimalist, protecție maximă pentru ochii tăi în era digitală."
+      />
     <main className="bg-white overflow-hidden">
       {/* ================= HERO SECTION ================= */}
       <section className="relative min-h-screen border-b border-neutral-100 bg-white overflow-hidden">
@@ -316,5 +322,6 @@ export const Home: React.FC = () => {
          </div>
       </section>
     </main>
+    </>
   );
 };

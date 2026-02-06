@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Product } from '../types';
 import { Button } from '../components/Button';
+import { SEO } from '../components/SEO';
 import { useCart } from '../context/CartContext';
 import { API_URL, MOCK_PRODUCTS } from '../constants';
 
@@ -81,6 +82,12 @@ export const ProductDetails: React.FC = () => {
   const hasDiscount = original > 0 && original > price;
 
   return (
+    <>
+    <SEO 
+        title={product.name} 
+        description={`Descoperă ${product.name} - ${product.description.substring(0, 150)}...`}
+        image={product.imageUrl} 
+   />
     <div className="pt-20 pb-24 animate-fade-in bg-white min-h-screen">
       <div className="px-6 md:px-12 py-4 border-b border-neutral-100 text-[10px] font-bold uppercase tracking-widest text-neutral-400 mb-8 sticky top-16 bg-white/90 backdrop-blur z-20">
         <span className="cursor-pointer hover:text-black transition-colors" onClick={() => navigate('/')}>Acasă</span>
@@ -188,5 +195,6 @@ export const ProductDetails: React.FC = () => {
         </div>
       </div>
     </div>
+    </>
   );
 };
