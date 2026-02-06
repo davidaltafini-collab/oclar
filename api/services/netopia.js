@@ -3,27 +3,41 @@ import fs from 'fs';
 import path from 'path';
 
 const NETOPIA_CONFIG = {
-  url: 'http://sandboxsecure.mobilpay.ro', // Sandbox
-  signature: process.env.NETOPIA_SIGNATURE || 'AAAA-BBBB-CCCC-DDDD-EEEE', 
+  // ⭐ SCHIMBAT PENTRU LIVE (Productie)
+  url: 'https://secure.mobilpay.ro', 
+  // Semnatura se ia din .env, sau poti pune string-ul direct aici daca vrei
+  signature: process.env.NETOPIA_SIGNATURE, 
   publicKeyPath: path.join(process.cwd(), 'api', 'certs', 'public.cer'),
   privateKeyPath: path.join(process.cwd(), 'api', 'certs', 'private.key')
 };
 
-// 1. INITIERE PLATA (CRIPTARE)
+// --- 1. INITIERE PLATA (CRIPTARE) ---
 export const encryptRequest = async (paymentData) => {
   try {
     const publicKeyPem = fs.readFileSync(NETOPIA_CONFIG.publicKeyPath, 'utf8');
-    const publicKey = forge.pki.publicKeyFromPem(publicKeyPem);
+    
+    // ⭐ AICI ESTE FIX-UL PENTRU EROAREA "PEM header type"
+    let publicKey;
+    try {
+        // Încercăm să citim ca un certificat (formatul standard Netopia)
+        const cert = forge.pki.certificateFromPem(publicKeyPem);
+        publicKey = cert.publicKey;
+    } catch (e) {
+        // Fallback: Dacă e formatul vechi (doar cheie publică)
+        publicKey = forge.pki.publicKeyFromPem(publicKeyPem);
+    }
 
     const xmlData = buildXml(paymentData);
+
+    // Criptare RC4 (Datele)
     const rc4Key = forge.random.getBytesSync(16);
-    
     const cipher = forge.cipher.createCipher('RC4', rc4Key);
     cipher.start();
     cipher.update(forge.util.createBuffer(xmlData, 'utf8'));
     cipher.finish();
     const encryptedData = cipher.output.toHex().toUpperCase();
 
+    // Criptare RSA (Cheia RC4)
     const encryptedKey = publicKey.encrypt(rc4Key, 'RSA-OAEP');
     const envKey = forge.util.encode64(encryptedKey);
 
@@ -38,69 +52,74 @@ export const encryptRequest = async (paymentData) => {
   }
 };
 
-// 2. CONFIRMARE PLATA (DECRIPTARE IPN)
-export const decryptIPN = async (env_key, data) => {
-  try {
-    // Citim cheia privata
-    const privateKeyPem = fs.readFileSync(NETOPIA_CONFIG.privateKeyPath, 'utf8');
-    const privateKey = forge.pki.privateKeyFromPem(privateKeyPem);
+// --- 2. DECRIPTARE RĂSPUNS (IPN) ---
+export const decryptIPN = async (envKey, encryptedData) => {
+    try {
+        const privateKeyPem = fs.readFileSync(NETOPIA_CONFIG.privateKeyPath, 'utf8');
+        const privateKey = forge.pki.privateKeyFromPem(privateKeyPem);
 
-    // 1. Decriptam cheia RC4 folosind cheia privata RSA
-    const decodedEnvKey = forge.util.decode64(env_key);
-    const rc4Key = privateKey.decrypt(decodedEnvKey, 'RSA-OAEP');
+        // Decriptăm cheia RC4 folosind RSA
+        const rc4Key = privateKey.decrypt(forge.util.decode64(envKey), 'RSA-OAEP');
 
-    // 2. Decriptam datele folosind cheia RC4
-    const decipher = forge.cipher.createDecipher('RC4', rc4Key);
-    decipher.start();
-    decipher.update(forge.util.createBuffer(forge.util.hexToBytes(data)));
-    decipher.finish();
-    
-    const xmlContent = decipher.output.toString();
+        // Decriptăm datele folosind RC4
+        const decipher = forge.cipher.createDecipher('RC4', rc4Key);
+        decipher.start();
+        decipher.update(forge.util.createBuffer(forge.util.hexToBytes(encryptedData)));
+        decipher.finish();
+        
+        const xmlContent = decipher.output.toString();
 
-    // 3. Extragem datele simple din XML (RegEx rapid)
-    // In productie se recomanda un XML Parser (ex: xml2js), dar RegEx merge pt structura fixa
-    const actionMatch = xmlContent.match(/action="([^"]+)"/);
-    const errorMatch = xmlContent.match(/<error code="([^"]+)">/);
-    const orderIdMatch = xmlContent.match(/id="([^"]+)"/);
+        // Extragem datele simplu (fără parser XML greoi)
+        const orderIdMatch = xmlContent.match(/id="([^"]+)"/);
+        const actionMatch = xmlContent.match(/<action>([^<]+)<\/action>/);
+        const errorMatch = xmlContent.match(/<error code="([^"]+)">/);
 
-    return {
-      action: actionMatch ? actionMatch[1] : 'unknown', // 'confirmed' e ce cautam
-      errorCode: errorMatch ? errorMatch[1] : '1',
-      orderId: orderIdMatch ? orderIdMatch[1] : null,
-      originalXml: xmlContent
-    };
+        return {
+            orderId: orderIdMatch ? orderIdMatch[1] : null,
+            action: actionMatch ? actionMatch[1] : null,
+            errorCode: errorMatch ? errorMatch[1] : null,
+            xml: xmlContent
+        };
 
-  } catch (error) {
-    console.error("Netopia Decrypt Error:", error);
-    throw error;
-  }
+    } catch (error) {
+        console.error("Netopia Decrypt Error:", error);
+        throw error;
+    }
 };
 
+// --- 3. CONSTRUIRE XML ---
 function buildXml(data) {
-  const timestamp = new Date().toISOString().replace(/T/, ' ').replace(/\..+/, '');
-  // URL-urile trebuie sa fie publice si accesibile de pe internet!
-  // Pentru localhost nu va merge confirmarea decat cu ngrok.
-  const siteUrl = process.env.FRONTEND_URL || 'https://oclar.ro'; 
-  
-  return `
-<?xml version="1.0" encoding="utf-8"?>
-<order type="card" timestamp="${timestamp}">
+    const today = new Date();
+    const startDate = today.toISOString().split('T')[0] + ' ' + today.toTimeString().split(' ')[0];
+    // Data de expirare (ex: +10 minute)
+    const expireDateObj = new Date(today.getTime() + 10 * 60000); 
+    const expireDate = expireDateObj.toISOString().split('T')[0] + ' ' + expireDateObj.toTimeString().split(' ')[0];
+
+    return `<?xml version="1.0" encoding="utf-8"?>
+<order type="card" timestamp="${Date.now()}">
   <signature>${NETOPIA_CONFIG.signature}</signature>
+  <url>
+    <return>https://oclar.ro/#/success</return>
+    <confirm>https://api.oclar.ro/api/netopia/confirm</confirm>
+  </url>
   <invoice currency="RON" amount="${data.amount}">
-    <details><![CDATA[Comanda Oclar #${data.orderId}]]></details>
+    <details>Comanda Oclar #${data.orderId}</details>
     <contact_info>
       <billing type="person">
-        <first_name><![CDATA[${data.firstName}]]></first_name>
-        <last_name><![CDATA[${data.lastName}]]></last_name>
-        <email><![CDATA[${data.email}]]></email>
-        <address><![CDATA[${data.address}]]></address>
-        <mobile_phone><![CDATA[${data.phone}]]></mobile_phone>
+        <first_name>${data.firstName}</first_name>
+        <last_name>${data.lastName}</last_name>
+        <email>${data.email}</email>
+        <address>${data.address}</address>
+        <mobile_phone>${data.phone}</mobile_phone>
       </billing>
+      <shipping type="person">
+        <first_name>${data.firstName}</first_name>
+        <last_name>${data.lastName}</last_name>
+        <email>${data.email}</email>
+        <address>${data.address}</address>
+        <mobile_phone>${data.phone}</mobile_phone>
+      </shipping>
     </contact_info>
   </invoice>
-  <url>
-    <confirm>${siteUrl}/api/netopia/confirm</confirm>
-    <return>${siteUrl}/#/success</return>
-  </url>
-</order>`.trim();
+</order>`;
 }
