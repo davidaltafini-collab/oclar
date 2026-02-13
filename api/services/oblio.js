@@ -100,23 +100,27 @@ export async function sendOblioInvoice(orderDetails) {
       save: false
     };
 
-    // 4. Trimitem factura
+    // 4. Setăm detaliile de plată (OP doar pentru card)
+    const collectData = orderDetails.paymentMethod === 'card' 
+      ? { type: 'OP', value: parseFloat(totalAmount) } 
+      : null;
+
     const invoiceData = {
-      cif: process.env.OBLIO_CIF, // CIF-ul companiei tale
+      cif: process.env.OBLIO_CIF, // Trebuie să existe în .env!
       client,
       issueDate: new Date().toISOString().split('T')[0],
-      dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 14 zile
+      dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       currency: 'RON',
       products: oblioProducts,
       language: 'RO',
       precision: 2,
-      collect: {
-        type: 'OP', // Ordin de plată
-        value: parseFloat(totalAmount)
-      },
-      mentions: `Comanda #${orderId}`,
+      mentions: `Comanda #${orderId} - Plata: ${orderDetails.paymentMethod === 'ramburs' ? 'Ramburs' : 'Card online'}.`,
       useStock: false
     };
+
+    if (collectData) {
+        invoiceData.collect = collectData;
+    }
 
     const invoiceResponse = await fetch(`${OBLIO_API_URL}/docs/invoice`, {
       method: 'POST',

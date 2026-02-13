@@ -3,12 +3,13 @@ import fs from 'fs';
 import path from 'path';
 
 const NETOPIA_CONFIG = {
-  // ⭐ FIX CRITIC: Folosim HTTP (fără S) pentru Sandbox.
-  // HTTPS cauzează redirect-uri care șterg datele POST și dau eroarea "Signature missing".
-  url: 'http://sandboxsecure.mobilpay.ro',
+  // Schimbat la Live HTTPS pentru producție
+  url: 'https://secure.mobilpay.ro',
   
-  // Ne asigurăm că nu există spații goale în semnătură
-  signature: (process.env.NETOPIA_SIGNATURE || '39IB-FQJV-WABH-2FHI-O4ZQ').trim(),
+  // Semnătura Live din platforma Netopia (o pui în fișierul .env de pe VPS)
+  signature: (process.env.NETOPIA_SIGNATURE || 'SEMNATURA_TA_LIVE').trim(),
+  
+  // Asigură-te că înlocuiești aceste fișiere cu certificatul .cer și cheia privată .key DE PRODUCȚIE
   publicKeyPath: path.join(process.cwd(), 'api', 'certs', 'public.cer'),
   privateKeyPath: path.join(process.cwd(), 'api', 'certs', 'private.key')
 };
