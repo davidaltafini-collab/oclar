@@ -2,33 +2,25 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 
+// CONFIGURARE SANDBOX
 const NETOPIA_CONFIG = {
-  url: 'https://sandboxsecure.mobilpay.ro', // URL-ul de LIVE
+  url: 'http://sandboxsecure.mobilpay.ro', // URL SANDBOX
   signature: (process.env.NETOPIA_SIGNATURE || '').trim(),
-  // Atenție: Asigură-te că numele fișierului de pe disk corespunde cu ce e aici (.cer vs .key)
   publicKeyPath: path.join(process.cwd(), 'api', 'certs', 'public.cer'),
   privateKeyPath: path.join(process.cwd(), 'api', 'certs', 'private.key')
 };
 
-/**
- * Algoritm RC4 Manual (Buffer Safe)
- * Îl păstrăm pe acesta manual pentru că OpenSSL 3+ din Node a scos suportul nativ RC4,
- * dar Netopia încă îl cere.
- */
+// --- ALGORITM RC4 MANUAL ---
 function rc4Encrypt(keyBuffer, dataBuffer) {
     let S = [];
     for (let i = 0; i < 256; i++) S[i] = i;
-    
     let j = 0;
     for (let i = 0; i < 256; i++) {
         j = (j + S[i] + keyBuffer[i % keyBuffer.length]) % 256;
         [S[i], S[j]] = [S[j], S[i]];
     }
-
-    let i = 0; 
-    j = 0;
+    let i = 0; j = 0;
     let output = Buffer.alloc(dataBuffer.length);
-
     for (let k = 0; k < dataBuffer.length; k++) {
         i = (i + 1) % 256;
         j = (j + S[i]) % 256;
@@ -38,73 +30,45 @@ function rc4Encrypt(keyBuffer, dataBuffer) {
     return output;
 }
 
-// --- 1. CRIPTARE CERERE (SEND) ---
+// --- 1. EXPORT: CRIPTARE CERERE ---
 export const encryptRequest = async (paymentData) => {
   try {
-    if (!NETOPIA_CONFIG.signature) {
-        throw new Error("Semnatura Netopia lipseste din .env");
-    }
-
-    // 1. Citim cheia publică
-    // IMPORTANT: Node crypto vrea PEM-ul exact așa cum e
     const publicKeyPem = fs.readFileSync(NETOPIA_CONFIG.publicKeyPath, 'utf8');
-
-    // 2. Generăm XML-ul
     const xmlData = buildXml(paymentData);
-    const xmlBuffer = Buffer.from(xmlData, 'utf8');
-
-    // 3. Generăm cheia RC4 (16 bytes random)
     const rc4KeyBuffer = crypto.randomBytes(16);
+    
+    // Criptare date cu RC4
+    const encryptedData = rc4Encrypt(rc4KeyBuffer, Buffer.from(xmlData, 'utf8'))
+                          .toString('hex').toUpperCase();
 
-    // 4. Criptăm Datele (XML) cu RC4 -> Rezultat HEX Uppercase
-    const encryptedDataBuffer = rc4Encrypt(rc4KeyBuffer, xmlBuffer);
-    const encryptedData = encryptedDataBuffer.toString('hex').toUpperCase();
-
-    // 5. Criptăm Cheia RC4 folosind RSA și cheia PUBLICĂ (pt ca Netopia să o deschidă cu privata lor)
-    // Folosim padding-ul standard PKCS1 pe care îl așteaptă Netopia
-    const encryptedKeyBuffer = crypto.publicEncrypt(
-        {
-            key: publicKeyPem,
-            padding: crypto.constants.RSA_PKCS1_PADDING,
-        },
+    // Criptare cheie RC4 cu RSA
+    const envKey = crypto.publicEncrypt(
+        { key: publicKeyPem, padding: crypto.constants.RSA_PKCS1_PADDING },
         rc4KeyBuffer
-    );
+    ).toString('base64');
 
-    // Rezultatul cheii criptate trebuie să fie Base64
-    const envKey = encryptedKeyBuffer.toString('base64');
-
-    return {
-      url: NETOPIA_CONFIG.url,
-      env_key: envKey,
-      data: encryptedData,
-    };
+    return { url: NETOPIA_CONFIG.url, env_key: envKey, data: encryptedData };
   } catch (error) {
     console.error("Netopia Encrypt Error:", error);
     throw error;
   }
 };
 
-// --- 2. DECRIPTARE RĂSPUNS (CONFIRM) ---
+// --- 2. EXPORT: DECRIPTARE RĂSPUNS (AICI ERA PROBLEMA TA) ---
 export const decryptIPN = async (envKey, encryptedData) => {
     try {
         const privateKeyPem = fs.readFileSync(NETOPIA_CONFIG.privateKeyPath, 'utf8');
 
-        // 1. Decriptăm env_key (care conține cheia RC4) folosind cheia PRIVATĂ
+        // Decriptare cheie RC4
         const rc4KeyBuffer = crypto.privateDecrypt(
-            {
-                key: privateKeyPem,
-                padding: crypto.constants.RSA_PKCS1_PADDING,
-            },
+            { key: privateKeyPem, padding: crypto.constants.RSA_PKCS1_PADDING },
             Buffer.from(envKey, 'base64')
         );
 
-        // 2. Decriptăm datele (care sunt HEX) folosind cheia RC4 recuperată
-        const encryptedBuffer = Buffer.from(encryptedData, 'hex');
-        const decryptedBuffer = rc4Encrypt(rc4KeyBuffer, encryptedBuffer);
-        
-        const xmlContent = decryptedBuffer.toString('utf8');
+        // Decriptare date
+        const xmlContent = rc4Encrypt(rc4KeyBuffer, Buffer.from(encryptedData, 'hex'))
+                           .toString('utf8');
 
-        // Parsare simplă Regex
         const orderIdMatch = xmlContent.match(/id="([^"]+)"/);
         const actionMatch = xmlContent.match(/<action>([^<]+)<\/action>/);
         const errorMatch = xmlContent.match(/<error code="([^"]+)">/);
@@ -115,10 +79,9 @@ export const decryptIPN = async (envKey, encryptedData) => {
             errorCode: errorMatch ? errorMatch[1] : null,
             xml: xmlContent
         };
-
     } catch (error) {
         console.error("Netopia Decrypt Error:", error);
-        throw error; // Aruncăm eroarea ca să trimitem XML de eroare în index.js
+        throw error;
     }
 };
 
