@@ -6,8 +6,8 @@ import forge from "node-forge";
 // CONFIGURARE CĂI & URL
 // ==========================================
 const CERTS_DIR = path.join(process.cwd(), "api", "certs");
-const PUBLIC_CERT_PATH = path.join(CERTS_DIR, "public.cer");
-const PRIVATE_KEY_PATH = path.join(CERTS_DIR, "private.key");
+const PUBLIC_CERT_PATH = path.join(CERTS_DIR, "sandbox.39IB-FQJV-WABH-2FHI-O4ZQ.public.cer");
+const PRIVATE_KEY_PATH = path.join(CERTS_DIR, "sandbox.39IB-FQJV-WABH-2FHI-O4ZQprivate.key");
 
 const NETOPIA_CONFIG = {
     gatewayUrl: "http://sandboxsecure.mobilpay.ro",
