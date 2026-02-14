@@ -4,7 +4,7 @@ import path from 'path';
 
 const NETOPIA_CONFIG = {
   // Schimbat la Live HTTPS pentru producție
-  url: 'https://secure.mobilpay.ro',
+  url: 'https://sandboxsecure.mobilpay.ro',
   
   // Semnătura Live din platforma Netopia (o pui în fișierul .env de pe VPS)
   signature: (process.env.NETOPIA_SIGNATURE || 'SEMNATURA_TA_LIVE').trim(),
