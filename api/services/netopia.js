@@ -2,31 +2,30 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 
-// Definim calea către folderul de certificate
+// Calea către folderul de certificate
 const CERTS_DIR = path.join(process.cwd(), "api", "certs");
 
 const NETOPIA_CONFIG = {
-  // URL Sandbox (folosește 'https://secure.mobilpay.ro' pentru producție)
+  // URL Sandbox
   gatewayUrl: "https://sandboxsecure.mobilpay.ro",
 
-  // Semnătura din Netopia Dashboard (Admin -> Conturi de comerciant -> Modificare -> Tab-ul Implementare tehnică)
+  // Semnătura din Netopia Dashboard
   signature: String(process.env.NETOPIA_SIGNATURE || "").trim(),
 
-  // Certificatul PUBLIC al Netopia (Sandbox). Trebuie să fie convertit în .pem
-  // Descarcă sandbox.X509.public.cer din Netopia și convertește-l.
-  netopiaPublicCertPath: path.join(CERTS_DIR, "sandbox-public.pem"),
+  // 1. CHEIA PUBLICĂ NETOPIA (Folosită pentru criptarea cererii către ei)
+  // Ai spus că se numește 'public.key'
+  netopiaPublicCertPath: path.join(CERTS_DIR, "public.key"),
 
-  // Cheia ta PRIVATĂ generată de tine (cea menționată de tine: private.key)
+  // 2. CHEIA TA PRIVATĂ (Folosită pentru decriptarea răspunsului de la ei)
   merchantPrivateKeyPath: path.join(CERTS_DIR, "private.key"),
 
-  // URL-urile unde se întoarce utilizatorul și unde trimite Netopia confirmarea (IPN)
-  returnUrl: "https://oclar.ro/#/success", // Link-ul din browserul clientului
-  confirmUrl: "https://api.oclar.ro/api/netopia/confirm", // Link-ul pentru server-to-server (IPN)
+  // URL-urile
+  returnUrl: "https://oclar.ro/#/success",
+  confirmUrl: "https://api.oclar.ro/api/netopia/confirm",
 };
 
 /**
- * Algoritmul RC4 (folosit de Netopia pentru criptarea datelor XML)
- * Implementare compatibilă cu Buffer (binar)
+ * Algoritmul RC4
  */
 function rc4(keyBuffer, dataBuffer) {
   const S = new Array(256);
@@ -55,6 +54,7 @@ function rc4(keyBuffer, dataBuffer) {
 
 function readTextFile(p) {
   if (!fs.existsSync(p)) {
+    // Mesaj clar de eroare cu calea exactă unde caută scriptul
     throw new Error(`[Netopia] Nu am găsit fișierul: ${p}`);
   }
   return fs.readFileSync(p, "utf8");
@@ -62,15 +62,10 @@ function readTextFile(p) {
 
 function ensureNonEmptySignature(sig) {
   if (!sig) throw new Error("NETOPIA_SIGNATURE lipsește din .env");
-  // Verificare sumară format (XXXX-XXXX-XXXX-XXXX-XXXX)
-  if (!/^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(sig)) {
-    console.warn(`[Netopia] Atenție: Semnătura '${sig}' nu pare să aibă formatul corect.`);
-  }
 }
 
 function cleanXml(str) {
   if (!str) return "";
-  // Înlocuim caracterele speciale XML
   return String(str)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -91,13 +86,10 @@ function buildXml(data) {
   const ts = formatTimestamp();
   const orderId = cleanXml(data.orderId);
   const amount = Number(data.amount).toFixed(2);
-
-  // Date client
   const firstName = cleanXml(data.firstName || "Client");
   const lastName = cleanXml(data.lastName || "Oclar");
   const email = cleanXml(data.email || "no-reply@oclar.ro");
   const phone = cleanXml(data.phone || "");
-  // Adresa trebuie să nu fie goală
   const address = cleanXml(data.address && data.address.length > 3 ? data.address : "Romania");
 
   return `<?xml version="1.0" encoding="utf-8"?>
@@ -133,21 +125,20 @@ function buildXml(data) {
 export function encryptRequest(paymentData) {
   ensureNonEmptySignature(NETOPIA_CONFIG.signature);
 
-  // 1. Citim Cheia Publică Netopia (Sandbox)
+  // 1. Citim Cheia Publică Netopia (sandbox) din fișierul public.key
   const netopiaPublicPemRaw = readTextFile(NETOPIA_CONFIG.netopiaPublicCertPath);
 
-  // 2. Construim XML-ul
+  // Validare rapidă ca să nu crere în crypto
+  if (!netopiaPublicPemRaw.includes("-----BEGIN")) {
+      throw new Error(`[Netopia] Fișierul ${NETOPIA_CONFIG.netopiaPublicCertPath} nu pare valid. Trebuie să fie format PEM (să înceapă cu -----BEGIN...).`);
+  }
+
   const xml = buildXml(paymentData);
-
-  // 3. Generăm o cheie aleatorie RC4 (16 bytes)
   const rc4Key = crypto.randomBytes(16);
-
-  // 4. Criptăm XML-ul folosind RC4
   const encryptedDataHex = rc4(rc4Key, Buffer.from(xml, "utf8"))
     .toString("hex")
     .toUpperCase();
 
-  // 5. Criptăm cheia RC4 folosind Cheia Publică Netopia (RSA)
   const envKeyBase64 = crypto
     .publicEncrypt(
       { 
@@ -167,10 +158,8 @@ export function encryptRequest(paymentData) {
 
 // ------------------ DECRYPT IPN (Confirmare Plată) ------------------
 export function decryptIPN(envKeyBase64, encryptedDataHex) {
-  // 1. Citim Cheia Privată a Comerciantului (a ta)
   const merchantPrivateKeyPem = readTextFile(NETOPIA_CONFIG.merchantPrivateKeyPath);
 
-  // 2. Decriptăm cheia RC4 folosind Cheia Privată
   let rc4Key;
   try {
     rc4Key = crypto.privateDecrypt(
@@ -181,18 +170,13 @@ export function decryptIPN(envKeyBase64, encryptedDataHex) {
       Buffer.from(envKeyBase64, "base64")
     );
   } catch (e) {
-    throw new Error("Decriptare cheie RSA eșuată. Verifică dacă private.key corespunde cu cheia publică încărcată în Netopia Dashboard.");
+    throw new Error("Decriptare cheie RSA eșuată. Verifică private.key.");
   }
 
-  // 3. Decriptăm XML-ul folosind cheia RC4 obținută
   const xml = rc4(rc4Key, Buffer.from(encryptedDataHex, "hex")).toString("utf8");
 
-  // 4. Extragem datele din XML (RegEx simplu pentru viteză)
   const orderIdMatch = xml.match(/<order[^>]*id="([^"]+)"/i) || xml.match(/id="([^"]+)"/i);
-  // error code="0" înseamnă succes
   const errorCodeMatch = xml.match(/<error[^>]*code="([^"]+)"/i);
-  
-  // Statusul tranzacției: confirmed / paid / rejected / credit
   const actionMatch = xml.match(/<action>([^<]+)<\/action>/i);
   const errorMessageMatch = xml.match(/>([^<]+)<\/error>/i);
 
@@ -201,6 +185,6 @@ export function decryptIPN(envKeyBase64, encryptedDataHex) {
     action: actionMatch ? actionMatch[1] : null,
     errorCode: errorCodeMatch ? errorCodeMatch[1] : null,
     errorMessage: errorMessageMatch ? errorMessageMatch[1] : null,
-    xml, // returnăm XML-ul brut pentru debug
+    xml,
   };
 }
