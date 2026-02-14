@@ -6,15 +6,20 @@ import path from "path";
 const CERTS_DIR = path.join(process.cwd(), "api", "certs");
 
 const NETOPIA_CONFIG = {
-  // ⚠️ SCHIMBĂ AICI: Folosește http (fără s) pentru Sandbox ca să eviți eroarea 405/Certificate
-  gatewayUrl: "http://sandboxsecure.mobilpay.ro",
+  // URL Sandbox
+  gatewayUrl: "https://sandboxsecure.mobilpay.ro",
 
   // Semnătura din Netopia Dashboard
   signature: String(process.env.NETOPIA_SIGNATURE || "").trim(),
 
-  // Restul rămâne la fel...
+  // --- MODIFICARE AICI ---
+  // Folosim numele exact pe care l-am văzut în comanda ls: public.cer
   netopiaPublicCertPath: path.join(CERTS_DIR, "public.cer"),
+
+  // Cheia ta privată
   merchantPrivateKeyPath: path.join(CERTS_DIR, "private.key"),
+
+  // URL-urile
   returnUrl: "https://oclar.ro/#/success",
   confirmUrl: "https://api.oclar.ro/api/netopia/confirm",
 };
@@ -187,4 +192,3 @@ export function decryptIPN(envKeyBase64, encryptedDataHex) {
     xml,
   };
 }
-
