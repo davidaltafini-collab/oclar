@@ -161,8 +161,15 @@ export function encryptRequest(paymentData) {
   </invoice>
 </order>`;
 
+    
+    // DEBUG: Vezi dacă XML-ul arată bine și are semnatura
+    console.log("----- NETOPIA DEBUG XML START -----");
+    console.log(xml);
+    console.log("----- NETOPIA DEBUG XML END -----");
+
     // 1. Generăm cheia RC4 aleatorie
     const rc4Key = forge.random.getBytesSync(16);
+    // ... restul codului ...
 
     // 2. Criptăm XML-ul cu RC4
     const encryptedData = rc4(rc4Key, xml);
