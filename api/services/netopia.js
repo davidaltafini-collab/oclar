@@ -9,47 +9,45 @@ const PRIVATE_KEY_PATH = path.join(CERTS_DIR, "private.key");
 
 // Configurația Netopia
 const NETOPIA_CONFIG = {
-    // URL Sandbox (HTTP pentru a evita erori SSL locale)
+    // URL Sandbox (folosim HTTP pentru a evita erori SSL locale la redirect)
     gatewayUrl: "http://sandboxsecure.mobilpay.ro",
-    // Link-urile tale
+    // URL-urile tale
     returnUrl: "https://oclar.ro/#/success",
     confirmUrl: "https://api.oclar.ro/api/netopia/confirm",
 };
 
 /**
- * Helper pentru a citi și procesa cheia publică
- * Indiferent dacă e PEM sau DER (Binar)
+ * 1. Helper pentru a citi cheia publică (Netopia)
+ * Folosește node-forge pentru a fi compatibil cu orice format (PEM sau DER/Binar)
  */
 function getNetopiaPublicKey() {
     if (!fs.existsSync(PUBLIC_CERT_PATH)) {
         throw new Error(`[Netopia] Nu găsesc public.cer la: ${PUBLIC_CERT_PATH}`);
     }
 
-    const certContent = fs.readFileSync(PUBLIC_CERT_PATH); // Citim ca Buffer (binar)
+    const certContent = fs.readFileSync(PUBLIC_CERT_PATH);
 
     try {
-        // Încercăm să citim ca PEM (text)
+        // Încercăm PEM
         const pem = certContent.toString('utf8');
         if (pem.includes('-----BEGIN CERTIFICATE-----')) {
             const cert = forge.pki.certificateFromPem(pem);
             return cert.publicKey;
         }
-    } catch (e) {
-        // Ignorăm eroarea și încercăm DER
-    }
+    } catch (e) {}
 
     try {
-        // Încercăm să citim ca DER (binar)
+        // Încercăm DER (Binar) - formatul standard Netopia
         const der = forge.util.createBuffer(certContent);
         const cert = forge.pki.certificateFromAsn1(forge.asn1.fromDer(der));
         return cert.publicKey;
     } catch (e) {
-        throw new Error(`[Netopia] Format certificat invalid în public.cer. Trebuie să fie PEM sau DER valid.`);
+        throw new Error(`[Netopia] Certificatul public.cer nu este valid (nici PEM, nici DER).`);
     }
 }
 
 /**
- * Helper pentru cheia privată (pentru decriptare IPN)
+ * 2. Helper pentru cheia privată (a ta)
  */
 function getMerchantPrivateKey() {
     if (!fs.existsSync(PRIVATE_KEY_PATH)) {
@@ -60,53 +58,34 @@ function getMerchantPrivateKey() {
 }
 
 /**
- * Algoritmul RC4 (custom implementation pentru compatibilitate)
+ * 3. Algoritmul RC4 compatibil cu Buffer (UTF-8 Safe)
+ * Asta rezolvă problema cu "Brașov" / diacritice.
  */
-function rc4(keyStr, dataStr) {
-    const s = [];
-    for (let i = 0; i < 256; i++) s[i] = i;
+function rc4(key, data) {
+    // key și data trebuie să fie Buffers
+    const S = [];
+    for(let i=0; i<256; i++) S[i] = i;
+    
     let j = 0;
-    let x;
-    for (let i = 0; i < 256; i++) {
-        j = (j + s[i] + keyStr.charCodeAt(i % keyStr.length)) % 256;
-        x = s[i];
-        s[i] = s[j];
-        s[j] = x;
+    for(let i=0; i<256; i++) {
+        j = (j + S[i] + key[i % key.length]) % 256;
+        [S[i], S[j]] = [S[j], S[i]];
     }
+    
     let i = 0;
     j = 0;
-    let res = '';
-    for (let y = 0; y < dataStr.length; y++) {
+    const output = Buffer.alloc(data.length);
+    
+    for(let k=0; k<data.length; k++) {
         i = (i + 1) % 256;
-        j = (j + s[i]) % 256;
-        x = s[i];
-        s[i] = s[j];
-        s[j] = x;
-        res += String.fromCharCode(dataStr.charCodeAt(y) ^ s[(s[i] + s[j]) % 256]);
+        j = (j + S[i]) % 256;
+        [S[i], S[j]] = [S[j], S[i]];
+        output[k] = data[k] ^ S[(S[i] + S[j]) % 256];
     }
-    return res;
+    return output;
 }
 
-/**
- * Convert String to Hex Uppercase
- */
-function strToHex(str) {
-    let hex = '';
-    for (let i = 0; i < str.length; i++) {
-        hex += '' + str.charCodeAt(i).toString(16).padStart(2, '0');
-    }
-    return hex.toUpperCase();
-}
-
-function hexToStr(hex) {
-    let str = '';
-    for (let i = 0; i < hex.length; i += 2) {
-        str += String.fromCharCode(parseInt(hex.substr(i, 2), 16));
-    }
-    return str;
-}
-
-// XML Helpers
+// Helpers XML
 function cleanXml(str) {
     if (!str) return "";
     return String(str)
@@ -133,7 +112,7 @@ export function encryptRequest(paymentData) {
     const amount = Number(paymentData.amount).toFixed(2);
     
     // Construim XML-ul
-    const xml = `<?xml version="1.0" encoding="utf-8"?>
+    const xmlStr = `<?xml version="1.0" encoding="utf-8"?>
 <order type="card" id="${orderId}" timestamp="${ts}">
   <signature>${signature}</signature>
   <url>
@@ -161,23 +140,21 @@ export function encryptRequest(paymentData) {
   </invoice>
 </order>`;
 
-    
-    // DEBUG: Vezi dacă XML-ul arată bine și are semnatura
-    console.log("----- NETOPIA DEBUG XML START -----");
-    console.log(xml);
-    console.log("----- NETOPIA DEBUG XML END -----");
+    // IMPORTANT: Convertim string-ul XML în Buffer UTF-8 înainte de criptare
+    // Asta asigură că diacriticele sunt codate corect în octeți
+    const xmlBuffer = Buffer.from(xmlStr, 'utf8');
 
-    // 1. Generăm cheia RC4 aleatorie
-    const rc4Key = forge.random.getBytesSync(16);
-    // ... restul codului ...
+    // 1. Generăm cheia RC4 (16 bytes)
+    const rc4KeyHex = forge.random.getBytesSync(16);
+    const rc4KeyBuffer = Buffer.from(rc4KeyHex, 'binary');
 
-    // 2. Criptăm XML-ul cu RC4
-    const encryptedData = rc4(rc4Key, xml);
-    const encryptedDataHex = strToHex(encryptedData);
+    // 2. Criptăm datele cu RC4 (Buffer -> Buffer)
+    const encryptedDataBuffer = rc4(rc4KeyBuffer, xmlBuffer);
+    const encryptedDataHex = encryptedDataBuffer.toString('hex').toUpperCase();
 
-    // 3. Criptăm cheia RC4 cu cheia Publică Netopia (RSA)
+    // 3. Criptăm cheia RC4 cu RSA (folosind node-forge pentru certificat)
     const publicKey = getNetopiaPublicKey();
-    const encryptedKey = publicKey.encrypt(rc4Key, 'RSAES-PKCS1-V1_5');
+    const encryptedKey = publicKey.encrypt(rc4KeyHex, 'RSAES-PKCS1-V1_5');
     const envKeyBase64 = forge.util.encode64(encryptedKey);
 
     return {
@@ -191,20 +168,26 @@ export function encryptRequest(paymentData) {
 export function decryptIPN(envKeyBase64, encryptedDataHex) {
     const privateKey = getMerchantPrivateKey();
 
-    // 1. Decriptăm cheia RC4 folosind cheia privată
-    let rc4Key;
+    // 1. Decriptăm cheia RC4 cu RSA
+    let rc4KeyBinary;
     try {
         const encryptedKey = forge.util.decode64(envKeyBase64);
-        rc4Key = privateKey.decrypt(encryptedKey, 'RSAES-PKCS1-V1_5');
+        rc4KeyBinary = privateKey.decrypt(encryptedKey, 'RSAES-PKCS1-V1_5');
     } catch (e) {
         throw new Error("Decriptare RSA eșuată. Verifică private.key.");
     }
+    
+    // Convertim cheia RC4 în Buffer
+    const rc4KeyBuffer = Buffer.from(rc4KeyBinary, 'binary');
 
-    // 2. Decriptăm Datele XML folosind RC4
-    const encryptedData = hexToStr(encryptedDataHex);
-    const xml = rc4(rc4Key, encryptedData);
+    // 2. Decriptăm datele (Hex -> Buffer -> Decrypt -> Utf8 String)
+    const encryptedDataBuffer = Buffer.from(encryptedDataHex, 'hex');
+    const decryptedBuffer = rc4(rc4KeyBuffer, encryptedDataBuffer);
+    
+    // Convertim înapoi în string UTF-8
+    const xml = decryptedBuffer.toString('utf8');
 
-    // 3. Extragem datele
+    // 3. Parsare simplă XML
     const orderIdMatch = xml.match(/id="([^"]+)"/);
     const actionMatch = xml.match(/<action>([^<]+)<\/action>/);
     const errorMatch = xml.match(/<error code="([^"]+)">/);
