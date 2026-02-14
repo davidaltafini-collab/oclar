@@ -1,104 +1,50 @@
+import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-import forge from "node-forge";
 
 // ==========================================
 // CONFIGURARE CĂI & URL
 // ==========================================
 const CERTS_DIR = path.join(process.cwd(), "api", "certs");
+
+// Folosim numele exacte pe care le ai pe server
 const PUBLIC_CERT_PATH = path.join(CERTS_DIR, "sandbox.39IB-FQJV-WABH-2FHI-O4ZQ.public.cer");
 const PRIVATE_KEY_PATH = path.join(CERTS_DIR, "sandbox.39IB-FQJV-WABH-2FHI-O4ZQprivate.key");
 
 const NETOPIA_CONFIG = {
+    // Sandbox URL
     gatewayUrl: "http://sandboxsecure.mobilpay.ro",
     returnUrl: "https://oclar.ro/#/success",
     confirmUrl: "https://api.oclar.ro/api/netopia/confirm",
 };
 
 // ==========================================
-// LOGGER DIAGNOSTIC
+// HELPERE
 // ==========================================
-function logDiag(step, message, data = null) {
-    console.log(`\n[NETOPIA-DIAG] [${step}] ------------------------------------------------`);
-    console.log(`>> ${message}`);
-    if (data) {
-        if (typeof data === 'object' && !Buffer.isBuffer(data)) {
-            console.log(JSON.stringify(data, null, 2));
-        } else {
-            console.log(data);
-        }
+
+function getFileContent(filePath) {
+    if (!fs.existsSync(filePath)) {
+        throw new Error(`[Netopia] Fișier lipsă: ${filePath}`);
     }
-    console.log(`------------------------------------------------------------------------\n`);
+    return fs.readFileSync(filePath, "utf8");
 }
 
-// ==========================================
-// 1. ÎNCĂRCARE CERTIFICATE CU LOGGING
-// ==========================================
-function getNetopiaPublicKey() {
-    logDiag("CERT-PUB", `Citesc Public Key din: ${PUBLIC_CERT_PATH}`);
-    
-    if (!fs.existsSync(PUBLIC_CERT_PATH)) {
-        logDiag("CERT-PUB-ERR", "Fișierul nu există!");
-        throw new Error(`[Netopia] Nu găsesc public.cer`);
-    }
-
-    const certContent = fs.readFileSync(PUBLIC_CERT_PATH);
-    logDiag("CERT-PUB", `Mărime fișier: ${certContent.length} bytes`);
-    logDiag("CERT-PUB", `Hex (primii 20 bytes): ${certContent.subarray(0, 20).toString('hex')}`);
-
-    try {
-        // Încercăm PEM
-        const pem = certContent.toString('utf8');
-        if (pem.includes('-----BEGIN CERTIFICATE-----')) {
-            logDiag("CERT-PUB", "Detectat format PEM (Text)");
-            const cert = forge.pki.certificateFromPem(pem);
-            return cert.publicKey;
-        }
-    } catch (e) { logDiag("CERT-PUB", "Nu e PEM valid, încerc DER..."); }
-
-    try {
-        // Încercăm DER
-        const der = forge.util.createBuffer(certContent);
-        const cert = forge.pki.certificateFromAsn1(forge.asn1.fromDer(der));
-        logDiag("CERT-PUB", "Detectat format DER (Binar) - OK");
-        return cert.publicKey;
-    } catch (e) {
-        logDiag("CERT-PUB-ERR", "Eșec parsare certificat! Nu e nici PEM, nici DER valid.");
-        throw new Error(`[Netopia] Certificat public invalid.`);
-    }
-}
-
-function getMerchantPrivateKey() {
-    logDiag("KEY-PRIV", `Citesc Private Key din: ${PRIVATE_KEY_PATH}`);
-    
-    if (!fs.existsSync(PRIVATE_KEY_PATH)) {
-        throw new Error(`[Netopia] Nu găsesc private.key`);
-    }
-    const keyContent = fs.readFileSync(PRIVATE_KEY_PATH, 'utf8');
-    // Verificare sumară
-    if(!keyContent.includes('PRIVATE KEY')) {
-        logDiag("KEY-PRIV-ERR", "Fișierul private.key nu pare să conțină o cheie RSA validă (lipsește header-ul).");
-    } else {
-        logDiag("KEY-PRIV", "Header PEM detectat OK.");
-    }
-    return forge.pki.privateKeyFromPem(keyContent);
-}
-
-// ==========================================
-// 2. ALGORITMI CRIPTARE
-// ==========================================
+/**
+ * Algoritmul RC4 implementat pentru Buffer (binar)
+ * Compatibil UTF-8 pentru a suporta diacriticele din adrese
+ */
 function rc4(key, data) {
-    // key și data trebuie să fie Buffers
     const S = [];
-    for(let i=0; i<256; i++) S[i] = i;
+    for (let i = 0; i < 256; i++) S[i] = i;
     let j = 0;
-    for(let i=0; i<256; i++) {
+    for (let i = 0; i < 256; i++) {
         j = (j + S[i] + key[i % key.length]) % 256;
         [S[i], S[j]] = [S[j], S[i]];
     }
-    let i = 0; j = 0;
+    let i = 0;
+    j = 0;
     const output = Buffer.alloc(data.length);
-    for(let k=0; k<data.length; k++) {
+    for (let k = 0; k < data.length; k++) {
         i = (i + 1) % 256;
         j = (j + S[i]) % 256;
         [S[i], S[j]] = [S[j], S[i]];
@@ -124,20 +70,16 @@ function formatTimestamp(d = new Date()) {
 }
 
 // ==========================================
-// 3. MAIN: ENCRYPT REQUEST (+ SELF TEST)
+// 1. ENCRYPT REQUEST (Start Plată)
 // ==========================================
 export function encryptRequest(paymentData) {
-    logDiag("INIT", "Începere proces criptare cerere Netopia...");
-
     const signature = String(process.env.NETOPIA_SIGNATURE || "").trim();
-    logDiag("ENV", `Semnătura citită: ${signature}`);
-    
     if (!signature) throw new Error("NETOPIA_SIGNATURE lipsește din .env");
 
+    // 1. Pregătire XML
     const ts = formatTimestamp();
     const orderId = cleanXml(paymentData.orderId);
     
-    // --- 1. GENERARE XML ---
     const xmlStr = `<?xml version="1.0" encoding="utf-8"?>
 <order type="card" id="${orderId}" timestamp="${ts}">
   <signature>${signature}</signature>
@@ -166,96 +108,62 @@ export function encryptRequest(paymentData) {
   </invoice>
 </order>`;
 
-    logDiag("XML-GEN", "XML Generat (Verifică diacriticele):", xmlStr);
-
+    // 2. Criptare RC4
+    // Generăm cheia RC4 (16 bytes aleatori)
+    const rc4Key = crypto.randomBytes(16);
+    // Convertim XML-ul în Buffer (UTF-8) pentru a nu pierde diacriticele
     const xmlBuffer = Buffer.from(xmlStr, 'utf8');
-    logDiag("XML-BUFF", `Buffer size: ${xmlBuffer.length} bytes`);
+    // Criptăm conținutul
+    const encryptedData = rc4(rc4Key, xmlBuffer);
+    const encryptedDataHex = encryptedData.toString('hex').toUpperCase();
 
-    // --- 2. CRIPTARE RC4 ---
-    const rc4KeyHex = forge.random.getBytesSync(16);
-    const rc4KeyBuffer = Buffer.from(rc4KeyHex, 'binary');
-    logDiag("RC4-KEY", `Key Hex: ${rc4KeyBuffer.toString('hex')}`);
-
-    const encryptedDataBuffer = rc4(rc4KeyBuffer, xmlBuffer);
-    const encryptedDataHex = encryptedDataBuffer.toString('hex').toUpperCase();
-    logDiag("RC4-CRYPT", `Data Criptată (primii 50 chars): ${encryptedDataHex.substring(0, 50)}...`);
-
-    // --- 3. CRIPTARE RSA (Cheia RC4 -> env_key) ---
-    const publicKey = getNetopiaPublicKey();
-    const encryptedKey = publicKey.encrypt(rc4KeyHex, 'RSAES-PKCS1-V1_5');
-    const envKeyBase64 = forge.util.encode64(encryptedKey);
-    logDiag("RSA-CRYPT", `env_key generat (Base64): ${envKeyBase64.substring(0, 50)}...`);
-
-    // =================================================================
-    // ⭐ AUTO-TEST DECIZIV: ÎNCERCĂM SĂ DECRIPTĂM CE AM CRIPTAT
-    // =================================================================
-    try {
-        logDiag("SELF-TEST", "⚠️ ÎNCEPE AUTO-TESTUL DE DECRIPTARE ⚠️");
-        logDiag("SELF-TEST", "Dacă acesta eșuează, Netopia nu are nicio șansă.");
-
-        const myPrivateKey = getMerchantPrivateKey();
-        
-        // A. Decriptare env_key
-        const decodedEnvKey = forge.util.decode64(envKeyBase64);
-        const decryptedRc4KeyBinary = myPrivateKey.decrypt(decodedEnvKey, 'RSAES-PKCS1-V1_5');
-        const decryptedRc4KeyBuffer = Buffer.from(decryptedRc4KeyBinary, 'binary');
-
-        logDiag("SELF-TEST", `Cheie RC4 Recuperată: ${decryptedRc4KeyBuffer.toString('hex')}`);
-        
-        if (decryptedRc4KeyBuffer.toString('hex') !== rc4KeyBuffer.toString('hex')) {
-             throw new Error("MISMATCH: Cheia RC4 decriptată nu este identică cu cea originală!");
-        } else {
-             logDiag("SELF-TEST", "✅ RSA OK: Cheia RC4 recuperată corect.");
-        }
-
-        // B. Decriptare Data
-        const decryptedDataBuffer = rc4(decryptedRc4KeyBuffer, encryptedDataBuffer);
-        const decryptedXml = decryptedDataBuffer.toString('utf8');
-
-        logDiag("SELF-TEST", `XML Recuperat (primii 100 chars): ${decryptedXml.substring(0, 100)}...`);
-
-        if (decryptedXml.includes(signature)) {
-            logDiag("SELF-TEST", "✅ RC4 OK: Semnătura găsită în XML-ul decriptat.");
-            logDiag("SELF-TEST", "CONCLUZIE: Criptarea serverului tău este PERFECTĂ din punct de vedere tehnic.");
-            logDiag("SELF-TEST", "Dacă Netopia dă eroare acum, înseamnă 100% că 'public.cer' folosit nu este perechea cheii private din sistemul Netopia (Mismatch Sandbox vs Live).");
-        } else {
-            throw new Error("XML-ul recuperat este corupt (nu conține semnătura).");
-        }
-
-    } catch (err) {
-        logDiag("SELF-TEST-FAIL", "❌ AUTO-TEST EȘUAT!", err.message);
-        // Nu oprim execuția, trimitem oricum, dar știm că e greșit
-    }
-    // =================================================================
+    // 3. Criptare RSA (env_key)
+    // Criptăm cheia RC4 folosind Certificatul Public al Netopia
+    const netopiaPublicCert = getFileContent(PUBLIC_CERT_PATH);
+    
+    const encryptedKey = crypto.publicEncrypt(
+        {
+            key: netopiaPublicCert,
+            padding: crypto.constants.RSA_PKCS1_PADDING, // Standardul obligatoriu Netopia
+        },
+        rc4Key
+    );
+    const envKeyBase64 = encryptedKey.toString('base64');
 
     return {
         gatewayUrl: NETOPIA_CONFIG.gatewayUrl,
         env_key: envKeyBase64,
-        data: encryptedDataHex
+        data: encryptedDataHex,
     };
 }
 
 // ==========================================
-// 4. DECRIPTARE IPN (RĂMÂNE STANDARD)
+// 2. DECRYPT IPN (Confirmare Plată)
 // ==========================================
 export function decryptIPN(envKeyBase64, encryptedDataHex) {
-    logDiag("IPN", "Primire IPN de la Netopia...");
-    const privateKey = getMerchantPrivateKey();
+    const merchantPrivateKey = getFileContent(PRIVATE_KEY_PATH);
 
-    let rc4KeyBinary;
+    // 1. Decriptare Cheie RC4 (RSA)
+    let rc4Key;
     try {
-        const encryptedKey = forge.util.decode64(envKeyBase64);
-        rc4KeyBinary = privateKey.decrypt(encryptedKey, 'RSAES-PKCS1-V1_5');
+        rc4Key = crypto.privateDecrypt(
+            {
+                key: merchantPrivateKey,
+                padding: crypto.constants.RSA_PKCS1_PADDING,
+            },
+            Buffer.from(envKeyBase64, 'base64')
+        );
     } catch (e) {
-        throw new Error("Decriptare RSA eșuată. Verifică private.key.");
+        throw new Error(`Decriptare RSA eșuată: ${e.message}`);
     }
-    
-    const rc4KeyBuffer = Buffer.from(rc4KeyBinary, 'binary');
+
+    // 2. Decriptare Date XML (RC4)
     const encryptedDataBuffer = Buffer.from(encryptedDataHex, 'hex');
-    const decryptedBuffer = rc4(rc4KeyBuffer, encryptedDataBuffer);
+    const decryptedBuffer = rc4(rc4Key, encryptedDataBuffer);
     const xml = decryptedBuffer.toString('utf8');
 
-    const orderIdMatch = xml.match(/id="([^"]+)"/);
+    // 3. Extragere date
+    const orderIdMatch = xml.match(/id="([^"]+)"/) || xml.match(/<order[^>]*id="([^"]+)"/);
     const actionMatch = xml.match(/<action>([^<]+)<\/action>/);
     const errorMatch = xml.match(/<error code="([^"]+)">/);
     const errorMessageMatch = xml.match(/<error[^>]*>([^<]+)<\/error>/);
@@ -265,6 +173,6 @@ export function decryptIPN(envKeyBase64, encryptedDataHex) {
         action: actionMatch ? actionMatch[1] : null,
         errorCode: errorMatch ? errorMatch[1] : "0",
         errorMessage: errorMessageMatch ? errorMessageMatch[1] : null,
-        xml
+        xml,
     };
 }
