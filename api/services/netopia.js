@@ -12,11 +12,11 @@ const NETOPIA_CONFIG = {
   // Semnătura din Netopia Dashboard
   signature: String(process.env.NETOPIA_SIGNATURE || "").trim(),
 
-  // 1. CHEIA PUBLICĂ NETOPIA (Folosită pentru criptarea cererii către ei)
-  // Ai spus că se numește 'public.key'
-  netopiaPublicCertPath: path.join(CERTS_DIR, "public.key"),
+  // --- MODIFICARE AICI ---
+  // Folosim numele exact pe care l-am văzut în comanda ls: public.cer
+  netopiaPublicCertPath: path.join(CERTS_DIR, "public.cer"),
 
-  // 2. CHEIA TA PRIVATĂ (Folosită pentru decriptarea răspunsului de la ei)
+  // Cheia ta privată
   merchantPrivateKeyPath: path.join(CERTS_DIR, "private.key"),
 
   // URL-urile
@@ -54,7 +54,6 @@ function rc4(keyBuffer, dataBuffer) {
 
 function readTextFile(p) {
   if (!fs.existsSync(p)) {
-    // Mesaj clar de eroare cu calea exactă unde caută scriptul
     throw new Error(`[Netopia] Nu am găsit fișierul: ${p}`);
   }
   return fs.readFileSync(p, "utf8");
@@ -125,12 +124,17 @@ function buildXml(data) {
 export function encryptRequest(paymentData) {
   ensureNonEmptySignature(NETOPIA_CONFIG.signature);
 
-  // 1. Citim Cheia Publică Netopia (sandbox) din fișierul public.key
+  // 1. Citim Cheia Publică Netopia
   const netopiaPublicPemRaw = readTextFile(NETOPIA_CONFIG.netopiaPublicCertPath);
 
-  // Validare rapidă ca să nu crere în crypto
+  // VERIFICARE CRITICĂ: Fișierul trebuie să fie TEXT (PEM), nu binar
   if (!netopiaPublicPemRaw.includes("-----BEGIN")) {
-      throw new Error(`[Netopia] Fișierul ${NETOPIA_CONFIG.netopiaPublicCertPath} nu pare valid. Trebuie să fie format PEM (să înceapă cu -----BEGIN...).`);
+      throw new Error(
+        `[Netopia] Eroare Format Certificat: Fișierul ${NETOPIA_CONFIG.netopiaPublicCertPath} pare a fi binar (DER).\n` +
+        `Trebuie convertit în PEM. Rulează pe server:\n` +
+        `openssl x509 -inform DER -in api/certs/public.cer -out api/certs/public.pem\n` +
+        `...și apoi actualizează codul să folosească public.pem`
+      );
   }
 
   const xml = buildXml(paymentData);
