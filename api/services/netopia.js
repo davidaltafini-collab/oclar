@@ -1,99 +1,141 @@
-import crypto from "crypto";
 import fs from "fs";
 import path from "path";
+import forge from "node-forge";
 
-// Calea către folderul de certificate
+// Căile către fișiere
 const CERTS_DIR = path.join(process.cwd(), "api", "certs");
+const PUBLIC_CERT_PATH = path.join(CERTS_DIR, "public.cer");
+const PRIVATE_KEY_PATH = path.join(CERTS_DIR, "private.key");
 
+// Configurația Netopia
 const NETOPIA_CONFIG = {
-  // URL Sandbox
-  gatewayUrl: "https://sandboxsecure.mobilpay.ro",
-
-  // Semnătura din Netopia Dashboard
-  signature: String(process.env.NETOPIA_SIGNATURE || "").trim(),
-
-  // --- MODIFICARE AICI ---
-  // Folosim numele exact pe care l-am văzut în comanda ls: public.cer
-  netopiaPublicCertPath: path.join(CERTS_DIR, "public.cer"),
-
-  // Cheia ta privată
-  merchantPrivateKeyPath: path.join(CERTS_DIR, "private.key"),
-
-  // URL-urile
-  returnUrl: "https://oclar.ro/#/success",
-  confirmUrl: "https://api.oclar.ro/api/netopia/confirm",
+    // URL Sandbox (HTTP pentru a evita erori SSL locale)
+    gatewayUrl: "http://sandboxsecure.mobilpay.ro",
+    // Link-urile tale
+    returnUrl: "https://oclar.ro/#/success",
+    confirmUrl: "https://api.oclar.ro/api/netopia/confirm",
 };
 
 /**
- * Algoritmul RC4
+ * Helper pentru a citi și procesa cheia publică
+ * Indiferent dacă e PEM sau DER (Binar)
  */
-function rc4(keyBuffer, dataBuffer) {
-  const S = new Array(256);
-  for (let i = 0; i < 256; i++) S[i] = i;
+function getNetopiaPublicKey() {
+    if (!fs.existsSync(PUBLIC_CERT_PATH)) {
+        throw new Error(`[Netopia] Nu găsesc public.cer la: ${PUBLIC_CERT_PATH}`);
+    }
 
-  let j = 0;
-  for (let i = 0; i < 256; i++) {
-    j = (j + S[i] + keyBuffer[i % keyBuffer.length]) % 256;
-    [S[i], S[j]] = [S[j], S[i]];
-  }
+    const certContent = fs.readFileSync(PUBLIC_CERT_PATH); // Citim ca Buffer (binar)
 
-  let i = 0;
-  j = 0;
-  const output = Buffer.alloc(dataBuffer.length);
+    try {
+        // Încercăm să citim ca PEM (text)
+        const pem = certContent.toString('utf8');
+        if (pem.includes('-----BEGIN CERTIFICATE-----')) {
+            const cert = forge.pki.certificateFromPem(pem);
+            return cert.publicKey;
+        }
+    } catch (e) {
+        // Ignorăm eroarea și încercăm DER
+    }
 
-  for (let k = 0; k < dataBuffer.length; k++) {
-    i = (i + 1) % 256;
-    j = (j + S[i]) % 256;
-    [S[i], S[j]] = [S[j], S[i]];
-    output[k] = dataBuffer[k] ^ S[(S[i] + S[j]) % 256];
-  }
-  return output;
+    try {
+        // Încercăm să citim ca DER (binar)
+        const der = forge.util.createBuffer(certContent);
+        const cert = forge.pki.certificateFromAsn1(forge.asn1.fromDer(der));
+        return cert.publicKey;
+    } catch (e) {
+        throw new Error(`[Netopia] Format certificat invalid în public.cer. Trebuie să fie PEM sau DER valid.`);
+    }
 }
 
-// -------------- Helpers --------------
-
-function readTextFile(p) {
-  if (!fs.existsSync(p)) {
-    throw new Error(`[Netopia] Nu am găsit fișierul: ${p}`);
-  }
-  return fs.readFileSync(p, "utf8");
+/**
+ * Helper pentru cheia privată (pentru decriptare IPN)
+ */
+function getMerchantPrivateKey() {
+    if (!fs.existsSync(PRIVATE_KEY_PATH)) {
+        throw new Error(`[Netopia] Nu găsesc private.key la: ${PRIVATE_KEY_PATH}`);
+    }
+    const keyContent = fs.readFileSync(PRIVATE_KEY_PATH, 'utf8');
+    return forge.pki.privateKeyFromPem(keyContent);
 }
 
-function ensureNonEmptySignature(sig) {
-  if (!sig) throw new Error("NETOPIA_SIGNATURE lipsește din .env");
+/**
+ * Algoritmul RC4 (custom implementation pentru compatibilitate)
+ */
+function rc4(keyStr, dataStr) {
+    const s = [];
+    for (let i = 0; i < 256; i++) s[i] = i;
+    let j = 0;
+    let x;
+    for (let i = 0; i < 256; i++) {
+        j = (j + s[i] + keyStr.charCodeAt(i % keyStr.length)) % 256;
+        x = s[i];
+        s[i] = s[j];
+        s[j] = x;
+    }
+    let i = 0;
+    j = 0;
+    let res = '';
+    for (let y = 0; y < dataStr.length; y++) {
+        i = (i + 1) % 256;
+        j = (j + s[i]) % 256;
+        x = s[i];
+        s[i] = s[j];
+        s[j] = x;
+        res += String.fromCharCode(dataStr.charCodeAt(y) ^ s[(s[i] + s[j]) % 256]);
+    }
+    return res;
 }
 
+/**
+ * Convert String to Hex Uppercase
+ */
+function strToHex(str) {
+    let hex = '';
+    for (let i = 0; i < str.length; i++) {
+        hex += '' + str.charCodeAt(i).toString(16).padStart(2, '0');
+    }
+    return hex.toUpperCase();
+}
+
+function hexToStr(hex) {
+    let str = '';
+    for (let i = 0; i < hex.length; i += 2) {
+        str += String.fromCharCode(parseInt(hex.substr(i, 2), 16));
+    }
+    return str;
+}
+
+// XML Helpers
 function cleanXml(str) {
-  if (!str) return "";
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;")
-    .trim();
+    if (!str) return "";
+    return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&apos;")
+        .trim();
 }
 
 function formatTimestamp(d = new Date()) {
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}${pad(d.getHours())}${pad(
-    d.getMinutes()
-  )}${pad(d.getSeconds())}`;
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 
-function buildXml(data) {
-  const ts = formatTimestamp();
-  const orderId = cleanXml(data.orderId);
-  const amount = Number(data.amount).toFixed(2);
-  const firstName = cleanXml(data.firstName || "Client");
-  const lastName = cleanXml(data.lastName || "Oclar");
-  const email = cleanXml(data.email || "no-reply@oclar.ro");
-  const phone = cleanXml(data.phone || "");
-  const address = cleanXml(data.address && data.address.length > 3 ? data.address : "Romania");
+// ------------------ ENCRYPT REQUEST (Start Plată) ------------------
+export function encryptRequest(paymentData) {
+    const signature = String(process.env.NETOPIA_SIGNATURE || "").trim();
+    if (!signature) throw new Error("NETOPIA_SIGNATURE lipsește din .env");
 
-  return `<?xml version="1.0" encoding="utf-8"?>
+    const ts = formatTimestamp();
+    const orderId = cleanXml(paymentData.orderId);
+    const amount = Number(paymentData.amount).toFixed(2);
+    
+    // Construim XML-ul
+    const xml = `<?xml version="1.0" encoding="utf-8"?>
 <order type="card" id="${orderId}" timestamp="${ts}">
-  <signature>${NETOPIA_CONFIG.signature}</signature>
+  <signature>${signature}</signature>
   <url>
     <return>${NETOPIA_CONFIG.returnUrl}</return>
     <confirm>${NETOPIA_CONFIG.confirmUrl}</confirm>
@@ -102,93 +144,70 @@ function buildXml(data) {
     <details>Comanda ${orderId}</details>
     <contact_info>
       <billing type="person">
-        <first_name>${firstName}</first_name>
-        <last_name>${lastName}</last_name>
-        <email>${email}</email>
-        <address>${address}</address>
-        <mobile_phone>${phone}</mobile_phone>
+        <first_name>${cleanXml(paymentData.firstName)}</first_name>
+        <last_name>${cleanXml(paymentData.lastName)}</last_name>
+        <email>${cleanXml(paymentData.email)}</email>
+        <address>${cleanXml(paymentData.address)}</address>
+        <mobile_phone>${cleanXml(paymentData.phone)}</mobile_phone>
       </billing>
       <shipping type="person">
-        <first_name>${firstName}</first_name>
-        <last_name>${lastName}</last_name>
-        <email>${email}</email>
-        <address>${address}</address>
-        <mobile_phone>${phone}</mobile_phone>
+        <first_name>${cleanXml(paymentData.firstName)}</first_name>
+        <last_name>${cleanXml(paymentData.lastName)}</last_name>
+        <email>${cleanXml(paymentData.email)}</email>
+        <address>${cleanXml(paymentData.address)}</address>
+        <mobile_phone>${cleanXml(paymentData.phone)}</mobile_phone>
       </shipping>
     </contact_info>
   </invoice>
 </order>`;
-}
 
-// ------------------ ENCRYPT REQUEST (Start Plată) ------------------
-export function encryptRequest(paymentData) {
-  ensureNonEmptySignature(NETOPIA_CONFIG.signature);
+    // 1. Generăm cheia RC4 aleatorie
+    const rc4Key = forge.random.getBytesSync(16);
 
-  // 1. Citim Cheia Publică Netopia
-  const netopiaPublicPemRaw = readTextFile(NETOPIA_CONFIG.netopiaPublicCertPath);
+    // 2. Criptăm XML-ul cu RC4
+    const encryptedData = rc4(rc4Key, xml);
+    const encryptedDataHex = strToHex(encryptedData);
 
-  // VERIFICARE CRITICĂ: Fișierul trebuie să fie TEXT (PEM), nu binar
-  if (!netopiaPublicPemRaw.includes("-----BEGIN")) {
-      throw new Error(
-        `[Netopia] Eroare Format Certificat: Fișierul ${NETOPIA_CONFIG.netopiaPublicCertPath} pare a fi binar (DER).\n` +
-        `Trebuie convertit în PEM. Rulează pe server:\n` +
-        `openssl x509 -inform DER -in api/certs/public.cer -out api/certs/public.pem\n` +
-        `...și apoi actualizează codul să folosească public.pem`
-      );
-  }
+    // 3. Criptăm cheia RC4 cu cheia Publică Netopia (RSA)
+    const publicKey = getNetopiaPublicKey();
+    const encryptedKey = publicKey.encrypt(rc4Key, 'RSAES-PKCS1-V1_5');
+    const envKeyBase64 = forge.util.encode64(encryptedKey);
 
-  const xml = buildXml(paymentData);
-  const rc4Key = crypto.randomBytes(16);
-  const encryptedDataHex = rc4(rc4Key, Buffer.from(xml, "utf8"))
-    .toString("hex")
-    .toUpperCase();
-
-  const envKeyBase64 = crypto
-    .publicEncrypt(
-      { 
-        key: netopiaPublicPemRaw, 
-        padding: crypto.constants.RSA_PKCS1_PADDING 
-      },
-      rc4Key
-    )
-    .toString("base64");
-
-  return {
-    gatewayUrl: NETOPIA_CONFIG.gatewayUrl,
-    env_key: envKeyBase64,
-    data: encryptedDataHex,
-  };
+    return {
+        gatewayUrl: NETOPIA_CONFIG.gatewayUrl,
+        env_key: envKeyBase64,
+        data: encryptedDataHex
+    };
 }
 
 // ------------------ DECRYPT IPN (Confirmare Plată) ------------------
 export function decryptIPN(envKeyBase64, encryptedDataHex) {
-  const merchantPrivateKeyPem = readTextFile(NETOPIA_CONFIG.merchantPrivateKeyPath);
+    const privateKey = getMerchantPrivateKey();
 
-  let rc4Key;
-  try {
-    rc4Key = crypto.privateDecrypt(
-      { 
-        key: merchantPrivateKeyPem, 
-        padding: crypto.constants.RSA_PKCS1_PADDING 
-      },
-      Buffer.from(envKeyBase64, "base64")
-    );
-  } catch (e) {
-    throw new Error("Decriptare cheie RSA eșuată. Verifică private.key.");
-  }
+    // 1. Decriptăm cheia RC4 folosind cheia privată
+    let rc4Key;
+    try {
+        const encryptedKey = forge.util.decode64(envKeyBase64);
+        rc4Key = privateKey.decrypt(encryptedKey, 'RSAES-PKCS1-V1_5');
+    } catch (e) {
+        throw new Error("Decriptare RSA eșuată. Verifică private.key.");
+    }
 
-  const xml = rc4(rc4Key, Buffer.from(encryptedDataHex, "hex")).toString("utf8");
+    // 2. Decriptăm Datele XML folosind RC4
+    const encryptedData = hexToStr(encryptedDataHex);
+    const xml = rc4(rc4Key, encryptedData);
 
-  const orderIdMatch = xml.match(/<order[^>]*id="([^"]+)"/i) || xml.match(/id="([^"]+)"/i);
-  const errorCodeMatch = xml.match(/<error[^>]*code="([^"]+)"/i);
-  const actionMatch = xml.match(/<action>([^<]+)<\/action>/i);
-  const errorMessageMatch = xml.match(/>([^<]+)<\/error>/i);
+    // 3. Extragem datele
+    const orderIdMatch = xml.match(/id="([^"]+)"/);
+    const actionMatch = xml.match(/<action>([^<]+)<\/action>/);
+    const errorMatch = xml.match(/<error code="([^"]+)">/);
+    const errorMessageMatch = xml.match(/<error[^>]*>([^<]+)<\/error>/);
 
-  return {
-    orderId: orderIdMatch ? orderIdMatch[1] : null,
-    action: actionMatch ? actionMatch[1] : null,
-    errorCode: errorCodeMatch ? errorCodeMatch[1] : null,
-    errorMessage: errorMessageMatch ? errorMessageMatch[1] : null,
-    xml,
-  };
+    return {
+        orderId: orderIdMatch ? orderIdMatch[1] : null,
+        action: actionMatch ? actionMatch[1] : null,
+        errorCode: errorMatch ? errorMatch[1] : "0",
+        errorMessage: errorMessageMatch ? errorMessageMatch[1] : null,
+        xml
+    };
 }
