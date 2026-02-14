@@ -469,9 +469,44 @@ export const CartDrawer: React.FC = () => {
             lockerId: selectedLocker?.lockerId || null,
       };
 
-      if (paymentMethod === 'card') {
-        // Apelăm funcția Netopia care face redirectul invizibil
-        await processNetopiaPayment(orderPayload);
+      if (paymentMethod === 'card') {
+        // 1. Cerere către backend pentru criptare date (inițiere sesiune)
+        const response = await fetch(`${API_URL}/create-netopia-session`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(orderPayload)
+        });
+
+        const result = await response.json();
+
+        if (result.success && result.gatewayUrl) {
+          // 2. Creăm formularul invizibil pentru redirectare POST către Netopia
+          const form = document.createElement('form');
+          form.method = 'POST';
+          form.action = result.gatewayUrl; // URL-ul primit din backend
+
+          // Input: env_key
+          const envKeyInput = document.createElement('input');
+          envKeyInput.type = 'hidden';
+          envKeyInput.name = 'env_key';
+          envKeyInput.value = result.env_key;
+          form.appendChild(envKeyInput);
+
+          // Input: data
+          const dataInput = document.createElement('input');
+          dataInput.type = 'hidden';
+          dataInput.name = 'data';
+          dataInput.value = result.data;
+          form.appendChild(dataInput);
+
+          // 3. Adăugăm formularul în pagină și îi dăm submit automat
+          document.body.appendChild(form);
+          form.submit();
+        } else {
+          // Caz de eroare backend
+          console.error('Netopia Error:', result);
+          alert('Eroare la inițierea plății: ' + (result.error || 'Serverul nu a răspuns corect.'));
+        }
       } else {
         const response = await fetch(`${API_URL}/create-order-ramburs`, {
           method: 'POST',
