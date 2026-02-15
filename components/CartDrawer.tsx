@@ -442,32 +442,41 @@ export const CartDrawer: React.FC = () => {
     try {
       const finalAddressLine = `${formData.street_name} Nr. ${formData.street_number}, ${formData.details}`.trim();
 
-      const orderPayload = {
-            customerName: formData.fullName,
-            customerEmail: formData.email || null,
-            customerPhone: formData.phone,
-            
-            // Adresa Facturare
-            address: {
-                county: formData.county,
-                city: formData.city,
-                line: finalAddressLine,
-                street_name: formData.street_name,
-                street_number: formData.street_number,
-                details: formData.details,
-                postalCode: formData.postalCode
-            },
-            
-            items: cart,
-            subtotal,
-            shippingMethod,
-            shippingCost,
-            discountCode: appliedDiscount?.code || null,
-            discountAmount,
-            totalAmount: finalTotal,
-            postalCode: formData.postalCode,
-            lockerId: selectedLocker?.lockerId || null,
-      };
+      // 1. Generăm un ID unic pentru comandă (folosim timpul curent ca să fie unic)
+      const tempOrderId = Date.now().toString();
+
+      const orderPayload = {
+        // --- CÂMPURI NOI OBLIGATORII ---
+        orderId: tempOrderId,  // Netopia are nevoie de ID
+        amount: finalTotal,    // Netopia caută "amount", nu "totalAmount"
+        // ------------------------------
+
+        customerName: formData.fullName,
+        // Punem un email generic dacă clientul nu a completat (ca să nu dea eroare API-ul)
+        customerEmail: formData.email || "client@fara-email.com",
+        customerPhone: formData.phone,
+
+        // Adresa Facturare
+        address: {
+          county: formData.county,
+          city: formData.city,
+          line: finalAddressLine,
+          street_name: formData.street_name,
+          street_number: formData.street_number,
+          details: formData.details,
+          postalCode: formData.postalCode
+        },
+
+        items: cart,
+        subtotal,
+        shippingMethod,
+        shippingCost,
+        discountCode: appliedDiscount?.code || null,
+        discountAmount,
+        totalAmount: finalTotal,
+        postalCode: formData.postalCode,
+        lockerId: selectedLocker?.lockerId || null,
+      };
 
       if (paymentMethod === 'card') {
         // --- LOGICA NOUĂ: API REST NETOPIA ---
