@@ -6,7 +6,7 @@ import { pool } from './db.js'; // Asta se execută prima!
 import { sendOrderEmails } from './services/email.js';
 import { sendOblioInvoice, generateAWB } from './services/oblio.js';
 import { createDraftShipment, getShipmentStatus, getShipmentLabel } from './services/ecolet.js';
-import { encryptRequest, decryptIPN } from './services/netopia.js';
+import { createPaymentSession, decryptIPN } from './services/netopia.js';
 
 dotenv.config(); // Încarcă variabilele pentru acest fișier
 
@@ -1010,71 +1010,25 @@ const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 
    // --- 9.1 RUTA INIT NETOPIA ---
-      app.post('/api/create-netopia-session', async (req, res) => {
-          try {
-              const body = req.body;
-              // Inseram comanda in DB ca "pending" INAINTE de a trimite userul la plata
-              // Asta e diferit de Stripe unde puteam astepta webhook-ul
+app.post('/api/create-netopia-session', async (req, res) => {
+    try {
+        const paymentData = req.body;
+        console.log("Inițiere plată REST pentru:", paymentData.orderId);
 
-              let connection;
-              let orderId;
+        if (!paymentData.amount) {
+            return res.status(400).json({ success: false, error: "Lipsă sumă de plată" });
+        }
 
-              try {
-                  connection = await pool.getConnection();
-                  const itemsJson = JSON.stringify(body.items);
+        const result = await createPaymentSession(paymentData);
 
-                  // Calculam totalul server-side sau il luam din body (in productie RECALCULEAZA!)
-                  const totalAmount = body.totalAmount;
+        // Trimitem URL-ul primit de la Netopia către frontend
+        res.json(result);
 
-                  // Cream comanda temporara
-                  const [result] = await connection.query(
-                      `INSERT INTO orders 
-                (customer_name, customer_email, customer_phone, county, city, address_line, items, subtotal, shipping_method, shipping_cost, discount_code, discount_amount, total_amount, payment_method, status, created_at) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'card', 'pending', NOW())`,
-                      [
-                          body.customerName,
-                          body.customerEmail,
-                          body.customerPhone,
-                          body.address.county,
-                          body.address.city,
-                          body.address.line,
-                          itemsJson,
-                          body.subtotal,
-                          body.shippingMethod,
-                          body.shippingCost,
-                          body.discountCode,
-                          body.discountAmount,
-                          totalAmount
-                      ]
-                  );
-                  orderId = result.insertId;
-
-                  // Pregatim datele pentru Netopia
-                  const paymentData = {
-                      orderId: orderId,
-                      amount: totalAmount,
-                      firstName: body.customerName.split(' ')[0] || 'Client',
-                      lastName: body.customerName.split(' ').slice(1).join(' ') || 'Oclar',
-                      email: body.customerEmail,
-                      phone: body.customerPhone,
-                      address: `${body.address.city}, ${body.address.line}`
-                  };
-
-                  // Criptam
-                  const encryptedParams = await encryptRequest(paymentData);
-
-                  res.json({ success: true, ...encryptedParams });
-
-              } finally {
-                  if (connection) connection.release();
-              }
-
-          } catch (e) {
-              console.error('❌ Netopia Init Error:', e);
-              res.status(500).json({ error: e.message });
-          }
-      });
-
+    } catch (error) {
+        console.error("Eroare Netopia REST:", error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 // --- 9.2 RUTA CONFIRM NETOPIA (IPN) ---
 app.post('/api/netopia/confirm', async (req, res) => {
     const { env_key, data } = req.body;

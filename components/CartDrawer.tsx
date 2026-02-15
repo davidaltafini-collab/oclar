@@ -470,7 +470,9 @@ export const CartDrawer: React.FC = () => {
       };
 
       if (paymentMethod === 'card') {
-        // 1. Cerere către backend pentru criptare date (inițiere sesiune)
+        // --- LOGICA NOUĂ: API REST NETOPIA ---
+
+        // 1. Cerem link-ul de plată de la backend
         const response = await fetch(`${API_URL}/create-netopia-session`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -479,33 +481,14 @@ export const CartDrawer: React.FC = () => {
 
         const result = await response.json();
 
-        if (result.success && result.gatewayUrl) {
-          // 2. Creăm formularul invizibil pentru redirectare POST către Netopia
-          const form = document.createElement('form');
-          form.method = 'POST';
-          form.action = result.gatewayUrl; // URL-ul primit din backend
-
-          // Input: env_key
-          const envKeyInput = document.createElement('input');
-          envKeyInput.type = 'hidden';
-          envKeyInput.name = 'env_key';
-          envKeyInput.value = result.env_key;
-          form.appendChild(envKeyInput);
-
-          // Input: data
-          const dataInput = document.createElement('input');
-          dataInput.type = 'hidden';
-          dataInput.name = 'data';
-          dataInput.value = result.data;
-          form.appendChild(dataInput);
-
-          // 3. Adăugăm formularul în pagină și îi dăm submit automat
-          document.body.appendChild(form);
-          form.submit();
+        if (result.success && result.paymentUrl) {
+          // 2. REDIRECT STANDARD: Navigăm direct la link-ul primit
+          console.log("Navigare către Netopia:", result.paymentUrl);
+          window.location.href = result.paymentUrl;
         } else {
-          // Caz de eroare backend
+          // Caz de eroare (nu am primit link-ul)
           console.error('Netopia Error:', result);
-          alert('Eroare la inițierea plății: ' + (result.error || 'Serverul nu a răspuns corect.'));
+          alert('Eroare la inițierea plății: ' + (result.error || 'Nu am primit link-ul de plată.'));
         }
       } else {
         const response = await fetch(`${API_URL}/create-order-ramburs`, {

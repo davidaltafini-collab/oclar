@@ -1,118 +1,104 @@
-import fs from "fs";
-import path from "path";
-import { Mobilpay } from "./Mobilpay.js"; // Importăm fișierul local creat la Pasul 2
+export async function createPaymentSession(paymentData) {
+  const apiKey = process.env.NETOPIA_API_KEY;
+  const apiUrl = process.env.NETOPIA_API_URL;
+  const posSignature = process.env.NETOPIA_SIGNATURE; // Semnătura contului (obligatorie în 'order')
 
-// ==========================================
-// CONFIGURARE
-// ==========================================
-const CERTS_DIR = path.join(process.cwd(), "api", "certs");
+  if (!apiKey || !posSignature) throw new Error("Lipsesc NETOPIA_API_KEY sau NETOPIA_SIGNATURE din .env");
 
-// ATENȚIE: Verifică numele fișierelor de pe server!
-// Dacă le-ai lăsat cu numele lungi, pune-le aici.
-const PUBLIC_FILE = "public.cer"; 
-const PRIVATE_FILE = "private.key";
+  // Formatare dată ISO 8601 (ex: 2023-08-24T14:15:22+02:00)
+  const now = new Date();
+  const dateTime = now.toISOString(); 
 
-const NETOPIA_CONFIG = {
-  signature: String(process.env.NETOPIA_SIGNATURE || "").trim(),
-  sandbox: true,
-  gatewayUrl: "http://sandboxsecure.mobilpay.ro", // HTTP pt sandbox
-  returnUrl: "https://oclar.ro/#/success",
-  confirmUrl: "https://api.oclar.ro/api/netopia/confirm",
-};
-
-// ==========================================
-// HELPERE
-// ==========================================
-function clean(str) {
-  if (!str) return "";
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;")
-    .trim();
-}
-
-function getTimestamp() {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-}
-
-// Inițializare instanță
-function getClient() {
-  const pubPath = path.join(CERTS_DIR, PUBLIC_FILE);
-  const privPath = path.join(CERTS_DIR, PRIVATE_FILE);
-
-  if (!fs.existsSync(pubPath)) throw new Error(`Lipsă fișier: ${PUBLIC_FILE}`);
-  if (!fs.existsSync(privPath)) throw new Error(`Lipsă fișier: ${PRIVATE_FILE}`);
-
-  return new Mobilpay({
-    signature: NETOPIA_CONFIG.signature,
-    publicKey: fs.readFileSync(pubPath, 'utf8'),
-    privateKey: fs.readFileSync(privPath, 'utf8'),
-    sandbox: NETOPIA_CONFIG.sandbox
-  });
-}
-
-// ==========================================
-// 1. CRIPTARE (START PLATĂ)
-// ==========================================
-export function encryptRequest(paymentData) {
-  const mp = getClient();
-  const ts = getTimestamp();
-  const orderId = clean(paymentData.orderId);
-  const amount = Number(paymentData.amount).toFixed(2);
-  
-  // Construim XML-ul EXACT cum îl vrea Netopia (fără spații inutile între tag-uri)
-  // Ordinea tag-urilor contează uneori!
-  const xml = `<?xml version="1.0" encoding="utf-8"?>
-<order type="card" id="${orderId}" timestamp="${ts}">
-<signature>${NETOPIA_CONFIG.signature}</signature>
-<url>
-<return>${NETOPIA_CONFIG.returnUrl}</return>
-<confirm>${NETOPIA_CONFIG.confirmUrl}</confirm>
-</url>
-<invoice currency="RON" amount="${amount}">
-<details>Comanda ${orderId}</details>
-<contact_info>
-<billing type="person">
-<first_name>${clean(paymentData.firstName)}</first_name>
-<last_name>${clean(paymentData.lastName)}</last_name>
-<email>${clean(paymentData.email)}</email>
-<address>${clean(paymentData.address)}</address>
-<mobile_phone>${clean(paymentData.phone)}</mobile_phone>
-</billing>
-<shipping type="person">
-<first_name>${clean(paymentData.firstName)}</first_name>
-<last_name>${clean(paymentData.lastName)}</last_name>
-<email>${clean(paymentData.email)}</email>
-<address>${clean(paymentData.address)}</address>
-<mobile_phone>${clean(paymentData.phone)}</mobile_phone>
-</shipping>
-</contact_info>
-</invoice>
-</order>`;
-
-  // Folosim clasa noastră pentru criptare
-  const { envKey, envData } = mp.encrypt(xml);
-
-  return {
-    gatewayUrl: NETOPIA_CONFIG.gatewayUrl,
-    env_key: envKey,
-    data: envData,
+  // Construim Payload-ul conform schemei 'StartRequest' din api.json
+  const payload = {
+    config: {
+      notifyUrl: "https://api.oclar.ro/api/netopia/confirm",
+      redirectUrl: "https://oclar.ro/#/success",
+      language: "ro"
+    },
+    payment: {
+      options: {
+        installments: 0,
+        bonus: 0
+      },
+      // Instrument este cerut de schemă, trimitem tip card simplu
+      instrument: {
+        type: "card",
+        account: "", 
+        expMonth: 1, 
+        expYear: 2030,
+        secretCode: ""
+      }
+    },
+    order: {
+      posSignature: posSignature, // CRITIC: Aici vine semnătura 39IB...
+      dateTime: dateTime,
+      description: `Comanda ${paymentData.orderId}`,
+      orderID: paymentData.orderId,
+      amount: Number(paymentData.amount),
+      currency: "RON",
+      billing: {
+        email: paymentData.email || "client@test.com",
+        phone: paymentData.phone || "0700000000",
+        firstName: paymentData.firstName || "Client",
+        lastName: paymentData.lastName || "Test",
+        city: paymentData.address.city || "Bucuresti",
+        country: 642, // Cod numeric Romania conform ISO 3166-1
+        countryName: "Romania",
+        state: paymentData.address.county || "Bucuresti",
+        postalCode: "000000",
+        details: paymentData.address.line || "Adresa completa"
+      },
+      shipping: {
+        email: paymentData.email || "client@test.com",
+        phone: paymentData.phone || "0700000000",
+        firstName: paymentData.firstName || "Client",
+        lastName: paymentData.lastName || "Test",
+        city: paymentData.address.city || "Bucuresti",
+        country: 642,
+        state: paymentData.address.county || "Bucuresti",
+        postalCode: "000000",
+        details: paymentData.address.line || "Adresa completa"
+      }
+    }
   };
+
+  console.log("[Netopia REST] Request Payload:", JSON.stringify(payload, null, 2));
+
+  try {
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": apiKey // Cheia API direct în header
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const result = await response.json();
+    console.log("[Netopia REST] Response:", result);
+
+    // Conform schemei 'StartResponse', URL-ul este în payment.paymentURL
+    if (result.payment && result.payment.paymentURL) {
+      return { success: true, paymentUrl: result.payment.paymentURL };
+    } 
+    
+    // Tratare erori (schema ErrorWithDetails)
+    if (result.error) {
+      throw new Error(`Netopia Error: ${result.error.message} (Code: ${result.error.code})`);
+    }
+
+    throw new Error("Răspuns invalid de la Netopia (lipsește paymentURL)");
+
+  } catch (error) {
+    console.error("[Netopia REST] Fail:", error);
+    throw error;
+  }
 }
 
-// ==========================================
-// 2. DECRIPTARE (CONFIRMARE)
-// ==========================================
-export function decryptIPN(envKey, envData) {
-  const mp = getClient();
-  
-  // Decriptăm
-  const result = mp.decrypt(envKey, envData);
-  
-  return result;
+export function decryptIPN(reqBody) {
+   // Placeholder pentru noul format de IPN (JSON)
+   // Momentan doar logăm să vedem ce primim
+   console.log("IPN Primit:", reqBody);
+   return { status: "OK" };
 }
