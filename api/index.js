@@ -1009,24 +1009,80 @@ app.get('/api/status', async (req, res) => {
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 
-   // --- 9.1 RUTA INIT NETOPIA ---
+
+// --- 9.1 RUTA INIT NETOPIA (CU SALVARE ÎN DB) ---
 app.post('/api/create-netopia-session', async (req, res) => {
+    let connection;
     try {
         const paymentData = req.body;
-        console.log("Inițiere plată REST pentru:", paymentData.orderId);
+        console.log("Inițiere comandă Card pentru:", paymentData.customerEmail);
 
         if (!paymentData.amount) {
             return res.status(400).json({ success: false, error: "Lipsă sumă de plată" });
         }
 
-        const result = await createPaymentSession(paymentData);
+        // 1. DESCHIDEM CONEXIUNEA
+        connection = await pool.getConnection();
 
-        // Trimitem URL-ul primit de la Netopia către frontend
-        res.json(result);
+        // 2. PREGĂTIM DATELE PENTRU BAZA DE DATE
+        const itemsJson = JSON.stringify(paymentData.items);
+        const shippingCostVal = parseFloat(paymentData.shippingCost || 0);
+
+        // 3. SALVĂM COMANDA ÎN BAZA DE DATE (Status: pending)
+        // Folosim exact aceeași structură ca la Ramburs
+        const [result] = await connection.query(
+            `INSERT INTO orders 
+            (customer_name, customer_email, customer_phone, county, city, address_line, postal_code, locker_id, items, subtotal, shipping_method, shipping_cost, discount_code, discount_amount, total_amount, payment_method, status, created_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'card', 'pending', NOW())`,
+            [
+                paymentData.customerName,
+                paymentData.customerEmail,
+                paymentData.customerPhone,
+                paymentData.address.county,
+                paymentData.address.city,
+                paymentData.address.line, // Sau address.line1 depinde cum vine din front
+                paymentData.postalCode || null,
+                (paymentData.shippingMethod === 'easybox' ? paymentData.lockerId : null),
+                itemsJson,
+                paymentData.subtotal,
+                paymentData.shippingMethod,
+                shippingCostVal,
+                paymentData.discountCode,
+                paymentData.discountAmount,
+                paymentData.totalAmount
+            ]
+        );
+
+        const newOrderId = result.insertId;
+        console.log(`✅ Comandă Card salvată în DB cu ID: ${newOrderId}`);
+
+        // 4. ACTUALIZĂM ID-ul COMENZII PENTRU NETOPIA
+        // Este CRITIC să trimitem la Netopia ID-ul din baza noastră de date (ex: 105),
+        // nu timestamp-ul generat în frontend. Așa, când vine confirmarea, știm exact ce să actualizăm.
+        const netopiaPayload = {
+            ...paymentData,
+            orderId: newOrderId.toString() // Suprascriem ID-ul temporar cu cel real din DB
+        };
+
+        // 5. CEREM LINK-UL DE PLATĂ
+        const netopiaResult = await createPaymentSession(netopiaPayload);
+
+        // 6. ACTUALIZĂM LOGICA DISCOUNT (Dacă există)
+        if (paymentData.discountCode) {
+            await connection.query(
+                'UPDATE discount_codes SET used_count = used_count + 1 WHERE code = ?',
+                [paymentData.discountCode]
+            );
+        }
+
+        // Trimitem URL-ul către frontend
+        res.json(netopiaResult);
 
     } catch (error) {
-        console.error("Eroare Netopia REST:", error);
+        console.error("Eroare Netopia Init:", error);
         res.status(500).json({ success: false, error: error.message });
+    } finally {
+        if (connection) connection.release();
     }
 });
 // --- 9.2 RUTA CONFIRM NETOPIA (IPN - REST API) ---
