@@ -1,15 +1,20 @@
+// api/services/netopia.js - VARIANTA FINALA REST API
+import fetch from 'node-fetch'; // Dacă ai Node mai vechi de 18, altfel e nativ
+
 export async function createPaymentSession(paymentData) {
   const apiKey = process.env.NETOPIA_API_KEY;
   const apiUrl = process.env.NETOPIA_API_URL;
-  const posSignature = process.env.NETOPIA_SIGNATURE; // Semnătura contului (obligatorie în 'order')
+  const posSignature = process.env.NETOPIA_SIGNATURE; 
 
-  if (!apiKey || !posSignature) throw new Error("Lipsesc NETOPIA_API_KEY sau NETOPIA_SIGNATURE din .env");
+  // Verificăm să avem tot ce trebuie în .env
+  if (!apiKey || !posSignature) {
+      throw new Error("Lipsesc NETOPIA_API_KEY sau NETOPIA_SIGNATURE din .env");
+  }
 
-  // Formatare dată ISO 8601 (ex: 2023-08-24T14:15:22+02:00)
   const now = new Date();
   const dateTime = now.toISOString(); 
 
-  // Construim Payload-ul conform schemei 'StartRequest' din api.json
+  // Construim Payload-ul JSON
   const payload = {
     config: {
       notifyUrl: "https://api.oclar.ro/api/netopia/confirm",
@@ -21,7 +26,6 @@ export async function createPaymentSession(paymentData) {
         installments: 0,
         bonus: 0
       },
-      // Instrument este cerut de schemă, trimitem tip card simplu
       instrument: {
         type: "card",
         account: "", 
@@ -31,26 +35,26 @@ export async function createPaymentSession(paymentData) {
       }
     },
     order: {
-      posSignature: posSignature, // CRITIC: Aici vine semnătura 39IB...
+      posSignature: posSignature, 
       dateTime: dateTime,
       description: `Comanda ${paymentData.orderId}`,
       orderID: paymentData.orderId,
       amount: Number(paymentData.amount),
       currency: "RON",
       billing: {
-        email: paymentData.email || "client@test.com",
+        email: paymentData.email || "client@fara-email.com",
         phone: paymentData.phone || "0700000000",
         firstName: paymentData.firstName || "Client",
         lastName: paymentData.lastName || "Test",
         city: paymentData.address.city || "Bucuresti",
-        country: 642, // Cod numeric Romania conform ISO 3166-1
+        country: 642,
         countryName: "Romania",
         state: paymentData.address.county || "Bucuresti",
         postalCode: "000000",
         details: paymentData.address.line || "Adresa completa"
       },
       shipping: {
-        email: paymentData.email || "client@test.com",
+        email: paymentData.email || "client@fara-email.com",
         phone: paymentData.phone || "0700000000",
         firstName: paymentData.firstName || "Client",
         lastName: paymentData.lastName || "Test",
@@ -70,7 +74,7 @@ export async function createPaymentSession(paymentData) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": apiKey // Cheia API direct în header
+        "Authorization": apiKey 
       },
       body: JSON.stringify(payload)
     });
@@ -78,12 +82,10 @@ export async function createPaymentSession(paymentData) {
     const result = await response.json();
     console.log("[Netopia REST] Response:", result);
 
-    // Conform schemei 'StartResponse', URL-ul este în payment.paymentURL
     if (result.payment && result.payment.paymentURL) {
       return { success: true, paymentUrl: result.payment.paymentURL };
     } 
     
-    // Tratare erori (schema ErrorWithDetails)
     if (result.error) {
       throw new Error(`Netopia Error: ${result.error.message} (Code: ${result.error.code})`);
     }
@@ -96,28 +98,24 @@ export async function createPaymentSession(paymentData) {
   }
 }
 
-export function decryptIPN(reqBody) {
-   // Placeholder pentru noul format de IPN (JSON)
-   // Momentan doar logăm să vedem ce primim
-   console.log("IPN Primit:", reqBody);
-   return { status: "OK" };
-}
+// Funcție pentru validarea notificării (IPN)
 export function validatePaymentNotification(reqBody) {
-  // Verificăm dacă structura e cea din documentație (NotifyRequest)
   if (!reqBody || !reqBody.payment || !reqBody.order) {
+    // Uneori Netopia trimite JSON simplu pe eroare, dar structura standard e cu payment/order
+    // Dacă e gol, aruncăm eroare
     throw new Error("Invalid IPN format");
   }
 
-  const status = reqBody.payment.status; // 3 = Paid, 5 = Confirmed
-  const orderId = reqBody.order.orderID; // ID-ul comenzii tale
-  const ntpId = reqBody.payment.ntpID;   // ID-ul tranzacției Netopia
+  const status = reqBody.payment.status; 
+  const orderId = reqBody.order.orderID; 
+  const ntpId = reqBody.payment.ntpID;   
   
   console.log(`[Netopia IPN] Comanda: ${orderId}, Status: ${status}, NTP ID: ${ntpId}`);
 
-  // Interpretăm statusul conform documentației API
   let isSuccess = false;
   let message = "Pending";
 
+  // Statusuri conform documentației tale: 3=Paid, 5=Confirmed
   if (status === 3) {
     isSuccess = true;
     message = "PAID (În așteptare confirmare)";
