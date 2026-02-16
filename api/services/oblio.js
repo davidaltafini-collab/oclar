@@ -105,9 +105,11 @@ export async function sendOblioInvoice(orderDetails) {
       ? { type: 'OP', value: parseFloat(totalAmount) } 
       : null;
 
+    // --- AICI AM ADĂUGAT seriesName ---
     const invoiceData = {
-      cif: process.env.OBLIO_CIF, // Trebuie să existe în .env!
+      cif: process.env.OBLIO_CIF, // CUI-ul firmei tale din .env
       client,
+      seriesName: process.env.OBLIO_SERIES_NAME || '', // <--- FIXUL ESTE AICI
       issueDate: new Date().toISOString().split('T')[0],
       dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       currency: 'RON',
@@ -155,6 +157,7 @@ export async function sendOblioInvoice(orderDetails) {
     };
   }
 }
+
 /* =========================
    ECOLET / ALSENDO AUTH
 ========================= */
@@ -179,6 +182,7 @@ async function getEcoletToken() {
   const data = await res.json();
   return data.access_token;
 }
+
 /**
  * Generează AWB prin ECOLET (Alsendo)
  */
@@ -273,4 +277,3 @@ export async function generateAWB(orderDetails, courierService) {
     };
   }
 }
-
