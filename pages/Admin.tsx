@@ -76,6 +76,11 @@ export const Admin: React.FC = () => {
   const [endDate, setEndDate] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
 
+  const [showHidden, setShowHidden] = useState(false); 
+  const [autoEnabled, setAutoEnabled] = useState(false); 
+  const [autoOblio, setAutoOblio] = useState(true);
+  const [autoEcolet, setAutoEcolet] = useState(true);
+
   // Formular Produs
   const [editingProduct, setEditingProduct] = useState<AdminProduct | null>(null);
   const [showProductForm, setShowProductForm] = useState(false);
@@ -161,7 +166,79 @@ export const Admin: React.FC = () => {
       fetchData(activeTab);
     }
   }, [activeTab, isAuthenticated]);
+// 1. HANDLER PENTRU HIDE / UNHIDE
+  const handleToggleVisibility = async (hide: boolean) => {
+      if (selectedOrders.length === 0) return alert('Selectează comenzi!');
+      
+      try {
+          await fetch(`${API_URL}/admin/toggle-visibility`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'x-admin-secret': secret },
+              body: JSON.stringify({ orderIds: selectedOrders, hide })
+          });
+          // Reîmprospătăm lista
+          fetchData('orders');
+          setSelectedOrders([]); 
+      } catch (e) {
+          alert('Eroare conexiune');
+      }
+  };
 
+    // 2. HANDLER EXPORT CSV CONTABIL (Generate Client-Side)
+    const handleAccountingExport = () => {
+        if (selectedOrders.length === 0) return alert('Selectează comenzi!');
+
+        // Selectăm doar comenzile bifate din lista totală
+        const ordersToExport = orders.filter(o => selectedOrders.includes(o.id));
+
+        let csvContent = "data:text/csv;charset=utf-8,";
+        // Header CSV Contabil
+        csvContent += "Data,Nr. Document,Client,Adresa,Total (RON),Baza Impozabila,TVA (19%),Metoda Plata,Status\n";
+
+        ordersToExport.forEach(order => {
+            const date = new Date(order.created_at).toLocaleDateString('ro-RO');
+            const total = parseFloat(order.total_amount.toString());
+            const baza = (total / 1.19).toFixed(2);
+            const tva = (total - (total / 1.19)).toFixed(2);
+
+            // Curățăm virgulele din adresă pentru a nu strica CSV-ul
+            const cleanAddress = (order.address_line || '').replace(/,/g, ' ') + ' ' + (order.city || '');
+
+            const row = [
+                date,
+                `CMD-${order.id}`,
+                `"${order.customer_name}"`,
+                `"${cleanAddress}"`,
+                total.toFixed(2),
+                baza,
+                tva,
+                order.payment_method,
+                order.status
+            ].join(",");
+
+            csvContent += row + "\r\n";
+        });
+
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `Export_Contabil_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+    };
+
+    // 3. HANDLER SETĂRI (Slider)
+    const toggleAutomation = async (val: boolean) => {
+        setAutoEnabled(val);
+        // Salvăm în backend (opțional, ca să țină minte)
+        try {
+            await fetch(`${API_URL}/admin/settings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-admin-secret': secret },
+                body: JSON.stringify({ key: 'automation_enabled', value: val })
+            });
+        } catch (e) { }
+    };
   // --- HANDLERS PRODUSE ---
   const handleImageFile = (e: React.ChangeEvent<HTMLInputElement>, isGallery: boolean = false) => {
     if (e.target.files && e.target.files[0]) {
@@ -570,10 +647,17 @@ export const Admin: React.FC = () => {
     <div className="min-h-screen bg-neutral-50 pt-24 px-4 pb-12 animate-fade-in relative">
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
-            <div>
-                <h1 className="text-3xl font-black uppercase tracking-tight">Dashboard</h1>
-                <p className="text-neutral-500 text-sm">Gestionează magazinul Oclar</p>
-            </div>
+                  <div>
+                      <h1 className="text-3xl font-black uppercase tracking-tight">Dashboard</h1>
+                      <div className="flex items-center gap-3 mt-2 cursor-pointer select-none" onClick={() => toggleAutomation(!autoEnabled)}>
+                          <div className={`w-10 h-6 rounded-full p-1 transition-colors duration-300 ${autoEnabled ? 'bg-green-500' : 'bg-gray-300'}`}>
+                              <div className={`w-4 h-4 bg-white rounded-full shadow-md transform transition-transform duration-300 ${autoEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                          </div>
+                          <span className="text-xs font-bold text-neutral-600">
+                              {autoEnabled ? '🤖 Auto-Process ON' : '🤖 Auto-Process OFF'}
+                          </span>
+                      </div>
+                  </div>
             
             <div className="flex bg-white p-1 rounded-xl shadow-sm border border-neutral-200 overflow-x-auto">
                 <button 
@@ -660,11 +744,17 @@ export const Admin: React.FC = () => {
                     </select>
                   </div>
 
-                  <div className="flex items-end">
-                    <Button onClick={() => fetchData('orders')} variant="outline" fullWidth>
-                      Aplică Filtre
-                    </Button>
-                  </div>
+                              <div className="flex items-end gap-2">
+                                  <Button onClick={() => fetchData('orders')} variant="outline">
+                                      Aplică
+                                  </Button>
+                                  <button
+                                      onClick={() => setShowHidden(!showHidden)}
+                                      className={`px-4 py-2 rounded-lg font-bold border transition-colors h-[42px] ${showHidden ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-300'}`}
+                                  >
+                                      {showHidden ? '📂 Ascunde Arhiva' : '📂 Arată Arhiva'}
+                                  </button>
+                              </div>
                               <div className="flex items-center gap-2 mt-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
                                   <input
                                       type="checkbox"
@@ -681,38 +771,31 @@ export const Admin: React.FC = () => {
 
                           {/* ACȚIUNI BULK */}
                           {selectedOrders.length > 0 && (
-                              <div className="flex flex-wrap gap-2">
+                              <div className="flex flex-wrap gap-2 items-center bg-white p-2 rounded-lg border border-blue-200 shadow-lg">
+                                  <span className="text-xs font-bold text-blue-800 px-2">{selectedOrders.length} selectate:</span>
+
+                                  {/* Butoane Noi */}
+                                  <button onClick={handleAccountingExport} className="px-3 py-2 bg-green-600 text-white text-xs font-bold rounded hover:bg-green-700">
+                                      📊 CSV Contabil
+                                  </button>
+
+                                  <button onClick={() => handleToggleVisibility(true)} className="px-3 py-2 bg-gray-500 text-white text-xs font-bold rounded hover:bg-gray-600">
+                                      🔒 Hide
+                                  </button>
+
+                                  {showHidden && (
+                                      <button onClick={() => handleToggleVisibility(false)} className="px-3 py-2 bg-blue-500 text-white text-xs font-bold rounded hover:bg-blue-600">
+                                          🔓 Unhide
+                                      </button>
+                                  )}
+
+                                  <div className="w-px h-6 bg-gray-300 mx-1"></div>
+
+                                  {/* Butoanele Vechi */}
                                   <Button onClick={handleSendInvoices} disabled={loading}>
-                                      📄 Trimite Facturi în Oblio
+                                      📄 Facturi Oblio
                                   </Button>
-                                  <Button onClick={handleGenerateAWB} disabled={loading} variant="secondary">
-                                      📦 Generează AWB (Vechi)
-                                  </Button>
-                                  {/* ⭐ BUTOANE NOI ECOLET */}
-                                  <Button
-                                      onClick={handleEcoletExport}
-                                      disabled={ecoletLoading}
-                                      className="bg-blue-600 hover:bg-blue-700 text-white"
-                                  >
-                                      {ecoletLoading ? '⏳ Se exportă...' : '📮 Trimite la Ecolet (Draft)'}
-                                  </Button>
-                                  <Button
-                                      onClick={handleEcoletSync}
-                                      disabled={ecoletLoading}
-                                      className="bg-green-600 hover:bg-green-700 text-white"
-                                  >
-                                      {ecoletLoading ? '⏳ Se sincronizează...' : '🔄 Sync AWB Ecolet'}
-                                  </Button>
-                                  {/* SFÂRȘIT BUTOANE ECOLET */}
-                                  <Button onClick={() => handleExport('xml')} variant="outline">
-                                      💾 Export XML
-                                  </Button>
-                                  <Button onClick={() => handleExport('excel')} variant="outline">
-                                      📊 Export Excel
-                                  </Button>
-                              </div>
-                          )}
-                      </div>
+                                 </div>
 
               {/* TABEL COMENZI */}
               <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
@@ -741,9 +824,15 @@ export const Admin: React.FC = () => {
                                           <th className="px-6 py-4">Acțiuni</th>
                                       </tr>
                                   </thead>
-                        <tbody className="divide-y divide-neutral-100">
-                            {orders.map(order => (
-                                <tr key={order.id} className="hover:bg-neutral-50 transition-colors">
+                                      <tbody className="divide-y divide-neutral-100">
+                                          {orders
+                                              // 1. Filtrăm dacă butonul Arhivă nu e activ
+                                              .filter(order => showHidden ? true : (order as any).is_hidden !== 1)
+                                              .map(order => {
+                                                  // 2. Verificăm dacă e ascunsă
+                                                  const isHidden = (order as any).is_hidden === 1;
+                                                  return (
+                                                      <tr key={order.id} className={`transition-colors border-b ${isHidden ? 'bg-gray-100 text-gray-400 grayscale' : 'hover:bg-neutral-50'}`}>
                                     <td className="px-6 py-4">
                                       <input 
                                         type="checkbox"
@@ -752,7 +841,9 @@ export const Admin: React.FC = () => {
                                         className="w-4 h-4"
                                       />
                                     </td>
-                                    <td className="px-6 py-4 font-mono text-neutral-400">#{order.id}</td>
+                                                          <td className="px-6 py-4 font-mono text-neutral-400">
+                                                              #{order.id} {isHidden && '🔒'}
+                                                          </td>
                                     <td className="px-6 py-4">
                                         <div className="font-bold">{order.customer_name}</div>
                                         <div className="text-xs text-neutral-500">{order.customer_email}</div>

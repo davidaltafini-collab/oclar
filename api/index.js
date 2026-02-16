@@ -1182,6 +1182,75 @@ app.post('/api/netopia/confirm', async (req, res) => {
         res.status(500).json({ error: { code: 1, message: error.message } });
     }
 });
+// --- ZONE NOI: ADMIN SETTINGS & VISIBILITY (Adaugă asta la final, înainte de listen) ---
+
+// 1. Schimbă vizibilitatea comenzilor (Hide/Unhide)
+app.post('/api/admin/toggle-visibility', async (req, res) => {
+    const adminSecret = req.headers['x-admin-secret'];
+    if (adminSecret !== process.env.ADMIN_SECRET) return res.status(401).json({ error: 'Auth fail' });
+
+    const { orderIds, hide } = req.body; // hide = true/false
+    if (!orderIds || orderIds.length === 0) return res.status(400).json({ error: 'No orders' });
+
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        // Construim query dinamic pentru update bulk
+        const placeholders = orderIds.map(() => '?').join(',');
+        await connection.query(
+            `UPDATE orders SET is_hidden = ? WHERE id IN (${placeholders})`,
+            [hide ? 1 : 0, ...orderIds]
+        );
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    } finally {
+        if (connection) connection.release();
+    }
+});
+
+// 2. Salvează setările Adminului (Pentru Slider-ul Apple)
+app.post('/api/admin/settings', async (req, res) => {
+    const adminSecret = req.headers['x-admin-secret'];
+    if (adminSecret !== process.env.ADMIN_SECRET) return res.status(401).json({ error: 'Auth fail' });
+
+    const { key, value } = req.body;
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        // UPSERT (Dacă există actualizăm, altfel inserăm)
+        await connection.query(
+            `INSERT INTO admin_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = ?`,
+            [key, String(value), String(value)]
+        );
+        res.json({ success: true });
+    } catch (e) {
+        // Ignorăm eroarea dacă tabelul nu există încă, ca să nu crape serverul
+        console.warn('Setările nu s-au salvat (posibil lipsește tabelul admin_settings):', e.message);
+        res.json({ success: false });
+    } finally {
+        if (connection) connection.release();
+    }
+});
+
+// 3. Citește setările (ca să știe slider-ul cum să stea)
+app.get('/api/admin/settings', async (req, res) => {
+    const adminSecret = req.headers['x-admin-secret'];
+    if (adminSecret !== process.env.ADMIN_SECRET) return res.status(401).json({ error: 'Auth fail' });
+
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        const [rows] = await connection.query('SELECT * FROM admin_settings');
+        const settings = {};
+        rows.forEach(r => settings[r.setting_key] = r.setting_value === 'true');
+        res.json(settings);
+    } catch (e) {
+        res.json({}); // Returnăm gol pe eroare safe
+    } finally {
+        if (connection) connection.release();
+    }
+});
 // --- 15. CATCH-ALL ERROR HANDLER ---
 app.use((err, req, res, next) => {
     console.error('❌ Unhandled error:', err);
