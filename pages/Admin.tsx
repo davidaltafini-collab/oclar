@@ -42,7 +42,7 @@ interface Order {
     ecolet_shipment_id?: string;
     label_url?: string;
     ecolet_status?: string;
-    is_hidden?: number;
+    is_hidden?: number; // ⭐ NOU: Arhivare
 }
 
 interface DiscountCode {
@@ -75,13 +75,13 @@ const ToggleSwitch = ({ checked, onChange, label, subLabel }: { checked: boolean
 
 // Badge Status
 const StatusBadge = ({ status }: { status: string }) => {
-    let color = 'bg-neutral-100 text-neutral-500';
-    if (status === 'paid' || status === 'completed') color = 'bg-green-100 text-green-700';
-    if (status === 'pending') color = 'bg-yellow-100 text-yellow-700';
-    if (status === 'cancelled') color = 'bg-red-100 text-red-700';
+    let color = 'bg-neutral-100 text-neutral-500 border-neutral-200';
+    if (status === 'paid' || status === 'completed') color = 'bg-green-50 text-green-700 border-green-200';
+    if (status === 'pending') color = 'bg-yellow-50 text-yellow-700 border-yellow-200';
+    if (status === 'cancelled') color = 'bg-red-50 text-red-700 border-red-200';
     
     return (
-        <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border border-transparent ${color}`}>
+        <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border ${color}`}>
             {status}
         </span>
     );
@@ -105,17 +105,17 @@ export const Admin: React.FC = () => {
 
   // Filtre & Selecție
   const [selectedOrders, setSelectedOrders] = useState<number[]>([]);
-  const [showHidden, setShowHidden] = useState(false);
+  const [showHidden, setShowHidden] = useState(false); // ⭐ NOU: Toggle Arhivă
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
 
-  // ⭐ SETĂRI AUTOMATIZARE
+  // ⭐ SETĂRI AUTOMATIZARE (Slider Apple)
   const [autoEnabled, setAutoEnabled] = useState(false);
   const [autoOblio, setAutoOblio] = useState(true);
   const [autoEcolet, setAutoEcolet] = useState(true);
 
-  // Formulare
+  // Formulare (Editare)
   const [editingProduct, setEditingProduct] = useState<AdminProduct | null>(null);
   const [showProductForm, setShowProductForm] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -163,24 +163,22 @@ export const Admin: React.FC = () => {
     }
   };
 
-  // --- API CALLS: SETĂRI & DATE ---
+  // --- API CALLS ---
 
-  // Încarcă Setările Automatizării
+  // 1. Încarcă Setările Automatizării
   const fetchSettings = async (token: string) => {
     try {
       const res = await fetch(`${API_URL}/admin/settings`, {
         headers: { 'x-admin-secret': token }
       });
-      if (res.ok) {
-        const data = await res.json();
-        setAutoEnabled(data.automation_enabled || false);
-        setAutoOblio(data.auto_oblio !== false);
-        setAutoEcolet(data.auto_ecolet !== false);
-      }
+      const data = await res.json();
+      setAutoEnabled(data.automation_enabled || false);
+      setAutoOblio(data.auto_oblio !== false);
+      setAutoEcolet(data.auto_ecolet !== false);
     } catch (e) { console.error('Settings err:', e); }
   };
 
-  // Salvează Setare
+  // 2. Salvează Setare (Când muți slider-ul)
   const updateSetting = async (key: string, value: boolean) => {
     if(key === 'automation_enabled') setAutoEnabled(value);
     if(key === 'auto_oblio') setAutoOblio(value);
@@ -193,7 +191,7 @@ export const Admin: React.FC = () => {
     });
   };
 
-  // Încarcă Datele
+  // 3. Încarcă Datele (Comenzi/Produse)
   const fetchData = async (type: 'orders' | 'products' | 'discounts') => {
     setLoading(true);
     try {
@@ -222,246 +220,138 @@ export const Admin: React.FC = () => {
       if (type === 'products') setProducts(data);
       if (type === 'discounts') setDiscounts(data);
 
-    } catch (err) { console.error(err); } 
-    finally { setLoading(false); }
+    } catch (err) { 
+      console.error(err); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   useEffect(() => {
     if (isAuthenticated) fetchData(activeTab);
   }, [activeTab, showHidden, isAuthenticated]);
 
-  // --- HANDLERS SELECȚIE ---
+  // --- HANDLERS ACȚIUNI ---
+
   const handleSelectAll = () => {
-    if (selectedOrders.length === orders.length) setSelectedOrders([]);
-    else setSelectedOrders(orders.map(o => o.id));
+    // Select All exclude comenzile ascunse automat
+    const visibleOrders = orders.filter(o => o.is_hidden !== 1);
+    if (selectedOrders.length === visibleOrders.length) {
+      setSelectedOrders([]);
+    } else {
+      setSelectedOrders(visibleOrders.map(o => o.id));
+    }
   };
 
   const toggleSelection = (id: number) => {
     setSelectedOrders(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
-  // --- HANDLERS ACȚIUNI BULK (COMPLET DIN AMBELE CODURI) ---
-  
-  // Toggle Vizibilitate (Hide/Unhide)
-  const handleToggleVisibility = async (hide: boolean) => {
-      if (selectedOrders.length === 0) return alert('Selectează comenzi!');
-      
-      try {
-          await fetch(`${API_URL}/admin/toggle-visibility`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'x-admin-secret': secret },
-              body: JSON.stringify({ orderIds: selectedOrders, hide })
-          });
-          fetchData('orders');
-          setSelectedOrders([]); 
-      } catch (e) {
-          alert('Eroare conexiune');
-      }
-  };
-
-  // Export CSV Contabil (Client-Side)
-  const handleAccountingExport = () => {
-      if (selectedOrders.length === 0) return alert('Selectează comenzi!');
-
-      const ordersToExport = orders.filter(o => selectedOrders.includes(o.id));
-
-      let csvContent = "data:text/csv;charset=utf-8,";
-      csvContent += "Data,Nr. Document,Client,Adresa,Total (RON),Baza Impozabila,TVA (19%),Metoda Plata,Status\n";
-
-      ordersToExport.forEach(order => {
-          const date = new Date(order.created_at).toLocaleDateString('ro-RO');
-          const total = parseFloat(order.total_amount.toString());
-          const baza = (total / 1.19).toFixed(2);
-          const tva = (total - (total / 1.19)).toFixed(2);
-
-          const cleanAddress = (order.address_line || '').replace(/,/g, ' ') + ' ' + (order.city || '');
-
-          const row = [
-              date,
-              `CMD-${order.id}`,
-              `"${order.customer_name}"`,
-              `"${cleanAddress}"`,
-              total.toFixed(2),
-              baza,
-              tva,
-              order.payment_method,
-              order.status
-          ].join(",");
-
-          csvContent += row + "\r\n";
-      });
-
-      const encodedUri = encodeURI(csvContent);
-      const link = document.createElement("a");
-      link.setAttribute("href", encodedUri);
-      link.setAttribute("download", `Export_Contabil_${new Date().toISOString().split('T')[0]}.csv`);
-      document.body.appendChild(link);
-      link.click();
-  };
-
-  // Trimite Facturi Oblio
-  const handleSendInvoices = async () => {
-    if (selectedOrders.length === 0) {
-      alert('Selectează cel puțin o comandă');
-      return;
-    }
-
-    if (!confirm(`Trimitem ${selectedOrders.length} facturi în Oblio?`)) return;
+  // Handler Generic pentru Acțiuni (Hide, Oblio, Ecolet, Export)
+  const handleAction = async (action: 'hide' | 'unhide' | 'oblio' | 'ecolet' | 'csv' | 'xml') => {
+    if (selectedOrders.length === 0) return alert('Selectează comenzi!');
+    
+    const count = selectedOrders.length;
+    
+    if (action === 'oblio' && !confirm(`Generezi ${count} facturi Oblio?`)) return;
+    if (action === 'ecolet' && !confirm(`Expediezi ${count} comenzi la Ecolet?`)) return;
 
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/admin/send-invoices`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-admin-secret': secret
-        },
-        body: JSON.stringify({ orderIds: selectedOrders })
-      });
+        // 1. HIDE / UNHIDE
+        if (action === 'hide' || action === 'unhide') {
+            await fetch(`${API_URL}/admin/toggle-visibility`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-admin-secret': secret },
+                body: JSON.stringify({ orderIds: selectedOrders, hide: action === 'hide' })
+            });
+            fetchData('orders');
+        }
+        
+        // 2. OBLIO MANUAL
+        else if (action === 'oblio') {
+            const res = await fetch(`${API_URL}/admin/send-invoices`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-admin-secret': secret },
+                body: JSON.stringify({ orderIds: selectedOrders })
+            });
+            const data = await res.json();
+            const success = data.results?.filter((r: any) => r.success).length || 0;
+            alert(`✅ Oblio: ${success}/${count} facturi generate.`);
+            fetchData('orders');
+        }
 
-      const result = await response.json();
-      
-      if (result.success) {
-        alert(`Facturi trimise cu succes!\nSucces: ${result.results.filter((r: any) => r.success).length}/${result.results.length}`);
-        fetchData('orders');
-      } else {
-        alert('Eroare la trimitere facturi');
-      }
-    } catch (error) {
-      alert('Eroare de conexiune');
+        // 3. ECOLET MANUAL
+        else if (action === 'ecolet') {
+            const res = await fetch(`${API_URL}/admin/ecolet/export`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-admin-secret': secret },
+                body: JSON.stringify({ orderIds: selectedOrders })
+            });
+            const data = await res.json();
+            const success = data.results?.filter((r: any) => r.success).length || 0;
+            alert(`✅ Ecolet: ${success}/${count} comenzi trimise.`);
+            fetchData('orders');
+        }
+
+        // 4. EXPORT CSV/XML
+        else if (action === 'csv' || action === 'xml') {
+            const res = await fetch(`${API_URL}/admin/export-orders`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-admin-secret': secret },
+                body: JSON.stringify({ orderIds: selectedOrders, format: action })
+            });
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `export_contabil_${Date.now()}.${action}`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+
+    } catch (e) {
+        alert('Eroare acțiune: ' + e);
     } finally {
-      setLoading(false);
+        setLoading(false);
     }
   };
 
-  // Export Comenzi la Ecolet (Draft)
-  const handleEcoletExport = async () => {
-      if (selectedOrders.length === 0) {
-          alert('Selectează cel puțin o comandă');
-          return;
-      }
-
-      if (!confirm(`Vrei să trimiți ${selectedOrders.length} comenzi la Ecolet ca draft?`)) {
-          return;
-      }
-
-      setEcoletLoading(true);
-      try {
-          const res = await fetch(`${API_URL}/admin/ecolet/export`, {
-              method: 'POST',
-              headers: {
-                  'Content-Type': 'application/json',
-                  'x-admin-secret': secret
-              },
-              body: JSON.stringify({ orderIds: selectedOrders })
-          });
-
-          if (!res.ok) throw new Error('Eroare la exportul Ecolet');
-
-          const data = await res.json();
-
-          const successCount = data.results.filter((r: any) => r.success).length;
-          const failCount = data.results.filter((r: any) => !r.success).length;
-
-          alert(`✅ Export finalizat:\n${successCount} comenzi exportate cu succes\n${failCount} erori`);
-
-          fetchData('orders');
-      } catch (error) {
-          console.error('❌ Ecolet export error:', error);
-          alert('Eroare la exportul către Ecolet');
-      } finally {
-          setEcoletLoading(false);
-      }
-  };
-
-  // Sincronizare AWB-uri din Ecolet
+  // Handler pentru Sincronizare AWB Ecolet
   const handleEcoletSync = async () => {
-      if (selectedOrders.length === 0) {
-          alert('Selectează cel puțin o comandă');
-          return;
-      }
-
-      if (!confirm(`Vrei să sincronizezi AWB-urile pentru ${selectedOrders.length} comenzi?`)) {
-          return;
-      }
-
-      setEcoletLoading(true);
-      try {
-          const res = await fetch(`${API_URL}/admin/ecolet/sync`, {
-              method: 'POST',
-              headers: {
-                  'Content-Type': 'application/json',
-                  'x-admin-secret': secret
-              },
-              body: JSON.stringify({ orderIds: selectedOrders })
-          });
-
-          if (!res.ok) throw new Error('Eroare la sincronizarea Ecolet');
-
-          const data = await res.json();
-
-          const successCount = data.results.filter((r: any) => r.success).length;
-          const failCount = data.results.filter((r: any) => !r.success).length;
-
-          alert(`✅ Sincronizare finalizată:\n${successCount} AWB-uri sincronizate\n${failCount} încă în așteptare`);
-
-          fetchData('orders');
-      } catch (error) {
-          console.error('❌ Ecolet sync error:', error);
-          alert('Eroare la sincronizarea AWB-urilor');
-      } finally {
-          setEcoletLoading(false);
-      }
-  };
-
-  // Filtre Rapide de Dată
-  const handleQuickDateFilter = (range: 'today' | 'week' | 'month' | 'year') => {
-    const now = new Date();
-    const end = now.toISOString().split('T')[0];
-    let start = '';
-
-    switch(range) {
-      case 'today':
-        start = end;
-        break;
-      case 'week':
-        start = new Date(now.setDate(now.getDate() - 7)).toISOString().split('T')[0];
-        break;
-      case 'month':
-        start = new Date(now.setMonth(now.getMonth() - 1)).toISOString().split('T')[0];
-        break;
-      case 'year':
-        start = new Date(now.setFullYear(now.getFullYear() - 1)).toISOString().split('T')[0];
-        break;
+    if (selectedOrders.length === 0) return alert('Selectează comenzi!');
+    
+    setEcoletLoading(true);
+    try {
+        const res = await fetch(`${API_URL}/admin/ecolet/sync`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-admin-secret': secret },
+            body: JSON.stringify({ orderIds: selectedOrders })
+        });
+        const data = await res.json();
+        const success = data.results?.filter((r: any) => r.success).length || 0;
+        alert(`✅ Sincronizare: ${success}/${selectedOrders.length} AWB-uri actualizate.`);
+        fetchData('orders');
+    } catch (e) {
+        alert('Eroare sincronizare: ' + e);
+    } finally {
+        setEcoletLoading(false);
     }
-
-    setStartDate(start);
-    setEndDate(end);
   };
 
   // --- HANDLERS PRODUSE ---
   const handleImageFile = (e: React.ChangeEvent<HTMLInputElement>, isGallery: boolean = false) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
+    if (e.target.files && e.target.files[0] && editingProduct) {
       const reader = new FileReader();
-      
       reader.onloadend = () => {
-        const base64String = reader.result as string;
-        if (editingProduct) {
-            if (isGallery) {
-                setEditingProduct({
-                    ...editingProduct,
-                    gallery: [...(editingProduct.gallery || []), base64String]
-                });
-            } else {
-                setEditingProduct({
-                    ...editingProduct,
-                    imageUrl: base64String
-                });
-            }
+        const base64 = reader.result as string;
+        if(isGallery) {
+          setEditingProduct({...editingProduct, gallery: [...(editingProduct.gallery||[]), base64]});
+        } else {
+          setEditingProduct({...editingProduct, imageUrl: base64});
         }
       };
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(e.target.files[0]);
     }
   };
 
@@ -473,85 +363,68 @@ export const Admin: React.FC = () => {
   };
 
   const handleProductSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingProduct) return;
-
-    try {
+      e.preventDefault();
+      if(!editingProduct) return;
+      
+      try {
         const res = await fetch(`${API_URL}/admin`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'x-admin-secret': secret 
-            },
-            body: JSON.stringify(editingProduct)
+          method: 'POST',
+          headers: {'Content-Type': 'application/json', 'x-admin-secret': secret},
+          body: JSON.stringify(editingProduct)
         });
         
-        if (res.ok) {
-            alert('Produs salvat cu succes!');
-            setShowProductForm(false);
-            setEditingProduct(null);
-            fetchData('products');
+        if(res.ok) {
+          alert('Produs salvat!');
+          setShowProductForm(false);
+          setEditingProduct(null);
+          fetchData('products');
         } else {
-            alert('Eroare la salvare.');
+          alert('Eroare salvare produs.');
         }
-    } catch (err) {
-        alert('Eroare de rețea.');
-    }
+      } catch (e) {
+        alert('Eroare rețea.');
+      }
   };
 
   const handleDeleteProduct = async (id: number) => {
-    if (!confirm('Ești sigur? Această acțiune este ireversibilă!')) return;
-    try {
-        await fetch(`${API_URL}/admin?id=${id}`, {
-            method: 'DELETE',
-            headers: { 'x-admin-secret': secret }
-        });
-        fetchData('products');
-    } catch (err) { console.error(err); }
+      if(!confirm('Ștergi produsul?')) return;
+      await fetch(`${API_URL}/admin?id=${id}`, { method: 'DELETE', headers: {'x-admin-secret': secret}});
+      fetchData('products');
   };
 
   // --- HANDLERS REDUCERI ---
   const handleDiscountSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingDiscount) return;
-
-    const method = editingDiscount.id ? 'PUT' : 'POST';
-
-    try {
+      e.preventDefault();
+      if(!editingDiscount) return;
+      
+      const method = editingDiscount.id ? 'PUT' : 'POST';
+      try {
         const res = await fetch(`${API_URL}/admin/discount-codes`, {
-            method: method,
-            headers: { 
-                'Content-Type': 'application/json',
-                'x-admin-secret': secret 
-            },
-            body: JSON.stringify(editingDiscount)
+          method,
+          headers: {'Content-Type': 'application/json', 'x-admin-secret': secret},
+          body: JSON.stringify(editingDiscount)
         });
         
-        if (res.ok) {
-            alert('Cod salvat cu succes!');
-            setShowDiscountForm(false);
-            setEditingDiscount(null);
-            fetchData('discounts');
+        if(res.ok) {
+          alert('Cod salvat!');
+          setShowDiscountForm(false);
+          setEditingDiscount(null);
+          fetchData('discounts');
         } else {
-            alert('Eroare la salvare cod.');
+          alert('Eroare salvare cod.');
         }
-    } catch (err) {
+      } catch (e) {
         alert('Eroare rețea.');
-    }
+      }
   };
 
   const handleDeleteDiscount = async (id: number) => {
-    if (!confirm('Ești sigur că vrei să ștergi acest cod?')) return;
-    try {
-        await fetch(`${API_URL}/admin/discount-codes?id=${id}`, {
-            method: 'DELETE',
-            headers: { 'x-admin-secret': secret }
-        });
-        fetchData('discounts');
-    } catch (err) { console.error(err); }
+      if(!confirm('Ștergi codul?')) return;
+      await fetch(`${API_URL}/admin/discount-codes?id=${id}`, { method: 'DELETE', headers: {'x-admin-secret': secret}});
+      fetchData('discounts');
   };
 
-  // --- HANDLER UPDATE COMANDĂ ---
+  // --- HANDLERS COMENZI ---
   const handleUpdateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingOrder) return;
@@ -578,18 +451,43 @@ export const Admin: React.FC = () => {
         });
 
         if (res.ok) {
-            alert('Comandă actualizată cu succes!');
+            alert('Comandă actualizată!');
             setEditingOrder(null);
             fetchData('orders');
         } else {
-            alert('Eroare la actualizare comandă.');
+            alert('Eroare actualizare.');
         }
     } catch (err) {
         alert('Eroare server.');
     }
   };
 
-  // --- RENDER LOGIN ---
+  const handleQuickDateFilter = (range: 'today' | 'week' | 'month' | 'year') => {
+    const now = new Date();
+    const end = now.toISOString().split('T')[0];
+    let start = '';
+
+    switch(range) {
+      case 'today':
+        start = end;
+        break;
+      case 'week':
+        start = new Date(now.setDate(now.getDate() - 7)).toISOString().split('T')[0];
+        break;
+      case 'month':
+        start = new Date(now.setMonth(now.getMonth() - 1)).toISOString().split('T')[0];
+        break;
+      case 'year':
+        start = new Date(now.setFullYear(now.getFullYear() - 1)).toISOString().split('T')[0];
+        break;
+    }
+
+    setStartDate(start);
+    setEndDate(end);
+  };
+
+  // --- RENDER ---
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-neutral-100 p-4">
@@ -618,57 +516,56 @@ export const Admin: React.FC = () => {
     );
   }
 
-  // --- RENDER MAIN DASHBOARD ---
   return (
-    <div className="min-h-screen bg-neutral-50 pt-[8vh] px-[2vw] pb-[15vh] md:pt-24 md:px-4 md:pb-32 animate-fade-in relative font-sans">
+    <div className="min-h-screen bg-neutral-50 pt-20 px-4 pb-32 animate-fade-in relative font-sans">
       <div className="max-w-7xl mx-auto">
         
         {/* HEADER & NAVIGARE */}
-        <div className="flex flex-col md:flex-row justify-between items-center mb-[3vh] md:mb-8 gap-4">
+        <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
             <div>
-                <h1 className="text-[6vw] md:text-3xl font-black uppercase tracking-tight text-neutral-900">Dashboard</h1>
-                <p className="text-neutral-500 text-[3vw] md:text-sm">Centru de Comandă Oclar</p>
+                <h1 className="text-3xl font-black uppercase tracking-tight text-neutral-900">Dashboard</h1>
+                <p className="text-neutral-500 text-sm">Centru de Comandă Oclar</p>
             </div>
             
-            <div className="flex bg-white p-1 rounded-xl shadow-sm border border-neutral-200 overflow-x-auto w-full md:w-auto">
+            <div className="flex bg-white p-1 rounded-xl shadow-sm border border-neutral-200 overflow-x-auto">
                 {['orders', 'products', 'discounts'].map((tab) => (
                     <button 
                         key={tab}
                         onClick={() => setActiveTab(tab as any)}
-                        className={`px-[4vw] md:px-6 py-2 rounded-lg font-bold text-[3vw] md:text-sm capitalize transition-all whitespace-nowrap ${activeTab === tab ? 'bg-black text-white shadow-md' : 'text-neutral-500 hover:bg-neutral-50'}`}
+                        className={`px-4 md:px-6 py-2 rounded-lg font-bold text-sm capitalize transition-all whitespace-nowrap ${activeTab === tab ? 'bg-black text-white shadow-md' : 'text-neutral-500 hover:bg-neutral-50'}`}
                     >
                         {tab === 'orders' ? 'Comenzi' : tab === 'products' ? 'Produse' : 'Reduceri'}
                     </button>
                 ))}
                 <button
                     onClick={() => { setIsAuthenticated(false); sessionStorage.removeItem('admin_secret'); }}
-                    className="ml-2 px-[3vw] md:px-4 py-2 rounded-lg font-bold text-[3vw] md:text-sm text-red-500 hover:bg-red-50 transition-colors"
+                    className="ml-2 px-3 md:px-4 py-2 rounded-lg font-bold text-sm text-red-500 hover:bg-red-50 transition-colors"
                     title="Deconectare"
                 >✕</button>
             </div>
         </div>
 
-        {/* --- TAB: COMENZI --- */}
+        {/* --- CONȚINUT TAB: COMENZI --- */}
         {activeTab === 'orders' && (
-            <div className="animate-fade-in space-y-[2vh] md:space-y-6">
+            <div className="animate-fade-in space-y-6">
                 
-                {/* ZONA AUTOMATIZARE */}
-                <div className="bg-white p-[2vh] md:p-5 rounded-2xl shadow-sm border border-neutral-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-[2vh] md:gap-6">
-                    <div className="flex flex-col md:flex-row items-start md:items-center gap-[2vh] md:gap-6 w-full md:w-auto">
+                {/* 1. ZONA AUTOMATIZARE & SETĂRI GLOBALE */}
+                <div className="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-neutral-200 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 lg:gap-6">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6 w-full lg:w-auto">
                         <ToggleSwitch 
                             checked={autoEnabled} 
                             onChange={(v) => updateSetting('automation_enabled', v)} 
                             label="🤖 Auto-Process" 
-                            subLabel="Procesare automată comenzi"
+                            subLabel="Procesare automată"
                         />
                         
                         {autoEnabled && (
-                            <div className="flex flex-col sm:flex-row gap-[1.5vh] md:gap-4 pl-0 md:pl-6 md:border-l border-neutral-200 animate-fade-in w-full md:w-auto">
-                                <label className="flex items-center gap-2 text-[3vw] md:text-sm font-medium text-neutral-600 cursor-pointer hover:text-black transition-colors">
+                            <div className="flex flex-col sm:flex-row gap-3 pl-0 sm:pl-6 sm:border-l border-neutral-200 animate-fade-in w-full sm:w-auto">
+                                <label className="flex items-center gap-2 text-sm font-medium text-neutral-600 cursor-pointer hover:text-black transition-colors">
                                     <input type="checkbox" checked={autoOblio} onChange={e => updateSetting('auto_oblio', e.target.checked)} className="w-4 h-4 rounded text-black focus:ring-0" />
                                     Facturare Oblio
                                 </label>
-                                <label className="flex items-center gap-2 text-[3vw] md:text-sm font-medium text-neutral-600 cursor-pointer hover:text-black transition-colors">
+                                <label className="flex items-center gap-2 text-sm font-medium text-neutral-600 cursor-pointer hover:text-black transition-colors">
                                     <input type="checkbox" checked={autoEcolet} onChange={e => updateSetting('auto_ecolet', e.target.checked)} className="w-4 h-4 rounded text-black focus:ring-0" />
                                     Curier Ecolet
                                 </label>
@@ -676,116 +573,149 @@ export const Admin: React.FC = () => {
                         )}
                     </div>
 
-                    <div className="text-right hidden md:block">
-                        <div className="text-[2vw] md:text-xs text-neutral-400 font-mono">Server Status: Online</div>
-                        <div className="text-[2vw] md:text-xs text-neutral-400 font-mono">Last Sync: {new Date().toLocaleTimeString()}</div>
+                    <div className="text-right hidden lg:block">
+                        <div className="text-xs text-neutral-400 font-mono">Server: Online</div>
+                        <div className="text-xs text-neutral-400 font-mono">{new Date().toLocaleTimeString()}</div>
                     </div>
                 </div>
 
-                {/* FILTRE */}
-                <div className="flex flex-col md:flex-row flex-wrap gap-[1.5vh] md:gap-4 items-start md:items-end justify-between bg-white p-[2vh] md:p-4 rounded-xl border border-neutral-200 shadow-sm">
-                    {/* Filtre Rapide - Doar pe desktop */}
-                    <div className="hidden md:flex gap-2">
-                        <button onClick={() => handleQuickDateFilter('today')} className="px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded text-xs">Azi</button>
-                        <button onClick={() => handleQuickDateFilter('week')} className="px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded text-xs">7 zile</button>
-                        <button onClick={() => handleQuickDateFilter('month')} className="px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded text-xs">30 zile</button>
+                {/* 2. FILTRE & CONTROL VIZUALIZARE */}
+                <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 p-4 md:p-6 space-y-4">
+                    <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-end justify-between">
+                        {/* Filtre Rapide */}
+                        <div className="w-full lg:w-auto">
+                            <label className="label-admin">Perioadă Rapidă</label>
+                            <div className="flex flex-wrap gap-2">
+                                <button onClick={() => handleQuickDateFilter('today')} className="px-3 py-1.5 bg-neutral-100 hover:bg-neutral-200 rounded text-xs font-medium transition-colors">Azi</button>
+                                <button onClick={() => handleQuickDateFilter('week')} className="px-3 py-1.5 bg-neutral-100 hover:bg-neutral-200 rounded text-xs font-medium transition-colors">7 zile</button>
+                                <button onClick={() => handleQuickDateFilter('month')} className="px-3 py-1.5 bg-neutral-100 hover:bg-neutral-200 rounded text-xs font-medium transition-colors">30 zile</button>
+                                <button onClick={() => handleQuickDateFilter('year')} className="px-3 py-1.5 bg-neutral-100 hover:bg-neutral-200 rounded text-xs font-medium transition-colors">1 an</button>
+                            </div>
+                        </div>
+
+                        {/* Toggle Arhivă */}
+                        <button 
+                            onClick={() => setShowHidden(!showHidden)}
+                            className={`px-4 py-2 rounded-lg text-sm font-bold border transition-all flex items-center gap-2 whitespace-nowrap ${showHidden ? 'bg-neutral-800 text-white border-neutral-800' : 'bg-white text-neutral-600 border-neutral-200 hover:border-neutral-400'}`}
+                        >
+                            {showHidden ? '📂 Ascunde Arhiva' : '📂 Arată Arhiva'}
+                        </button>
                     </div>
 
-                    <div className="flex flex-wrap gap-[1.5vh] md:gap-3 w-full md:w-auto">
-                        <div className="flex-1 min-w-[25vw] md:min-w-0">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div>
                             <label className="label-admin">Status</label>
-                            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="input-admin py-2 text-[3vw] md:text-sm w-full">
+                            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="input-admin py-2 text-sm">
                                 <option value="">Toate</option>
                                 <option value="paid">Paid</option>
                                 <option value="pending">Pending</option>
                                 <option value="completed">Completed</option>
+                                <option value="cancelled">Cancelled</option>
                             </select>
                         </div>
-                        <div className="flex-1 min-w-[25vw] md:min-w-0">
-                            <label className="label-admin">Start</label>
-                            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="input-admin py-2 text-[3vw] md:text-sm w-full" />
+                        <div>
+                            <label className="label-admin">Dată Start</label>
+                            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="input-admin py-2 text-sm" />
                         </div>
-                        <div className="flex-1 min-w-[25vw] md:min-w-0">
-                            <label className="label-admin">Final</label>
-                            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="input-admin py-2 text-[3vw] md:text-sm w-full" />
+                        <div>
+                            <label className="label-admin">Dată Final</label>
+                            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="input-admin py-2 text-sm" />
                         </div>
-                        <div className="flex items-end gap-2 w-full md:w-auto">
-                             <Button onClick={() => fetchData('orders')} variant="outline" className="py-2 text-[3vw] md:text-sm h-[5vh] md:h-[38px] flex-1 md:flex-initial">Aplică</Button>
-                             <button 
-                                onClick={() => setShowHidden(!showHidden)}
-                                className={`px-[3vw] md:px-4 py-2 rounded-lg text-[3vw] md:text-sm font-bold border transition-all flex items-center gap-2 h-[5vh] md:h-auto ${showHidden ? 'bg-neutral-800 text-white border-neutral-800' : 'bg-white text-neutral-600 border-neutral-200 hover:border-neutral-400'}`}
-                            >
-                                {showHidden ? '📂 Ascunde' : '📂 Arhiva'}
-                            </button>
+                        <div className="flex items-end">
+                             <Button onClick={() => fetchData('orders')} variant="outline" className="py-2 text-sm h-[38px] w-full">Aplică</Button>
                         </div>
                     </div>
                 </div>
 
-                {/* TABEL COMENZI */}
+                {/* 3. TABEL COMENZI */}
                 <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
                     <div className="overflow-x-auto">
-                        <table className="w-full text-[2.5vw] md:text-sm text-left">
-                            <thead className="bg-neutral-50 text-neutral-500 uppercase font-bold text-[2vw] md:text-[10px] tracking-wider border-b border-neutral-100">
+                        <table className="w-full text-sm text-left min-w-[800px]">
+                            <thead className="bg-neutral-50 text-neutral-500 uppercase font-bold text-[10px] tracking-wider border-b border-neutral-100">
                                 <tr>
-                                    <th className="px-[2vw] md:px-6 py-[1.5vh] md:py-4 w-[8vw] md:w-10"><input type="checkbox" onChange={handleSelectAll} checked={selectedOrders.length === orders.length && orders.length > 0} className="w-[3vw] h-[3vw] md:w-4 md:h-4" /></th>
-                                    <th className="px-[2vw] md:px-6 py-[1.5vh] md:py-4">ID</th>
-                                    <th className="px-[2vw] md:px-6 py-[1.5vh] md:py-4">Client</th>
-                                    <th className="px-[2vw] md:px-6 py-[1.5vh] md:py-4">Total</th>
-                                    <th className="px-[2vw] md:px-6 py-[1.5vh] md:py-4">Status</th>
-                                    <th className="px-[2vw] md:px-6 py-[1.5vh] md:py-4 hidden md:table-cell">Factură</th>
-                                    <th className="px-[2vw] md:px-6 py-[1.5vh] md:py-4 hidden md:table-cell">AWB</th>
-                                    <th className="px-[2vw] md:px-6 py-[1.5vh] md:py-4 text-right">Act</th>
+                                    <th className="px-4 md:px-6 py-4 w-10">
+                                        <input 
+                                            type="checkbox" 
+                                            onChange={handleSelectAll} 
+                                            checked={selectedOrders.length > 0 && selectedOrders.length === orders.filter(o => o.is_hidden !== 1).length} 
+                                            className="w-4 h-4"
+                                        />
+                                    </th>
+                                    <th className="px-4 md:px-6 py-4">ID</th>
+                                    <th className="px-4 md:px-6 py-4">Client</th>
+                                    <th className="px-4 md:px-6 py-4">Total</th>
+                                    <th className="px-4 md:px-6 py-4">Status</th>
+                                    <th className="px-4 md:px-6 py-4">Factură</th>
+                                    <th className="px-4 md:px-6 py-4">AWB</th>
+                                    <th className="px-4 md:px-6 py-4 text-right">Acțiuni</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-neutral-100">
                                 {orders.length === 0 && (
-                                    <tr><td colSpan={8} className="p-[3vh] md:p-8 text-center text-neutral-400 text-[3vw] md:text-base">Nu există comenzi de afișat.</td></tr>
+                                    <tr><td colSpan={8} className="p-8 text-center text-neutral-400">Nu există comenzi de afișat.</td></tr>
                                 )}
                                 {orders.map(order => {
                                     const isHidden = order.is_hidden === 1;
                                     return (
                                         <tr 
                                             key={order.id} 
-                                            className={`transition-colors duration-200 ${isHidden ? 'bg-neutral-100/50 text-neutral-400' : 'hover:bg-neutral-50'}`}
+                                            className={`transition-colors duration-200 ${isHidden ? 'bg-neutral-100/50 text-neutral-400 opacity-60' : 'hover:bg-neutral-50'}`}
                                         >
-                                            <td className="px-[2vw] md:px-6 py-[1.5vh] md:py-4"><input type="checkbox" checked={selectedOrders.includes(order.id)} onChange={() => toggleSelection(order.id)} className="w-[3vw] h-[3vw] md:w-4 md:h-4" /></td>
-                                            <td className="px-[2vw] md:px-6 py-[1.5vh] md:py-4 font-mono">
-                                                <div className="flex items-center gap-1">
-                                                    #{order.id}
-                                                    {isHidden && <span title="Arhivat" className="text-[4vw] md:text-lg leading-none">🔒</span>}
+                                            <td className="px-4 md:px-6 py-4">
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={selectedOrders.includes(order.id)} 
+                                                    onChange={() => toggleSelection(order.id)}
+                                                    className="w-4 h-4"
+                                                />
+                                            </td>
+                                            <td className="px-4 md:px-6 py-4 font-mono">
+                                                <div className="flex items-center gap-2">
+                                                    <span className={isHidden ? 'text-neutral-400' : 'text-neutral-900'}>#{order.id}</span>
+                                                    {isHidden && <span title="Arhivat" className="text-base">🔒</span>}
                                                 </div>
-                                                <div className="text-[2vw] md:text-[10px] text-neutral-400">{new Date(order.created_at).toLocaleDateString()}</div>
+                                                <div className="text-[10px] text-neutral-400 mt-0.5">{new Date(order.created_at).toLocaleDateString()}</div>
                                             </td>
-                                            <td className="px-[2vw] md:px-6 py-[1.5vh] md:py-4">
-                                                <div className={`font-bold text-[2.8vw] md:text-sm ${isHidden ? 'text-neutral-500' : 'text-neutral-900'}`}>{order.customer_name}</div>
-                                                <div className="text-[2.2vw] md:text-xs opacity-70 truncate max-w-[30vw] md:max-w-none">{order.customer_email}</div>
+                                            <td className="px-4 md:px-6 py-4">
+                                                <div className={`font-bold text-sm ${isHidden ? 'text-neutral-500' : 'text-neutral-900'}`}>{order.customer_name}</div>
+                                                <div className="text-xs opacity-70 truncate max-w-[150px]">{order.customer_email}</div>
+                                                <div className="text-xs font-mono opacity-70">{order.customer_phone}</div>
                                             </td>
-                                            <td className="px-[2vw] md:px-6 py-[1.5vh] md:py-4 font-bold text-[3vw] md:text-sm">
-                                                {parseFloat(order.total_amount.toString()).toFixed(2)} RON
-                                                <div className="text-[2vw] md:text-[10px] font-normal uppercase text-neutral-500">{order.payment_method}</div>
+                                            <td className="px-4 md:px-6 py-4">
+                                                <div className="font-bold text-base">{parseFloat(order.total_amount.toString()).toFixed(2)} <span className="text-xs font-normal">RON</span></div>
+                                                <div className="text-[10px] font-normal uppercase text-neutral-500 mt-0.5">
+                                                    {order.payment_method === 'card' ? '💳 Card' : '💵 Ramburs'}
+                                                </div>
                                             </td>
-                                            <td className="px-[2vw] md:px-6 py-[1.5vh] md:py-4">
+                                            <td className="px-4 md:px-6 py-4">
                                                 <StatusBadge status={order.status} />
                                             </td>
-                                            <td className="px-[2vw] md:px-6 py-[1.5vh] md:py-4 text-[2.5vw] md:text-xs font-mono hidden md:table-cell">
+                                            <td className="px-4 md:px-6 py-4 text-xs font-mono">
                                                 {order.oblio_invoice_number ? (
-                                                    <span className="text-green-600 bg-green-50 px-2 py-1 rounded">✓ {order.oblio_invoice_number}</span>
+                                                    <span className="text-green-600 bg-green-50 px-2 py-1 rounded font-semibold inline-block">✓ {order.oblio_invoice_number}</span>
                                                 ) : <span className="opacity-50">-</span>}
                                             </td>
-                                            <td className="px-[2vw] md:px-6 py-[1.5vh] md:py-4 text-[2.5vw] md:text-xs hidden md:table-cell">
+                                            <td className="px-4 md:px-6 py-4 text-xs">
                                                 {order.awb_number ? (
-                                                    <a href={order.label_url || '#'} target="_blank" rel="noreferrer" className="text-blue-600 bg-blue-50 px-2 py-1 rounded hover:underline">
+                                                    <a 
+                                                        href={order.label_url || '#'} 
+                                                        target="_blank" 
+                                                        rel="noreferrer" 
+                                                        className="text-blue-600 bg-blue-50 px-2 py-1 rounded hover:underline inline-block font-semibold"
+                                                    >
                                                         📦 {order.awb_number}
                                                     </a>
                                                 ) : (
-                                                    order.ecolet_status === 'draft' ? <span className="text-orange-500">⏳</span> : <span className="opacity-50">-</span>
+                                                    order.ecolet_status === 'draft' ? 
+                                                    <span className="text-orange-600 bg-orange-50 px-2 py-1 rounded inline-block">⏳ Draft</span> : 
+                                                    <span className="opacity-50">-</span>
                                                 )}
                                             </td>
-                                            <td className="px-[2vw] md:px-6 py-[1.5vh] md:py-4 text-right">
+                                            <td className="px-4 md:px-6 py-4 text-right">
                                                 <button 
                                                     onClick={() => setEditingOrder(order)} 
-                                                    className="text-neutral-400 hover:text-black transition-colors p-[1vh] md:p-2 rounded-full hover:bg-white border border-transparent hover:border-neutral-200 text-[4vw] md:text-base"
-                                                    title="Editează"
+                                                    className="text-neutral-400 hover:text-black transition-colors p-2 rounded-full hover:bg-white border border-transparent hover:border-neutral-200 inline-flex items-center justify-center"
+                                                    title="Editează Comanda"
                                                 >
                                                     ✏️
                                                 </button>
@@ -798,116 +728,284 @@ export const Admin: React.FC = () => {
                     </div>
                 </div>
 
-                {/* FLOATING ACTION BAR */}
+                {/* 4. BARA PLUTITOARE DE ACȚIUNI */}
                 {selectedOrders.length > 0 && (
-                    <div className="fixed bottom-[2vh] md:bottom-8 left-1/2 transform -translate-x-1/2 bg-neutral-900/95 backdrop-blur-md text-white px-[1vw] md:px-2 py-[1vh] md:py-2 pr-[3vw] md:pr-6 rounded-full shadow-2xl flex items-center gap-[1vw] md:gap-1 z-50 animate-bounce-in border border-neutral-700 max-w-[95vw] overflow-x-auto">
-                        <div className="bg-neutral-800 rounded-full px-[2vw] md:px-4 py-[1vh] md:py-2 font-bold text-[2.5vw] md:text-sm mr-[1vw] md:mr-2 shadow-inner whitespace-nowrap">
-                            {selectedOrders.length} sel
+                    <div className="fixed bottom-4 md:bottom-8 left-1/2 transform -translate-x-1/2 bg-neutral-900/95 backdrop-blur-md text-white px-3 md:px-4 py-3 rounded-full shadow-2xl flex flex-wrap items-center gap-2 z-50 animate-bounce-in border border-neutral-700 max-w-[95vw]">
+                        <div className="bg-neutral-800 rounded-full px-3 md:px-4 py-2 font-bold text-xs md:text-sm shadow-inner whitespace-nowrap">
+                            {selectedOrders.length} selectate
                         </div>
                         
-                        <button onClick={handleSendInvoices} className="hover:bg-neutral-700 px-[2vw] md:px-4 py-[1vh] md:py-2 rounded-full text-[2.5vw] md:text-sm font-medium transition-colors flex items-center gap-1 whitespace-nowrap">
-                            📄 <span className="hidden sm:inline">Oblio</span>
+                        <button 
+                            onClick={() => handleAction('oblio')} 
+                            className="hover:bg-neutral-700 px-3 md:px-4 py-2 rounded-full text-xs md:text-sm font-medium transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap"
+                            disabled={loading}
+                        >
+                            📄 Oblio
                         </button>
                         
-                        <button onClick={handleEcoletExport} className="hover:bg-neutral-700 px-[2vw] md:px-4 py-[1vh] md:py-2 rounded-full text-[2.5vw] md:text-sm font-medium transition-colors flex items-center gap-1 whitespace-nowrap">
-                            🚚 <span className="hidden sm:inline">Ecolet</span>
+                        <button 
+                            onClick={() => handleAction('ecolet')} 
+                            className="hover:bg-neutral-700 px-3 md:px-4 py-2 rounded-full text-xs md:text-sm font-medium transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap"
+                            disabled={loading}
+                        >
+                            🚚 Ecolet
                         </button>
-
-                        <button onClick={handleAccountingExport} className="hover:bg-neutral-700 px-[2vw] md:px-4 py-[1vh] md:py-2 rounded-full text-[2.5vw] md:text-sm font-medium transition-colors flex items-center gap-1 whitespace-nowrap">
-                            📊 <span className="hidden sm:inline">CSV</span>
-                        </button>
-
-                        <div className="w-px h-[3vh] md:h-6 bg-neutral-700 mx-[1vw] md:mx-2"></div>
 
                         <button 
-                            onClick={() => handleToggleVisibility(showHidden ? false : true)} 
-                            className={`px-[2vw] md:px-4 py-[1vh] md:py-2 rounded-full text-[2.5vw] md:text-sm font-bold transition-colors flex items-center gap-1 whitespace-nowrap ${showHidden ? 'bg-green-600 hover:bg-green-500' : 'bg-red-600 hover:bg-red-500'}`}
+                            onClick={handleEcoletSync} 
+                            className="hover:bg-neutral-700 px-3 md:px-4 py-2 rounded-full text-xs md:text-sm font-medium transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap"
+                            disabled={ecoletLoading}
+                            title="Sincronizare AWB Ecolet"
                         >
-                            {showHidden ? '🔓' : '🔒'} <span className="hidden sm:inline">{showHidden ? 'Reactiv' : 'Arhiv'}</span>
+                            {ecoletLoading ? '⏳' : '🔄'} Sync
+                        </button>
+
+                        <button 
+                            onClick={() => handleAction('csv')} 
+                            className="hover:bg-neutral-700 px-3 md:px-4 py-2 rounded-full text-xs md:text-sm font-medium transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap"
+                        >
+                            📊 CSV
+                        </button>
+
+                        <div className="w-px h-6 bg-neutral-700 mx-1 hidden md:block"></div>
+
+                        <button 
+                            onClick={() => handleAction(showHidden ? 'unhide' : 'hide')} 
+                            className={`px-3 md:px-4 py-2 rounded-full text-xs md:text-sm font-bold transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap ${showHidden ? 'bg-green-600 hover:bg-green-500' : 'bg-red-600 hover:bg-red-500'}`}
+                        >
+                            {showHidden ? '🔓 Reactivează' : '🔒 Arhivează'}
                         </button>
                     </div>
                 )}
             </div>
         )}
 
-        {/* --- TAB: PRODUSE --- */}
+        {/* --- CONȚINUT TAB: PRODUSE --- */}
         {activeTab === 'products' && (
             <div className="animate-fade-in">
-                <div className="flex justify-end mb-[2vh] md:mb-6">
+                <div className="flex justify-end mb-6">
                     <Button onClick={() => {
                         setEditingProduct({ name: '', price: 0, stock_quantity: 10, description: '', category: 'Ochelari', imageUrl: '', gallery: [], colors: [], details: [] });
                         setShowProductForm(true);
-                    }} className="text-[3vw] md:text-sm">+ Produs Nou</Button>
+                    }}>+ Adaugă Produs Nou</Button>
                 </div>
 
                 {showProductForm && editingProduct && (
-                    <div className="bg-white p-[2vh] md:p-8 rounded-2xl shadow-xl mb-[2vh] md:mb-8 border border-neutral-200 animate-fade-in" id="productForm">
-                        <h3 className="text-[4vw] md:text-xl font-bold mb-[2vh] md:mb-6 flex items-center gap-2 border-b border-neutral-100 pb-[1vh] md:pb-4">
-                             {editingProduct.id ? '✏️ Editează' : '✨ Nou'}
+                    <div className="bg-white p-8 rounded-2xl shadow-xl mb-8 border border-neutral-200 animate-fade-in scroll-mt-24" id="productForm">
+                        <h3 className="text-xl font-bold mb-6 flex items-center gap-2 border-b border-neutral-100 pb-4">
+                             {editingProduct.id ? '✏️ Editează Produs' : '✨ Produs Nou'}
                         </h3>
-                        <form onSubmit={handleProductSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-[2vh] md:gap-8">
-                            <div className="space-y-[1.5vh] md:space-y-4">
-                                <div><label className="label-admin">Nume</label><input className="input-admin text-[3vw] md:text-sm" value={editingProduct.name} onChange={e => setEditingProduct({...editingProduct, name: e.target.value})} required /></div>
-                                <div className="grid grid-cols-2 gap-[1.5vh] md:gap-4">
-                                    <div><label className="label-admin">Preț</label><input type="number" step="0.01" className="input-admin font-bold text-[3vw] md:text-sm" value={editingProduct.price} onChange={e => setEditingProduct({...editingProduct, price: parseFloat(e.target.value)})} required /></div>
-                                    <div><label className="label-admin">Preț Vechi</label><input type="number" step="0.01" className="input-admin text-[3vw] md:text-sm" value={editingProduct.original_price || ''} onChange={e => setEditingProduct({...editingProduct, original_price: e.target.value ? parseFloat(e.target.value) : null})} /></div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-[1.5vh] md:gap-4">
-                                    <div><label className="label-admin">Stoc</label><input type="number" className="input-admin text-[3vw] md:text-sm" value={editingProduct.stock_quantity} onChange={e => setEditingProduct({...editingProduct, stock_quantity: parseInt(e.target.value)})} required /></div>
-                                    <div><label className="label-admin">Categorie</label><input className="input-admin text-[3vw] md:text-sm" value={editingProduct.category} onChange={e => setEditingProduct({...editingProduct, category: e.target.value})} required /></div>
-                                </div>
-                                <div><label className="label-admin">Descriere</label><textarea className="input-admin h-[12vh] md:h-32 resize-none text-[3vw] md:text-sm" value={editingProduct.description} onChange={e => setEditingProduct({...editingProduct, description: e.target.value})} required /></div>
-                            </div>
-                            <div className="space-y-[2vh] md:space-y-6">
+                        <form onSubmit={handleProductSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <div className="space-y-4">
                                 <div>
-                                    <label className="label-admin">Poză Principală</label>
-                                    <div className="border-2 border-dashed border-neutral-300 rounded-xl p-[2vh] md:p-4 text-center hover:bg-neutral-50 transition-colors cursor-pointer relative overflow-hidden bg-neutral-50 min-h-[20vh] md:min-h-[200px] flex items-center justify-center">
-                                        <input type="file" onChange={(e) => handleImageFile(e, false)} className="absolute inset-0 opacity-0 cursor-pointer z-10" accept="image/*" />
-                                        {editingProduct.imageUrl ? <img src={editingProduct.imageUrl} className="w-full h-full object-contain" alt="Cover" /> : <div className="text-neutral-400 text-[3vw] md:text-sm">Click pentru upload</div>}
+                                    <label className="label-admin">Nume Produs</label>
+                                    <input 
+                                        className="input-admin"
+                                        value={editingProduct.name}
+                                        onChange={e => setEditingProduct({...editingProduct, name: e.target.value})}
+                                        required
+                                        placeholder="ex: Oclar Pro Titanium"
+                                    />
+                                </div>
+                                
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="label-admin">Preț Actual (RON)</label>
+                                        <input 
+                                            type="number" step="0.01"
+                                            className="input-admin font-bold"
+                                            value={editingProduct.price}
+                                            onChange={e => setEditingProduct({...editingProduct, price: parseFloat(e.target.value)})}
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="label-admin text-red-500">Preț Vechi (Reducere)</label>
+                                        <input 
+                                            type="number" step="0.01"
+                                            className="input-admin text-red-500"
+                                            placeholder="Opțional"
+                                            value={editingProduct.original_price || ''}
+                                            onChange={e => setEditingProduct({...editingProduct, original_price: e.target.value ? parseFloat(e.target.value) : null})}
+                                        />
                                     </div>
                                 </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="label-admin">Stoc</label>
+                                        <input 
+                                            type="number" 
+                                            className="input-admin"
+                                            value={editingProduct.stock_quantity}
+                                            onChange={e => setEditingProduct({...editingProduct, stock_quantity: parseInt(e.target.value)})}
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="label-admin">Categorie</label>
+                                        <input 
+                                            className="input-admin"
+                                            value={editingProduct.category}
+                                            onChange={e => setEditingProduct({...editingProduct, category: e.target.value})}
+                                            required
+                                            placeholder="ex: Daytime"
+                                        />
+                                    </div>
+                                </div>
+                                
                                 <div>
-                                    <label className="label-admin">Galerie</label>
-                                    <div className="grid grid-cols-3 gap-[1vh] md:gap-2">
+                                    <label className="label-admin">Descriere</label>
+                                    <textarea 
+                                        className="input-admin h-32 resize-none"
+                                        value={editingProduct.description}
+                                        onChange={e => setEditingProduct({...editingProduct, description: e.target.value})}
+                                        required
+                                    />
+                                </div>
+
+                                <div className="bg-neutral-50 p-4 rounded-xl border border-neutral-200">
+                                    <label className="label-admin mb-2 block">Specificații Tehnice</label>
+                                    {editingProduct.details.map((spec, idx) => (
+                                        <div key={idx} className="flex gap-2 mb-2">
+                                            <input 
+                                                className="input-admin py-1 text-sm bg-white" 
+                                                value={spec} 
+                                                onChange={(e) => {
+                                                    const newSpecs = [...editingProduct.details];
+                                                    newSpecs[idx] = e.target.value;
+                                                    setEditingProduct({...editingProduct, details: newSpecs});
+                                                }}
+                                            />
+                                            <button type="button" onClick={() => {
+                                                const newSpecs = editingProduct.details.filter((_, i) => i !== idx);
+                                                setEditingProduct({...editingProduct, details: newSpecs});
+                                            }} className="text-red-500 px-2 font-bold hover:bg-red-50 rounded">×</button>
+                                        </div>
+                                    ))}
+                                    <Button 
+                                        type="button" 
+                                        variant="outline" 
+                                        className="w-full py-2 text-xs border-dashed border-neutral-300 hover:border-black" 
+                                        onClick={() => setEditingProduct({...editingProduct, details: [...editingProduct.details, "Caracteristică: Valoare"]})}
+                                    >
+                                        + Adaugă Specificație
+                                    </Button>
+                                </div>
+                            </div>
+
+                            <div className="space-y-6">
+                                <div>
+                                    <label className="label-admin">Imagine Principală (Cover)</label>
+                                    <div className="border-2 border-dashed border-neutral-300 rounded-xl p-4 text-center hover:bg-neutral-50 transition-colors cursor-pointer relative group overflow-hidden bg-neutral-50 min-h-[200px] flex items-center justify-center">
+                                        <input type="file" onChange={(e) => handleImageFile(e, false)} className="absolute inset-0 opacity-0 cursor-pointer z-10" accept="image/*" />
+                                        {editingProduct.imageUrl ? (
+                                            <>
+                                                <img src={editingProduct.imageUrl} className="w-full h-full object-contain" alt="Cover" />
+                                                <div className="absolute inset-0 bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">Schimbă Poza</div>
+                                            </>
+                                        ) : (
+                                            <div className="text-neutral-400 text-sm">
+                                                <span className="block text-2xl mb-2">📷</span>
+                                                Click sau Trage o poză aici
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="label-admin">Galerie (Mai multe poze)</label>
+                                    <div className="grid grid-cols-3 gap-2 mb-2">
                                         {editingProduct.gallery.map((img, idx) => (
-                                            <div key={idx} className="relative aspect-square border rounded-lg overflow-hidden bg-white group">
-                                                <img src={img} className="w-full h-full object-cover" alt="Gal" />
+                                            <div key={idx} className="relative group aspect-square border rounded-lg overflow-hidden bg-white shadow-sm">
+                                                <img src={img} className="w-full h-full object-cover" alt={`Gallery ${idx}`} />
                                                 <button 
                                                     type="button" 
-                                                    onClick={() => removeGalleryImage(idx)}
-                                                    className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-[4vh] h-[4vh] md:w-5 md:h-5 text-[2.5vw] md:text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                                                >×</button>
+                                                    onClick={() => removeGalleryImage(idx)} 
+                                                    className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-red-600"
+                                                >
+                                                    ×
+                                                </button>
                                             </div>
                                         ))}
-                                        <div className="border-2 border-dashed border-neutral-300 rounded-lg flex items-center justify-center aspect-square hover:bg-neutral-50 cursor-pointer relative">
+                                        <div className="border-2 border-dashed border-neutral-300 rounded-lg flex items-center justify-center aspect-square hover:bg-neutral-50 cursor-pointer relative text-neutral-300 hover:text-neutral-500 transition-colors">
                                             <input type="file" onChange={(e) => handleImageFile(e, true)} className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" />
-                                            <span className="text-[6vw] md:text-2xl text-neutral-300">+</span>
+                                            <span className="text-4xl font-light">+</span>
                                         </div>
                                     </div>
                                 </div>
+
+                                <div>
+                                    <label className="label-admin">Culori Disponibile (HEX)</label>
+                                    <input 
+                                        className="input-admin"
+                                        placeholder="#000000, #FFFFFF" 
+                                        value={editingProduct.colors.join(', ')}
+                                        onChange={e => setEditingProduct({...editingProduct, colors: e.target.value.split(',').map(c => c.trim())})}
+                                    />
+                                    <div className="flex gap-2 mt-2 h-6 items-center">
+                                        <span className="text-xs text-neutral-400">Preview:</span>
+                                        {editingProduct.colors.filter(c => c.startsWith('#')).map((c, i) => (
+                                            <div key={i} className="w-5 h-5 rounded-full border border-neutral-200 shadow-sm" style={{backgroundColor: c}}></div>
+                                        ))}
+                                    </div>
+                                </div>
                             </div>
-                            <div className="md:col-span-2 flex gap-[1.5vh] md:gap-4 border-t border-neutral-100 pt-[2vh] md:pt-6">
-                                <Button type="submit" className="text-[3vw] md:text-sm">Salvează</Button>
-                                <Button variant="outline" onClick={() => setShowProductForm(false)} type="button" className="text-[3vw] md:text-sm">Anulează</Button>
+
+                            <div className="md:col-span-2 flex gap-4 mt-4 border-t border-neutral-100 pt-6">
+                                <Button type="submit" disabled={loading}>
+                                    {loading ? 'Se salvează...' : 'Salvează Modificările'}
+                                </Button>
+                                <Button variant="outline" onClick={() => setShowProductForm(false)} type="button">Anulează</Button>
                             </div>
                         </form>
                     </div>
                 )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-[2vh] md:gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {products.map(p => (
-                        <div key={p.id} className="bg-white p-[2vh] md:p-5 rounded-2xl shadow-sm border border-neutral-100 flex flex-col group hover:shadow-md transition-shadow">
-                            <div className="flex justify-between items-start mb-[1.5vh] md:mb-4">
-                                <div className="w-[15vw] h-[15vw] md:w-20 md:h-20 rounded-lg overflow-hidden border border-neutral-100 bg-neutral-50 relative"><img src={p.imageUrl} className="w-full h-full object-cover" alt={p.name} /></div>
+                        <div key={p.id} className="bg-white p-5 rounded-2xl shadow-sm border border-neutral-100 flex flex-col group hover:shadow-md transition-shadow">
+                            <div className="flex justify-between items-start mb-4">
+                                <div className="w-20 h-20 rounded-lg overflow-hidden border border-neutral-100 bg-neutral-50 relative">
+                                    <img src={p.imageUrl} className="w-full h-full object-cover" alt={p.name} />
+                                    {p.gallery && p.gallery.length > 0 && (
+                                        <div className="absolute bottom-0 right-0 bg-black/50 text-white text-[9px] px-1">+{p.gallery.length}</div>
+                                    )}
+                                </div>
                                 <div className="text-right">
-                                    <div className="font-bold text-[4vw] md:text-xl">{p.price} <span className="text-[2.5vw] md:text-xs font-normal">RON</span></div>
-                                    <div className={`mt-[0.5vh] md:mt-2 px-2 py-1 rounded text-[2vw] md:text-[10px] font-bold uppercase inline-block ${p.stock_quantity > 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>Stoc: {p.stock_quantity}</div>
+                                    <div className="font-bold text-xl">{p.price} <span className="text-xs font-normal">RON</span></div>
+                                    {p.original_price && p.original_price > p.price && (
+                                        <div className="text-xs text-red-500 line-through font-mono">
+                                            {p.original_price} RON
+                                        </div>
+                                    )}
+                                    <div className={`mt-2 px-2 py-1 rounded text-[10px] font-bold uppercase inline-block ${p.stock_quantity > 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                                        Stoc: {p.stock_quantity}
+                                    </div>
                                 </div>
                             </div>
-                            <h3 className="font-bold text-[3.5vw] md:text-lg mb-[0.5vh] md:mb-1">{p.name}</h3>
-                            <div className="flex gap-[1vh] md:gap-2 border-t border-neutral-100 pt-[1.5vh] md:pt-4 mt-auto">
-                                <button onClick={() => { setEditingProduct(p); setShowProductForm(true); setTimeout(() => document.getElementById('productForm')?.scrollIntoView({behavior: 'smooth'}), 100); }} className="flex-1 bg-neutral-50 hover:bg-neutral-100 py-[1vh] md:py-2 rounded-lg text-[2.5vw] md:text-xs font-bold uppercase">Edit</button>
-                                <button onClick={() => p.id && handleDeleteProduct(p.id)} className="px-[2vw] md:px-3 bg-white border border-red-100 text-red-500 rounded-lg hover:bg-red-50 text-[3vw] md:text-base">✕</button>
+                            
+                            <h3 className="font-bold text-lg mb-1">{p.name}</h3>
+                            <p className="text-xs text-neutral-500 line-clamp-2 mb-4 flex-1">{p.description}</p>
+                            
+                            <div className="flex gap-2 border-t border-neutral-100 pt-4">
+                                <button 
+                                    onClick={() => { 
+                                        setEditingProduct(p); 
+                                        setShowProductForm(true); 
+                                        setTimeout(() => document.getElementById('productForm')?.scrollIntoView({behavior: 'smooth'}), 100);
+                                    }}
+                                    className="flex-1 bg-neutral-50 hover:bg-neutral-100 text-neutral-900 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors"
+                                >
+                                    Editează
+                                </button>
+                                <button 
+                                    onClick={() => p.id && handleDeleteProduct(p.id)}
+                                    className="px-3 bg-white border border-red-100 text-red-500 rounded-lg hover:bg-red-50 transition-colors"
+                                    title="Șterge Produs"
+                                >
+                                    ✕
+                                </button>
                             </div>
                         </div>
                     ))}
@@ -915,85 +1013,309 @@ export const Admin: React.FC = () => {
             </div>
         )}
 
-        {/* --- TAB: REDUCERI --- */}
+        {/* --- CONȚINUT TAB: REDUCERI --- */}
         {activeTab === 'discounts' && (
             <div className="animate-fade-in">
-                <div className="flex justify-between items-center mb-[2vh] md:mb-6">
-                    <h2 className="text-[4vw] md:text-xl font-bold">Coduri Reducere</h2>
-                    <Button onClick={() => { setEditingDiscount({ code: '', discount_type: 'percentage', discount_value: 10, min_order_amount: 0, used_count: 0, valid_from: new Date().toISOString().split('T')[0], is_active: true }); setShowDiscountForm(true); }} className="text-[3vw] md:text-sm">+ Cod</Button>
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-xl font-bold">Coduri de Reducere</h2>
+                    <Button onClick={() => {
+                        setEditingDiscount({
+                            code: '', 
+                            discount_type: 'percentage', 
+                            discount_value: 10, 
+                            min_order_amount: 0, 
+                            max_uses: null,
+                            used_count: 0,
+                            valid_from: new Date().toISOString().split('T')[0],
+                            valid_until: null,
+                            is_active: true
+                        });
+                        setShowDiscountForm(true);
+                    }}>+ Adaugă Cod Reducere</Button>
                 </div>
 
                 {showDiscountForm && editingDiscount && (
-                    <div className="bg-white p-[2vh] md:p-6 rounded-2xl shadow-xl mb-[2vh] md:mb-8 border border-neutral-200">
-                        <form onSubmit={handleDiscountSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-[2vh] md:gap-6">
-                            <div><label className="label-admin">Cod</label><input className="input-admin uppercase font-bold text-[3vw] md:text-sm" value={editingDiscount.code} onChange={e=>setEditingDiscount({...editingDiscount, code: e.target.value.toUpperCase()})} required /></div>
-                            <div className="grid grid-cols-2 gap-[1.5vh] md:gap-4">
-                                <div><label className="label-admin">Tip</label><select className="input-admin text-[3vw] md:text-sm" value={editingDiscount.discount_type} onChange={e=>setEditingDiscount({...editingDiscount, discount_type: e.target.value as any})}><option value="percentage">%</option><option value="fixed">RON</option></select></div>
-                                <div><label className="label-admin">Val</label><input type="number" className="input-admin text-[3vw] md:text-sm" value={editingDiscount.discount_value} onChange={e=>setEditingDiscount({...editingDiscount, discount_value: parseFloat(e.target.value)})} required /></div>
+                    <div className="bg-white p-6 rounded-2xl shadow-xl mb-8 border border-neutral-200 animate-fade-in">
+                         <h3 className="text-lg font-bold mb-4 border-b border-neutral-100 pb-2">
+                             {editingDiscount.id ? '✏️ Editează Cod' : '✨ Cod Nou'}
+                         </h3>
+                         <form onSubmit={handleDiscountSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label className="label-admin">Cod Reducere (Ex: VARA20)</label>
+                                <input 
+                                    className="input-admin uppercase font-mono font-bold text-lg" 
+                                    required 
+                                    value={editingDiscount.code} 
+                                    onChange={e => setEditingDiscount({...editingDiscount, code: e.target.value.toUpperCase()})} 
+                                    placeholder="COD-PROMO"
+                                />
                             </div>
-                            <div className="md:col-span-2 flex gap-[1.5vh] md:gap-4"><Button type="submit" className="text-[3vw] md:text-sm">Salvează</Button><Button variant="outline" onClick={()=>setShowDiscountForm(false)} type="button" className="text-[3vw] md:text-sm">Anulează</Button></div>
-                        </form>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="label-admin">Tip Reducere</label>
+                                    <select 
+                                        className="input-admin" 
+                                        value={editingDiscount.discount_type} 
+                                        onChange={e => setEditingDiscount({...editingDiscount, discount_type: e.target.value as any})}
+                                    >
+                                        <option value="percentage">Procent (%)</option>
+                                        <option value="fixed">Sumă Fixă (RON)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="label-admin">Valoare</label>
+                                    <input 
+                                        type="number" step="0.01" 
+                                        className="input-admin font-bold" 
+                                        required 
+                                        value={editingDiscount.discount_value} 
+                                        onChange={e => setEditingDiscount({...editingDiscount, discount_value: parseFloat(e.target.value)})} 
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="label-admin">Comanda Minimă (RON)</label>
+                                    <input 
+                                        type="number" 
+                                        className="input-admin" 
+                                        value={editingDiscount.min_order_amount} 
+                                        onChange={e => setEditingDiscount({...editingDiscount, min_order_amount: parseFloat(e.target.value)})} 
+                                    />
+                                </div>
+                                <div>
+                                    <label className="label-admin">Nr. Maxim Utilizări</label>
+                                    <input 
+                                        type="number" 
+                                        className="input-admin" 
+                                        placeholder="Nelimitat" 
+                                        value={editingDiscount.max_uses || ''} 
+                                        onChange={e => setEditingDiscount({...editingDiscount, max_uses: e.target.value ? parseInt(e.target.value) : null})} 
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="label-admin">Valabil De La</label>
+                                    <input 
+                                        type="datetime-local" 
+                                        className="input-admin" 
+                                        required 
+                                        value={editingDiscount.valid_from ? new Date(editingDiscount.valid_from).toISOString().slice(0, 16) : ''} 
+                                        onChange={e => setEditingDiscount({...editingDiscount, valid_from: e.target.value})} 
+                                    />
+                                </div>
+                                <div>
+                                    <label className="label-admin">Expiră La (Opțional)</label>
+                                    <input 
+                                        type="datetime-local" 
+                                        className="input-admin" 
+                                        value={editingDiscount.valid_until ? new Date(editingDiscount.valid_until).toISOString().slice(0, 16) : ''} 
+                                        onChange={e => setEditingDiscount({...editingDiscount, valid_until: e.target.value || null})} 
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 bg-neutral-50 p-3 rounded-lg border border-neutral-100">
+                                <input 
+                                    type="checkbox" 
+                                    id="active" 
+                                    className="w-5 h-5 accent-black" 
+                                    checked={editingDiscount.is_active} 
+                                    onChange={e => setEditingDiscount({...editingDiscount, is_active: e.target.checked})} 
+                                />
+                                <label htmlFor="active" className="font-bold text-sm cursor-pointer select-none">Activează acest cod de reducere</label>
+                            </div>
+
+                            <div className="md:col-span-2 flex gap-4 mt-2">
+                                <Button type="submit" disabled={loading}>
+                                    {loading ? 'Se salvează...' : 'Salvează Codul'}
+                                </Button>
+                                <Button variant="outline" type="button" onClick={() => setShowDiscountForm(false)}>Anulează</Button>
+                            </div>
+                         </form>
                     </div>
                 )}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-[2vh] md:gap-4">
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {discounts.map(d => (
-                        <div key={d.id} className={`p-[2vh] md:p-5 rounded-xl border ${d.is_active ? 'bg-white border-neutral-200' : 'bg-neutral-50 border-neutral-100 opacity-60'}`}>
-                            <div className="flex justify-between mb-[1vh] md:mb-2">
-                                <div className="font-mono font-black text-[4vw] md:text-xl bg-yellow-50 px-2 rounded">{d.code}</div>
-                                <button onClick={()=>handleDeleteDiscount(d.id)} className="text-red-500 text-[2.5vw] md:text-xs font-bold">Șterge</button>
+                        <div key={d.id} className={`p-5 rounded-xl border transition-all ${d.is_active ? 'bg-white border-neutral-200 shadow-sm hover:shadow-md' : 'bg-neutral-50 border-neutral-100 opacity-60 grayscale'}`}>
+                            <div className="flex justify-between items-start mb-2">
+                                <div className="font-mono font-black text-xl uppercase tracking-wider text-brand-yellow-darker bg-yellow-50 px-2 py-1 rounded">
+                                    {d.code}
+                                </div>
+                                <div className="flex gap-2">
+                                    <button 
+                                        onClick={() => { setEditingDiscount(d); setShowDiscountForm(true); window.scrollTo({top: 0, behavior: 'smooth'}); }} 
+                                        className="text-xs bg-black text-white px-2 py-1 rounded font-bold hover:bg-neutral-800"
+                                    >
+                                        Edit
+                                    </button>
+                                    <button 
+                                        onClick={() => handleDeleteDiscount(d.id)} 
+                                        className="text-xs text-red-500 hover:bg-red-50 px-2 py-1 rounded border border-red-100 font-bold"
+                                    >
+                                        Șterge
+                                    </button>
+                                </div>
                             </div>
-                            <div className="text-[3vw] md:text-sm">Reducere: <b>{d.discount_value}{d.discount_type === 'percentage' ? '%' : ' RON'}</b></div>
-                            <div className="text-[2.5vw] md:text-xs text-neutral-500 mt-[1vh] md:mt-2">Utilizări: {d.used_count}</div>
+                            
+                            <div className="text-2xl font-black mb-3">
+                                -{d.discount_value}{d.discount_type === 'percentage' ? '%' : <span className="text-sm font-normal text-neutral-500"> RON</span>}
+                            </div>
+                            
+                            <div className="space-y-1 text-xs text-neutral-500 border-t border-neutral-100 pt-3">
+                                <div className="flex justify-between">
+                                    <span>Utilizări:</span>
+                                    <span className="font-bold text-black">{d.used_count} {d.max_uses ? `/ ${d.max_uses}` : '(Nelimitat)'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span>Comandă Minimă:</span>
+                                    <span className="font-bold text-black">{d.min_order_amount} RON</span>
+                                </div>
+                                {d.valid_until && (
+                                    <div className="flex justify-between text-orange-600">
+                                        <span>Expiră:</span>
+                                        <span className="font-bold">{new Date(d.valid_until).toLocaleDateString()}</span>
+                                    </div>
+                                )}
+                                <div className="flex justify-between">
+                                    <span>Status:</span>
+                                    <span className={`font-bold ${d.is_active ? 'text-green-600' : 'text-red-600'}`}>
+                                        {d.is_active ? 'ACTIV' : 'INACTIV'}
+                                    </span>
+                                </div>
+                            </div>
                         </div>
                     ))}
+                    
+                    {discounts.length === 0 && (
+                        <div className="col-span-full py-12 text-center text-neutral-400 border-2 border-dashed border-neutral-200 rounded-xl">
+                            Nu există coduri de reducere create.
+                        </div>
+                    )}
                 </div>
             </div>
         )}
 
         {/* MODAL EDITARE COMANDĂ */}
         {editingOrder && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-[2vw] md:p-4 backdrop-blur-sm">
-                <div className="bg-white rounded-2xl p-[3vh] md:p-8 w-full max-w-[90vw] md:max-w-lg max-h-[85vh] overflow-y-auto">
-                    <h2 className="text-[4vw] md:text-xl font-bold mb-[2vh] md:mb-4 flex justify-between items-center">
-                        <span>Editare #{editingOrder.id}</span>
-                        <button onClick={() => setEditingOrder(null)} className="text-neutral-400 hover:text-black text-[5vw] md:text-2xl">✕</button>
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4 backdrop-blur-sm animate-fade-in">
+                <div className="bg-white rounded-2xl shadow-2xl p-6 md:p-8 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                    <h2 className="text-xl font-black uppercase mb-6 flex justify-between items-center">
+                        <span>Editare Comandă #{editingOrder.id}</span>
+                        <button onClick={() => setEditingOrder(null)} className="text-neutral-400 hover:text-black transition-colors">✕</button>
                     </h2>
-                    <form onSubmit={handleUpdateOrder} className="space-y-[1.5vh] md:space-y-4">
+
+                    <form onSubmit={handleUpdateOrder} className="space-y-4">
                         <div>
-                            <label className="label-admin">Status</label>
-                            <select className="input-admin text-[3vw] md:text-sm" value={editingOrder.status} onChange={e=>setEditingOrder({...editingOrder, status: e.target.value})}>
-                                <option value="pending">Pending</option>
-                                <option value="paid">Paid</option>
-                                <option value="completed">Completed</option>
-                                <option value="cancelled">Cancelled</option>
+                            <label className="label-admin">Status Comandă</label>
+                            <select
+                                className="input-admin"
+                                value={editingOrder.status}
+                                onChange={e => setEditingOrder({ ...editingOrder, status: e.target.value })}
+                            >
+                                <option value="pending">Pending (În așteptare)</option>
+                                <option value="paid">Paid (Plătit)</option>
+                                <option value="shipped">Shipped (Livrat)</option>
+                                <option value="completed">Completed (Finalizat)</option>
+                                <option value="cancelled">Cancelled (Anulat)</option>
+                                <option value="returned">Returned (Returnat)</option>
                             </select>
                         </div>
-                        
-                        <div className="grid grid-cols-2 gap-[1.5vh] md:gap-4">
-                            <div><label className="label-admin">Nume</label><input className="input-admin text-[3vw] md:text-sm" value={editingOrder.customer_name} onChange={e=>setEditingOrder({...editingOrder, customer_name: e.target.value})} /></div>
-                            <div><label className="label-admin">Telefon</label><input className="input-admin text-[3vw] md:text-sm" value={editingOrder.customer_phone} onChange={e=>setEditingOrder({...editingOrder, customer_phone: e.target.value})} /></div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="label-admin">Nume Client</label>
+                                <input
+                                    className="input-admin"
+                                    value={editingOrder.customer_name}
+                                    onChange={e => setEditingOrder({ ...editingOrder, customer_name: e.target.value })}
+                                />
+                            </div>
+                            <div>
+                                <label className="label-admin">Telefon</label>
+                                <input
+                                    className="input-admin"
+                                    value={editingOrder.customer_phone}
+                                    onChange={e => setEditingOrder({ ...editingOrder, customer_phone: e.target.value })}
+                                />
+                            </div>
                         </div>
-                        
-                        <div><label className="label-admin">Email</label><input className="input-admin text-[3vw] md:text-sm" value={editingOrder.customer_email} onChange={e=>setEditingOrder({...editingOrder, customer_email: e.target.value})} /></div>
-                        
-                        <div className="border-t border-neutral-100 pt-[1.5vh] md:pt-4">
-                            <p className="text-[2.5vw] md:text-xs font-bold uppercase text-neutral-400 mb-[1vh] md:mb-3">Adresă Livrare</p>
-                            <div className="grid grid-cols-2 gap-[1.5vh] md:gap-4 mb-[1vh] md:mb-2">
-                                <div><label className="label-admin">Județ</label><input className="input-admin text-[3vw] md:text-sm" value={editingOrder.county || ''} onChange={e=>setEditingOrder({...editingOrder, county: e.target.value})} /></div>
-                                <div><label className="label-admin">Oraș</label><input className="input-admin text-[3vw] md:text-sm" value={editingOrder.city || ''} onChange={e=>setEditingOrder({...editingOrder, city: e.target.value})} /></div>
+
+                        <div>
+                            <label className="label-admin">Email</label>
+                            <input
+                                className="input-admin"
+                                value={editingOrder.customer_email}
+                                onChange={e => setEditingOrder({ ...editingOrder, customer_email: e.target.value })}
+                            />
+                        </div>
+
+                        <div className="border-t border-neutral-100 pt-4 mt-2">
+                            <p className="text-xs font-bold uppercase text-neutral-400 mb-3">Adresă Livrare & Ecolet</p>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-2">
+                                <div>
+                                    <label className="label-admin">Județ</label>
+                                    <input
+                                        className="input-admin"
+                                        value={editingOrder.county || ''}
+                                        onChange={e => setEditingOrder({ ...editingOrder, county: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="label-admin">Oraș</label>
+                                    <input
+                                        className="input-admin"
+                                        value={editingOrder.city || ''}
+                                        onChange={e => setEditingOrder({ ...editingOrder, city: e.target.value })}
+                                    />
+                                </div>
                             </div>
-                            <div className="grid grid-cols-3 gap-[1.5vh] md:gap-4">
-                                <div className="col-span-2"><label className="label-admin">Adresă</label><input className="input-admin text-[3vw] md:text-sm" value={editingOrder.address_line || ''} onChange={e=>setEditingOrder({...editingOrder, address_line: e.target.value})} /></div>
-                                <div><label className="label-admin">Cod</label><input className="input-admin text-[3vw] md:text-sm" value={editingOrder.postal_code || ''} onChange={e=>setEditingOrder({...editingOrder, postal_code: e.target.value})} /></div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-2">
+                                <div className="sm:col-span-2">
+                                    <label className="label-admin">Adresă (Stradă, Nr, Bloc)</label>
+                                    <input
+                                        className="input-admin"
+                                        value={editingOrder.address_line || ''}
+                                        onChange={e => setEditingOrder({ ...editingOrder, address_line: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="label-admin">Cod Poștal</label>
+                                    <input
+                                        className="input-admin"
+                                        value={editingOrder.postal_code || ''}
+                                        placeholder="000000"
+                                        onChange={e => setEditingOrder({ ...editingOrder, postal_code: e.target.value })}
+                                    />
+                                </div>
                             </div>
+
                             {editingOrder.shipping_method === 'easybox' && (
-                                <div className="mt-[1.5vh] md:mt-2"><label className="label-admin">Locker ID</label><input className="input-admin bg-yellow-50 font-mono text-[3vw] md:text-xs" value={editingOrder.locker_id || ''} onChange={e=>setEditingOrder({...editingOrder, locker_id: e.target.value})} /></div>
+                                <div>
+                                    <label className="label-admin">Locker ID (EasyBox)</label>
+                                    <input
+                                        className="input-admin bg-yellow-50 font-mono text-xs"
+                                        value={editingOrder.locker_id || ''}
+                                        onChange={e => setEditingOrder({ ...editingOrder, locker_id: e.target.value })}
+                                    />
+                                </div>
                             )}
                         </div>
-                        
-                        <div className="flex gap-[1.5vh] md:gap-3 pt-[2vh] md:pt-6">
-                            <Button fullWidth type="submit" className="text-[3vw] md:text-sm">Salvează</Button>
-                            <Button fullWidth variant="outline" onClick={()=>setEditingOrder(null)} type="button" className="text-[3vw] md:text-sm">Anulează</Button>
+
+                        <div className="flex flex-col sm:flex-row gap-3 pt-6">
+                            <Button fullWidth type="submit" disabled={loading}>
+                                {loading ? 'Se salvează...' : 'Salvează Modificările'}
+                            </Button>
+                            <Button fullWidth variant="outline" type="button" onClick={() => setEditingOrder(null)}>
+                                Anulează
+                            </Button>
                         </div>
                     </form>
                 </div>
@@ -1003,13 +1325,41 @@ export const Admin: React.FC = () => {
       </div>
       
       <style>{`
-        .input-admin { width: 100%; padding: 0.75rem; border: 1px solid #e5e5e5; border-radius: 0.5rem; outline: none; transition: border-color 0.2s; }
-        .input-admin:focus { border-color: black; }
-        .label-admin { display: block; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: #737373; margin-bottom: 0.35rem; letter-spacing: 0.05em; }
-        @keyframes bounce-in { 0% { opacity: 0; transform: translate(-50%, 20px); } 100% { opacity: 1; transform: translate(-50%, 0); } }
-        .animate-bounce-in { animation: bounce-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
-        @media (max-width: 768px) {
-          .input-admin { padding: 0.5rem; }
+        .input-admin { 
+            width: 100%; 
+            padding: 0.75rem; 
+            border: 1px solid #e5e5e5; 
+            border-radius: 0.5rem; 
+            transition: all 0.2s; 
+            outline: none; 
+            font-size: 0.875rem;
+        }
+        .input-admin:focus { 
+            border-color: black; 
+            box-shadow: 0 0 0 1px black;
+        }
+        .label-admin { 
+            display: block; 
+            font-size: 0.75rem; 
+            font-weight: 700; 
+            text-transform: uppercase; 
+            color: #737373; 
+            margin-bottom: 0.35rem; 
+            letter-spacing: 0.05em;
+        }
+        @keyframes bounce-in { 
+            0% { opacity: 0; transform: translate(-50%, 20px); } 
+            100% { opacity: 1; transform: translate(-50%, 0); } 
+        }
+        .animate-bounce-in { 
+            animation: bounce-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; 
+        }
+        @keyframes fade-in { 
+            from { opacity: 0; } 
+            to { opacity: 1; } 
+        }
+        .animate-fade-in { 
+            animation: fade-in 0.3s ease-in-out; 
         }
       `}</style>
     </div>
