@@ -11,7 +11,7 @@ import { Admin } from './pages/Admin';
 import { Diagnostics } from './pages/Diagnostics';
 import { Terms } from './pages/Terms';
 import { Privacy } from './pages/Privacy';
-// IMPORTĂM PAGINILE NOI (TREBUIE SĂ EXISTE FIȘIERELE create anterior)
+import { Success } from './pages/Success';
 import { Contact } from './pages/Contact';
 import { Cookies } from './pages/Cookies';
 
