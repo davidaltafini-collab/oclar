@@ -7,6 +7,7 @@ import { sendOrderEmails } from './services/email.js';
 import { sendOblioInvoice, generateAWB } from './services/oblio.js';
 import { createDraftShipment, getShipmentStatus, getShipmentLabel } from './services/ecolet.js';
 import { createPaymentSession, decryptIPN } from './services/netopia.js';
+import { createPaymentSession, validatePaymentNotification } from './services/netopia.js';
 
 dotenv.config(); // Încarcă variabilele pentru acest fișier
 
@@ -1029,30 +1030,38 @@ app.post('/api/create-netopia-session', async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
-// --- 9.2 RUTA CONFIRM NETOPIA (IPN) ---
+// --- 9.2 RUTA CONFIRM NETOPIA (IPN - REST API) ---
 app.post('/api/netopia/confirm', async (req, res) => {
-    const { env_key, data } = req.body;
-
     try {
-        const result = await decryptIPN(env_key, data);
-        console.log(`🔔 Netopia IPN pentru comanda #${result.orderId}: ${result.action}`);
+        console.log("--------------- NETOPIA IPN (REST) ---------------");
 
-        if (result.errorCode === '0' && result.action === 'confirmed') {
+        // 1. Validăm notificarea primită (JSON)
+        const paymentInfo = validatePaymentNotification(req.body);
+
+        if (paymentInfo.success) {
+            console.log(`✅ PLATĂ CONFIRMATĂ: Comanda #${paymentInfo.orderId}`);
+
             const connection = await pool.getConnection();
 
-            // 1. Salvăm statusul ca Plătit
-            await connection.query('UPDATE orders SET status = "paid" WHERE id = ?', [result.orderId]);
+            // 2. Actualizăm statusul în baza de date
+            // Folosim paymentInfo.orderId care vine direct din Netopia
+            await connection.query(
+                'UPDATE orders SET status = "paid", transaction_id = ? WHERE id = ?',
+                [paymentInfo.transactionId, paymentInfo.orderId]
+            );
 
-            // 2. Extragem datele comenzii
-            const [orders] = await connection.query('SELECT * FROM orders WHERE id = ?', [result.orderId]);
+            // 3. Extragem datele comenzii pentru Email și Oblio
+            const [orders] = await connection.query('SELECT * FROM orders WHERE id = ?', [paymentInfo.orderId]);
 
             if (orders.length > 0) {
                 const order = orders[0];
+
+                // Parsăm JSON-urile din DB
                 const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
                 const address = typeof order.shipping_address === 'string' ? JSON.parse(order.shipping_address) :
                     { line1: order.address_line, city: order.city, county: order.county };
 
-                // 3. Trimitem Emailul INSTANT clientului
+                // 4. Trimitem Email clientului
                 if (order.customer_email) {
                     const emailDetails = {
                         orderId: order.id.toString(),
@@ -1070,48 +1079,52 @@ app.post('/api/netopia/confirm', async (req, res) => {
                         paymentMethod: 'card',
                         paymentStatus: 'paid'
                     };
-                    // Nu dăm await, lăsăm să plece în background ca să nu blocăm Netopia
+                    // Trimitem în background
                     sendOrderEmails(emailDetails).catch(err => console.error('❌ Email error:', err));
                 }
 
-                // 4. Generăm automat factura în Oblio
-                const oblioResult = await sendOblioInvoice({
-                    orderId: order.id,
-                    customerName: order.customer_name,
-                    customerEmail: order.customer_email,
-                    customerPhone: order.customer_phone,
-                    address,
-                    items,
-                    subtotal: order.subtotal,
-                    shippingCost: order.shipping_cost,
-                    discountAmount: order.discount_amount,
-                    discountCode: order.discount_code,
-                    totalAmount: order.total_amount,
-                    paymentMethod: 'card' // E din Netopia, deci clar e card
-                });
+                // 5. Generăm Factura Oblio
+                // Verificăm să nu fie deja generată (evităm duplicate la retry-uri Netopia)
+                if (!order.oblio_invoice_id) {
+                    const oblioResult = await sendOblioInvoice({
+                        orderId: order.id,
+                        customerName: order.customer_name,
+                        customerEmail: order.customer_email,
+                        customerPhone: order.customer_phone,
+                        address,
+                        items,
+                        subtotal: order.subtotal,
+                        shippingCost: order.shipping_cost,
+                        discountAmount: order.discount_amount,
+                        discountCode: order.discount_code,
+                        totalAmount: order.total_amount,
+                        paymentMethod: 'card'
+                    });
 
-                if (oblioResult.success) {
-                    await connection.query(
-                        'UPDATE orders SET oblio_invoice_id = ?, oblio_invoice_number = ? WHERE id = ?',
-                        [oblioResult.invoiceId, oblioResult.invoiceNumber, order.id]
-                    );
-                    console.log(`✅ Oblio: Factură generată pentru comanda Netopia #${order.id}`);
-                } else {
-                    console.error('❌ Eroare Oblio Netopia Confirm:', oblioResult.error);
+                    if (oblioResult.success) {
+                        await connection.query(
+                            'UPDATE orders SET oblio_invoice_id = ?, oblio_invoice_number = ? WHERE id = ?',
+                            [oblioResult.invoiceId, oblioResult.invoiceNumber, order.id]
+                        );
+                        console.log(`✅ Oblio: Factură generată pentru comanda #${order.id}`);
+                    } else {
+                        console.error('❌ Eroare Oblio:', oblioResult.error);
+                    }
                 }
             }
             connection.release();
+        } else {
+            console.log(`⚠️ PLATĂ NE-CONFIRMATĂ: ${paymentInfo.message}`);
         }
 
-        // 5. Răspuns de care Netopia are nevoie ca să știe că am primit confirmarea
-        res.set('Content-Type', 'application/xml');
-        res.send('<?xml version="1.0" encoding="utf-8"?><crc error_code="0">Success</crc>');
+        // 6. Răspuns JSON simplu (Așa cere noul API)
+        // Nu mai trimitem XML!
+        res.json({ error: { code: 0, message: "success" } });
 
-    } catch (e) {
-        console.error('❌ Netopia Confirm Error:', e);
-        // E vital să dăm un XML de eroare pentru Netopia dacă pică decriptarea
-        res.set('Content-Type', 'application/xml');
-        res.send(`<?xml version="1.0" encoding="utf-8"?><crc error_type="1" error_code="1">${e.message}</crc>`);
+    } catch (error) {
+        console.error("Eroare procesare IPN:", error);
+        // Chiar și la eroare, răspundem JSON valid ca să nu blocheze Netopia
+        res.status(500).json({ error: { code: 1, message: error.message } });
     }
 });
 // --- 15. CATCH-ALL ERROR HANDLER ---

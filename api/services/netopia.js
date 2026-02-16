@@ -102,3 +102,38 @@ export function decryptIPN(reqBody) {
    console.log("IPN Primit:", reqBody);
    return { status: "OK" };
 }
+export function validatePaymentNotification(reqBody) {
+  // Verificăm dacă structura e cea din documentație (NotifyRequest)
+  if (!reqBody || !reqBody.payment || !reqBody.order) {
+    throw new Error("Invalid IPN format");
+  }
+
+  const status = reqBody.payment.status; // 3 = Paid, 5 = Confirmed
+  const orderId = reqBody.order.orderID; // ID-ul comenzii tale
+  const ntpId = reqBody.payment.ntpID;   // ID-ul tranzacției Netopia
+  
+  console.log(`[Netopia IPN] Comanda: ${orderId}, Status: ${status}, NTP ID: ${ntpId}`);
+
+  // Interpretăm statusul conform documentației API
+  let isSuccess = false;
+  let message = "Pending";
+
+  if (status === 3) {
+    isSuccess = true;
+    message = "PAID (În așteptare confirmare)";
+  } else if (status === 5) {
+    isSuccess = true;
+    message = "CONFIRMED (Banii sunt la tine)";
+  } else if (status === 12) {
+    isSuccess = false;
+    message = "REJECTED (Plată respinsă)";
+  }
+
+  return {
+    success: isSuccess,
+    orderId: orderId,
+    transactionId: ntpId,
+    status: status,
+    message: message
+  };
+}
