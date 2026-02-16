@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { API_URL } from '../constants';
 import { Button } from '../components/Button';
 
+// --- INTERFEȚE ---
 interface AdminProduct {
   id?: number;
   name: string;
@@ -33,16 +34,15 @@ interface Order {
     items: string;
     oblio_invoice_number?: string;
     awb_number?: string;
-    // Câmpuri necesare pentru editare
     county?: string;
     city?: string;
     address_line?: string;
-    // ⭐ CÂMPURI NOI ECOLET
     postal_code?: string;
     locker_id?: string;
     ecolet_shipment_id?: string;
     label_url?: string;
     ecolet_status?: string;
+    is_hidden?: number;
 }
 
 interface DiscountCode {
@@ -58,43 +58,85 @@ interface DiscountCode {
   is_active: boolean;
 }
 
+// --- COMPONENTE UI REUTILIZABILE ---
+
+// Slider Apple Style 🍎
+const ToggleSwitch = ({ checked, onChange, label, subLabel }: { checked: boolean, onChange: (v: boolean) => void, label: string, subLabel?: string }) => (
+  <div className="flex flex-col">
+      <div className="flex items-center gap-3 cursor-pointer" onClick={() => onChange(!checked)}>
+        <div className={`w-11 h-6 rounded-full p-1 transition-colors duration-300 ease-in-out relative ${checked ? 'bg-green-500' : 'bg-neutral-300'}`}>
+          <div className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform duration-300 ease-in-out absolute top-1 left-1 ${checked ? 'translate-x-5' : 'translate-x-0'}`} />
+        </div>
+        <span className="font-bold text-sm text-neutral-800 select-none">{label}</span>
+      </div>
+      {subLabel && <span className="text-[10px] text-neutral-400 mt-1 ml-14">{subLabel}</span>}
+  </div>
+);
+
+// Badge Status
+const StatusBadge = ({ status }: { status: string }) => {
+    let color = 'bg-neutral-100 text-neutral-500';
+    if (status === 'paid' || status === 'completed') color = 'bg-green-100 text-green-700';
+    if (status === 'pending') color = 'bg-yellow-100 text-yellow-700';
+    if (status === 'cancelled') color = 'bg-red-100 text-red-700';
+    
+    return (
+        <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border border-transparent ${color}`}>
+            {status}
+        </span>
+    );
+};
+
 export const Admin: React.FC = () => {
+  // --- STATE-URI ---
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [secret, setSecret] = useState('');
   const [activeTab, setActiveTab] = useState<'orders' | 'products' | 'discounts'>('orders');
   
+  // Date
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [discounts, setDiscounts] = useState<DiscountCode[]>([]);
   
+  // UI Loading
   const [loading, setLoading] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
+  const [ecoletLoading, setEcoletLoading] = useState(false);
 
-  // Filtre comenzi
+  // Filtre & Selecție
   const [selectedOrders, setSelectedOrders] = useState<number[]>([]);
+  const [showHidden, setShowHidden] = useState(false);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
 
-  const [showHidden, setShowHidden] = useState(false); 
-  const [autoEnabled, setAutoEnabled] = useState(false); 
+  // ⭐ SETĂRI AUTOMATIZARE
+  const [autoEnabled, setAutoEnabled] = useState(false);
   const [autoOblio, setAutoOblio] = useState(true);
   const [autoEcolet, setAutoEcolet] = useState(true);
 
-  // Formular Produs
+  // Formulare
   const [editingProduct, setEditingProduct] = useState<AdminProduct | null>(null);
   const [showProductForm, setShowProductForm] = useState(false);
-
-  // Formular Comandă (Editare)
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
-
-  const [ecoletLoading, setEcoletLoading] = useState(false);
-
-  const [autoSendEcolet, setAutoSendEcolet] = useState(false);
-
-  // Formular Reduceri
   const [editingDiscount, setEditingDiscount] = useState<Partial<DiscountCode> | null>(null);
   const [showDiscountForm, setShowDiscountForm] = useState(false);
+
+  // --- AUTENTIFICARE ---
+  useEffect(() => {
+      const savedSecret = sessionStorage.getItem('admin_secret');
+      if(savedSecret) {
+          setSecret(savedSecret);
+          fetch(`${API_URL}/admin?type=orders`, { headers: { 'x-admin-secret': savedSecret } })
+            .then(res => {
+                if(res.ok) {
+                    setIsAuthenticated(true);
+                    fetchSettings(savedSecret);
+                }
+            })
+            .catch(() => sessionStorage.removeItem('admin_secret'));
+      }
+  }, []);
 
   const handleLogin = async (e?: React.FormEvent) => {
     if(e) e.preventDefault();
@@ -109,6 +151,8 @@ export const Admin: React.FC = () => {
         if (res.ok) {
             setIsAuthenticated(true);
             sessionStorage.setItem('admin_secret', secret);
+            fetchData('orders');
+            fetchSettings(secret);
         } else {
             alert('Cheie de securitate incorectă!');
         }
@@ -118,29 +162,51 @@ export const Admin: React.FC = () => {
         setLoginLoading(false);
     }
   };
-  
-  useEffect(() => {
-      const savedSecret = sessionStorage.getItem('admin_secret');
-      if(savedSecret) {
-          setSecret(savedSecret);
-          setIsAuthenticated(true);
-      }
-  }, []);
 
+  // --- API CALLS: SETĂRI & DATE ---
+
+  // Încarcă Setările Automatizării
+  const fetchSettings = async (token: string) => {
+    try {
+      const res = await fetch(`${API_URL}/admin/settings`, {
+        headers: { 'x-admin-secret': token }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAutoEnabled(data.automation_enabled || false);
+        setAutoOblio(data.auto_oblio !== false);
+        setAutoEcolet(data.auto_ecolet !== false);
+      }
+    } catch (e) { console.error('Settings err:', e); }
+  };
+
+  // Salvează Setare
+  const updateSetting = async (key: string, value: boolean) => {
+    if(key === 'automation_enabled') setAutoEnabled(value);
+    if(key === 'auto_oblio') setAutoOblio(value);
+    if(key === 'auto_ecolet') setAutoEcolet(value);
+
+    await fetch(`${API_URL}/admin/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-admin-secret': secret },
+      body: JSON.stringify({ key, value })
+    });
+  };
+
+  // Încarcă Datele
   const fetchData = async (type: 'orders' | 'products' | 'discounts') => {
     setLoading(true);
     try {
       let url = `${API_URL}/admin?type=${type}`;
       
       if (type === 'orders') {
+        url += `&showHidden=${showHidden}`;
         if (startDate) url += `&startDate=${startDate}`;
         if (endDate) url += `&endDate=${endDate}`;
         if (statusFilter) url += `&status=${statusFilter}`;
       }
 
-      const res = await fetch(url, {
-        headers: { 'x-admin-secret': secret }
-      });
+      const res = await fetch(url, { headers: { 'x-admin-secret': secret } });
       
       if (res.status === 401) {
         setIsAuthenticated(false);
@@ -148,25 +214,35 @@ export const Admin: React.FC = () => {
         return;
       }
       const data = await res.json();
+      
       if (type === 'orders') {
         setOrders(data);
         setSelectedOrders([]);
       }
       if (type === 'products') setProducts(data);
       if (type === 'discounts') setDiscounts(data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+
+    } catch (err) { console.error(err); } 
+    finally { setLoading(false); }
   };
 
   useEffect(() => {
-    if (isAuthenticated) {
-      fetchData(activeTab);
-    }
-  }, [activeTab, isAuthenticated]);
-// 1. HANDLER PENTRU HIDE / UNHIDE
+    if (isAuthenticated) fetchData(activeTab);
+  }, [activeTab, showHidden, isAuthenticated]);
+
+  // --- HANDLERS SELECȚIE ---
+  const handleSelectAll = () => {
+    if (selectedOrders.length === orders.length) setSelectedOrders([]);
+    else setSelectedOrders(orders.map(o => o.id));
+  };
+
+  const toggleSelection = (id: number) => {
+    setSelectedOrders(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  // --- HANDLERS ACȚIUNI BULK (COMPLET DIN AMBELE CODURI) ---
+  
+  // Toggle Vizibilitate (Hide/Unhide)
   const handleToggleVisibility = async (hide: boolean) => {
       if (selectedOrders.length === 0) return alert('Selectează comenzi!');
       
@@ -176,7 +252,6 @@ export const Admin: React.FC = () => {
               headers: { 'Content-Type': 'application/json', 'x-admin-secret': secret },
               body: JSON.stringify({ orderIds: selectedOrders, hide })
           });
-          // Reîmprospătăm lista
           fetchData('orders');
           setSelectedOrders([]); 
       } catch (e) {
@@ -184,61 +259,186 @@ export const Admin: React.FC = () => {
       }
   };
 
-    // 2. HANDLER EXPORT CSV CONTABIL (Generate Client-Side)
-    const handleAccountingExport = () => {
-        if (selectedOrders.length === 0) return alert('Selectează comenzi!');
+  // Export CSV Contabil (Client-Side)
+  const handleAccountingExport = () => {
+      if (selectedOrders.length === 0) return alert('Selectează comenzi!');
 
-        // Selectăm doar comenzile bifate din lista totală
-        const ordersToExport = orders.filter(o => selectedOrders.includes(o.id));
+      const ordersToExport = orders.filter(o => selectedOrders.includes(o.id));
 
-        let csvContent = "data:text/csv;charset=utf-8,";
-        // Header CSV Contabil
-        csvContent += "Data,Nr. Document,Client,Adresa,Total (RON),Baza Impozabila,TVA (19%),Metoda Plata,Status\n";
+      let csvContent = "data:text/csv;charset=utf-8,";
+      csvContent += "Data,Nr. Document,Client,Adresa,Total (RON),Baza Impozabila,TVA (19%),Metoda Plata,Status\n";
 
-        ordersToExport.forEach(order => {
-            const date = new Date(order.created_at).toLocaleDateString('ro-RO');
-            const total = parseFloat(order.total_amount.toString());
-            const baza = (total / 1.19).toFixed(2);
-            const tva = (total - (total / 1.19)).toFixed(2);
+      ordersToExport.forEach(order => {
+          const date = new Date(order.created_at).toLocaleDateString('ro-RO');
+          const total = parseFloat(order.total_amount.toString());
+          const baza = (total / 1.19).toFixed(2);
+          const tva = (total - (total / 1.19)).toFixed(2);
 
-            // Curățăm virgulele din adresă pentru a nu strica CSV-ul
-            const cleanAddress = (order.address_line || '').replace(/,/g, ' ') + ' ' + (order.city || '');
+          const cleanAddress = (order.address_line || '').replace(/,/g, ' ') + ' ' + (order.city || '');
 
-            const row = [
-                date,
-                `CMD-${order.id}`,
-                `"${order.customer_name}"`,
-                `"${cleanAddress}"`,
-                total.toFixed(2),
-                baza,
-                tva,
-                order.payment_method,
-                order.status
-            ].join(",");
+          const row = [
+              date,
+              `CMD-${order.id}`,
+              `"${order.customer_name}"`,
+              `"${cleanAddress}"`,
+              total.toFixed(2),
+              baza,
+              tva,
+              order.payment_method,
+              order.status
+          ].join(",");
 
-            csvContent += row + "\r\n";
-        });
+          csvContent += row + "\r\n";
+      });
 
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `Export_Contabil_${new Date().toISOString().split('T')[0]}.csv`);
-        document.body.appendChild(link);
-        link.click();
-    };
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `Export_Contabil_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+  };
 
-    // 3. HANDLER SETĂRI (Slider)
-    const toggleAutomation = async (val: boolean) => {
-        setAutoEnabled(val);
-        // Salvăm în backend (opțional, ca să țină minte)
-        try {
-            await fetch(`${API_URL}/admin/settings`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-admin-secret': secret },
-                body: JSON.stringify({ key: 'automation_enabled', value: val })
-            });
-        } catch (e) { }
-    };
+  // Trimite Facturi Oblio
+  const handleSendInvoices = async () => {
+    if (selectedOrders.length === 0) {
+      alert('Selectează cel puțin o comandă');
+      return;
+    }
+
+    if (!confirm(`Trimitem ${selectedOrders.length} facturi în Oblio?`)) return;
+
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/admin/send-invoices`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-secret': secret
+        },
+        body: JSON.stringify({ orderIds: selectedOrders })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        alert(`Facturi trimise cu succes!\nSucces: ${result.results.filter((r: any) => r.success).length}/${result.results.length}`);
+        fetchData('orders');
+      } else {
+        alert('Eroare la trimitere facturi');
+      }
+    } catch (error) {
+      alert('Eroare de conexiune');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Export Comenzi la Ecolet (Draft)
+  const handleEcoletExport = async () => {
+      if (selectedOrders.length === 0) {
+          alert('Selectează cel puțin o comandă');
+          return;
+      }
+
+      if (!confirm(`Vrei să trimiți ${selectedOrders.length} comenzi la Ecolet ca draft?`)) {
+          return;
+      }
+
+      setEcoletLoading(true);
+      try {
+          const res = await fetch(`${API_URL}/admin/ecolet/export`, {
+              method: 'POST',
+              headers: {
+                  'Content-Type': 'application/json',
+                  'x-admin-secret': secret
+              },
+              body: JSON.stringify({ orderIds: selectedOrders })
+          });
+
+          if (!res.ok) throw new Error('Eroare la exportul Ecolet');
+
+          const data = await res.json();
+
+          const successCount = data.results.filter((r: any) => r.success).length;
+          const failCount = data.results.filter((r: any) => !r.success).length;
+
+          alert(`✅ Export finalizat:\n${successCount} comenzi exportate cu succes\n${failCount} erori`);
+
+          fetchData('orders');
+      } catch (error) {
+          console.error('❌ Ecolet export error:', error);
+          alert('Eroare la exportul către Ecolet');
+      } finally {
+          setEcoletLoading(false);
+      }
+  };
+
+  // Sincronizare AWB-uri din Ecolet
+  const handleEcoletSync = async () => {
+      if (selectedOrders.length === 0) {
+          alert('Selectează cel puțin o comandă');
+          return;
+      }
+
+      if (!confirm(`Vrei să sincronizezi AWB-urile pentru ${selectedOrders.length} comenzi?`)) {
+          return;
+      }
+
+      setEcoletLoading(true);
+      try {
+          const res = await fetch(`${API_URL}/admin/ecolet/sync`, {
+              method: 'POST',
+              headers: {
+                  'Content-Type': 'application/json',
+                  'x-admin-secret': secret
+              },
+              body: JSON.stringify({ orderIds: selectedOrders })
+          });
+
+          if (!res.ok) throw new Error('Eroare la sincronizarea Ecolet');
+
+          const data = await res.json();
+
+          const successCount = data.results.filter((r: any) => r.success).length;
+          const failCount = data.results.filter((r: any) => !r.success).length;
+
+          alert(`✅ Sincronizare finalizată:\n${successCount} AWB-uri sincronizate\n${failCount} încă în așteptare`);
+
+          fetchData('orders');
+      } catch (error) {
+          console.error('❌ Ecolet sync error:', error);
+          alert('Eroare la sincronizarea AWB-urilor');
+      } finally {
+          setEcoletLoading(false);
+      }
+  };
+
+  // Filtre Rapide de Dată
+  const handleQuickDateFilter = (range: 'today' | 'week' | 'month' | 'year') => {
+    const now = new Date();
+    const end = now.toISOString().split('T')[0];
+    let start = '';
+
+    switch(range) {
+      case 'today':
+        start = end;
+        break;
+      case 'week':
+        start = new Date(now.setDate(now.getDate() - 7)).toISOString().split('T')[0];
+        break;
+      case 'month':
+        start = new Date(now.setMonth(now.getMonth() - 1)).toISOString().split('T')[0];
+        break;
+      case 'year':
+        start = new Date(now.setFullYear(now.getFullYear() - 1)).toISOString().split('T')[0];
+        break;
+    }
+
+    setStartDate(start);
+    setEndDate(end);
+  };
+
   // --- HANDLERS PRODUSE ---
   const handleImageFile = (e: React.ChangeEvent<HTMLInputElement>, isGallery: boolean = false) => {
     if (e.target.files && e.target.files[0]) {
@@ -310,275 +510,11 @@ export const Admin: React.FC = () => {
     } catch (err) { console.error(err); }
   };
 
-  // --- HANDLERS COMENZI ---
-  const toggleOrderSelection = (orderId: number) => {
-    setSelectedOrders(prev => 
-      prev.includes(orderId) 
-        ? prev.filter(id => id !== orderId)
-        : [...prev, orderId]
-    );
-  };
-
-  const selectAllOrders = () => {
-    if (selectedOrders.length === orders.length) {
-      setSelectedOrders([]);
-    } else {
-      setSelectedOrders(orders.map(o => o.id));
-    }
-  };
-
-  const handleQuickDateFilter = (range: 'today' | 'week' | 'month' | 'year') => {
-    const now = new Date();
-    const end = now.toISOString().split('T')[0];
-    let start = '';
-
-    switch(range) {
-      case 'today':
-        start = end;
-        break;
-      case 'week':
-        start = new Date(now.setDate(now.getDate() - 7)).toISOString().split('T')[0];
-        break;
-      case 'month':
-        start = new Date(now.setMonth(now.getMonth() - 1)).toISOString().split('T')[0];
-        break;
-      case 'year':
-        start = new Date(now.setFullYear(now.getFullYear() - 1)).toISOString().split('T')[0];
-        break;
-    }
-
-    setStartDate(start);
-    setEndDate(end);
-  };
-
-  const handleUpdateOrder = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingOrder) return;
-
-    try {
-        const res = await fetch(`${API_URL}/admin`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-admin-secret': secret
-            },
-            body: JSON.stringify({
-                orderId: editingOrder.id,
-                customer_name: editingOrder.customer_name,
-                customer_phone: editingOrder.customer_phone,
-                customer_email: editingOrder.customer_email,
-                status: editingOrder.status,
-                county: editingOrder.county,
-                city: editingOrder.city,
-                address_line: editingOrder.address_line
-            })
-        });
-
-        if (res.ok) {
-            alert('Comandă actualizată cu succes!');
-            setEditingOrder(null);
-            fetchData('orders');
-        } else {
-            alert('Eroare la actualizare comandă.');
-        }
-    } catch (err) {
-        alert('Eroare server.');
-    }
-  };
-
-  const handleSendInvoices = async () => {
-    if (selectedOrders.length === 0) {
-      alert('Selectează cel puțin o comandă');
-      return;
-    }
-
-    if (!confirm(`Trimitem ${selectedOrders.length} facturi în Oblio?`)) return;
-
-    setLoading(true);
-    try {
-      const response = await fetch(`${API_URL}/admin/send-invoices`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-admin-secret': secret
-        },
-        body: JSON.stringify({ orderIds: selectedOrders })
-      });
-
-      const result = await response.json();
-      
-      if (result.success) {
-        alert(`Facturi trimise cu succes!\nSucces: ${result.results.filter((r: any) => r.success).length}/${result.results.length}`);
-        fetchData('orders');
-      } else {
-        alert('Eroare la trimitere facturi');
-      }
-    } catch (error) {
-      alert('Eroare de conexiune');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleGenerateAWB = async () => {
-    if (selectedOrders.length === 0) {
-      alert('Selectează cel puțin o comandă');
-      return;
-    }
-
-    const courier = prompt('Selectează curier:\n1. fancourier\n2. cargus\n3. gls', 'fancourier');
-    if (!courier) return;
-
-    setLoading(true);
-    try {
-      const response = await fetch(`${API_URL}/admin/generate-awb`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-admin-secret': secret
-        },
-        body: JSON.stringify({ 
-          orderIds: selectedOrders,
-          courierService: courier
-        })
-      });
-
-      const result = await response.json();
-      
-      if (result.success) {
-        alert(`AWB generat!\nNote: ${result.results[0]?.message || 'Succes'}`);
-        fetchData('orders');
-      } else {
-        alert('Eroare la generare AWB');
-      }
-    } catch (error) {
-      alert('Eroare de conexiune');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleExport = async (format: 'xml' | 'excel') => {
-    if (selectedOrders.length === 0) {
-      alert('Selectează cel puțin o comandă');
-      return;
-    }
-
-    try {
-      const response = await fetch(`${API_URL}/admin/export-orders`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-admin-secret': secret
-        },
-        body: JSON.stringify({ 
-          orderIds: selectedOrders,
-          format 
-        })
-      });
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `orders_${Date.now()}.${format === 'xml' ? 'xml' : 'csv'}`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (error) {
-      alert('Eroare la export');
-    }
-  };
-    // Handler pentru Export Comenzi la Ecolet (Draft)
-    const handleEcoletExport = async () => {
-        if (selectedOrders.length === 0) {
-            alert('Selectează cel puțin o comandă');
-            return;
-        }
-
-        if (!confirm(`Vrei să trimiți ${selectedOrders.length} comenzi la Ecolet ca draft?`)) {
-            return;
-        }
-
-        setEcoletLoading(true);
-        try {
-            const res = await fetch(`${API_URL}/admin/ecolet/export`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-admin-secret': secret
-                },
-                body: JSON.stringify({ orderIds: selectedOrders })
-            });
-
-            if (!res.ok) throw new Error('Eroare la exportul Ecolet');
-
-            const data = await res.json();
-
-            // Afișăm rezultatele
-            const successCount = data.results.filter((r: any) => r.success).length;
-            const failCount = data.results.filter((r: any) => !r.success).length;
-
-            alert(`✅ Export finalizat:\n${successCount} comenzi exportate cu succes\n${failCount} erori`);
-
-            // Reîncărcăm comenzile pentru a vedea statusul actualizat
-            fetchData('orders');
-        } catch (error) {
-            console.error('❌ Ecolet export error:', error);
-            alert('Eroare la exportul către Ecolet');
-        } finally {
-            setEcoletLoading(false);
-        }
-    };
-
-    // Handler pentru Sincronizare AWB-uri din Ecolet
-    const handleEcoletSync = async () => {
-        if (selectedOrders.length === 0) {
-            alert('Selectează cel puțin o comandă');
-            return;
-        }
-
-        if (!confirm(`Vrei să sincronizezi AWB-urile pentru ${selectedOrders.length} comenzi?`)) {
-            return;
-        }
-
-        setEcoletLoading(true);
-        try {
-            const res = await fetch(`${API_URL}/admin/ecolet/sync`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-admin-secret': secret
-                },
-                body: JSON.stringify({ orderIds: selectedOrders })
-            });
-
-            if (!res.ok) throw new Error('Eroare la sincronizarea Ecolet');
-
-            const data = await res.json();
-
-            // Afișăm rezultatele
-            const successCount = data.results.filter((r: any) => r.success).length;
-            const failCount = data.results.filter((r: any) => !r.success).length;
-
-            alert(`✅ Sincronizare finalizată:\n${successCount} AWB-uri sincronizate\n${failCount} încă în așteptare`);
-
-            // Reîncărcăm comenzile
-            fetchData('orders');
-        } catch (error) {
-            console.error('❌ Ecolet sync error:', error);
-            alert('Eroare la sincronizarea AWB-urilor');
-        } finally {
-            setEcoletLoading(false);
-        }
-    };
-  // --- HANDLERS REDUCERI (NOU) ---
+  // --- HANDLERS REDUCERI ---
   const handleDiscountSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingDiscount) return;
 
-    // Determinăm dacă e creare sau update
     const method = editingDiscount.id ? 'PUT' : 'POST';
 
     try {
@@ -615,6 +551,45 @@ export const Admin: React.FC = () => {
     } catch (err) { console.error(err); }
   };
 
+  // --- HANDLER UPDATE COMANDĂ ---
+  const handleUpdateOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingOrder) return;
+
+    try {
+        const res = await fetch(`${API_URL}/admin`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-admin-secret': secret
+            },
+            body: JSON.stringify({
+                orderId: editingOrder.id,
+                customer_name: editingOrder.customer_name,
+                customer_phone: editingOrder.customer_phone,
+                customer_email: editingOrder.customer_email,
+                status: editingOrder.status,
+                county: editingOrder.county,
+                city: editingOrder.city,
+                address_line: editingOrder.address_line,
+                postal_code: editingOrder.postal_code,
+                locker_id: editingOrder.locker_id
+            })
+        });
+
+        if (res.ok) {
+            alert('Comandă actualizată cu succes!');
+            setEditingOrder(null);
+            fetchData('orders');
+        } else {
+            alert('Eroare la actualizare comandă.');
+        }
+    } catch (err) {
+        alert('Eroare server.');
+    }
+  };
+
+  // --- RENDER LOGIN ---
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-neutral-100 p-4">
@@ -643,865 +618,398 @@ export const Admin: React.FC = () => {
     );
   }
 
+  // --- RENDER MAIN DASHBOARD ---
   return (
-    <div className="min-h-screen bg-neutral-50 pt-24 px-4 pb-12 animate-fade-in relative">
+    <div className="min-h-screen bg-neutral-50 pt-[8vh] px-[2vw] pb-[15vh] md:pt-24 md:px-4 md:pb-32 animate-fade-in relative font-sans">
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
-                  <div>
-                      <h1 className="text-3xl font-black uppercase tracking-tight">Dashboard</h1>
-                      <div className="flex items-center gap-3 mt-2 cursor-pointer select-none" onClick={() => toggleAutomation(!autoEnabled)}>
-                          <div className={`w-10 h-6 rounded-full p-1 transition-colors duration-300 ${autoEnabled ? 'bg-green-500' : 'bg-gray-300'}`}>
-                              <div className={`w-4 h-4 bg-white rounded-full shadow-md transform transition-transform duration-300 ${autoEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
-                          </div>
-                          <span className="text-xs font-bold text-neutral-600">
-                              {autoEnabled ? '🤖 Auto-Process ON' : '🤖 Auto-Process OFF'}
-                          </span>
-                      </div>
-                  </div>
+        
+        {/* HEADER & NAVIGARE */}
+        <div className="flex flex-col md:flex-row justify-between items-center mb-[3vh] md:mb-8 gap-4">
+            <div>
+                <h1 className="text-[6vw] md:text-3xl font-black uppercase tracking-tight text-neutral-900">Dashboard</h1>
+                <p className="text-neutral-500 text-[3vw] md:text-sm">Centru de Comandă Oclar</p>
+            </div>
             
-            <div className="flex bg-white p-1 rounded-xl shadow-sm border border-neutral-200 overflow-x-auto">
-                <button 
-                    onClick={() => setActiveTab('orders')}
-                    className={`px-4 md:px-6 py-2 rounded-lg font-bold text-sm transition-all whitespace-nowrap ${activeTab === 'orders' ? 'bg-black text-white shadow-lg' : 'text-neutral-500 hover:bg-neutral-50'}`}
-                >
-                    Comenzi
-                </button>
-                <button 
-                    onClick={() => setActiveTab('products')}
-                    className={`px-4 md:px-6 py-2 rounded-lg font-bold text-sm transition-all whitespace-nowrap ${activeTab === 'products' ? 'bg-black text-white shadow-lg' : 'text-neutral-500 hover:bg-neutral-50'}`}
-                >
-                    Produse
-                </button>
-                <button 
-                    onClick={() => setActiveTab('discounts')}
-                    className={`px-4 md:px-6 py-2 rounded-lg font-bold text-sm transition-all whitespace-nowrap ${activeTab === 'discounts' ? 'bg-black text-white shadow-lg' : 'text-neutral-500 hover:bg-neutral-50'}`}
-                >
-                    Reduceri
-                </button>
+            <div className="flex bg-white p-1 rounded-xl shadow-sm border border-neutral-200 overflow-x-auto w-full md:w-auto">
+                {['orders', 'products', 'discounts'].map((tab) => (
+                    <button 
+                        key={tab}
+                        onClick={() => setActiveTab(tab as any)}
+                        className={`px-[4vw] md:px-6 py-2 rounded-lg font-bold text-[3vw] md:text-sm capitalize transition-all whitespace-nowrap ${activeTab === tab ? 'bg-black text-white shadow-md' : 'text-neutral-500 hover:bg-neutral-50'}`}
+                    >
+                        {tab === 'orders' ? 'Comenzi' : tab === 'products' ? 'Produse' : 'Reduceri'}
+                    </button>
+                ))}
                 <button
                     onClick={() => { setIsAuthenticated(false); sessionStorage.removeItem('admin_secret'); }}
-                    className="ml-2 px-4 py-2 rounded-lg font-bold text-sm text-red-500 hover:bg-red-50 transition-colors"
+                    className="ml-2 px-[3vw] md:px-4 py-2 rounded-lg font-bold text-[3vw] md:text-sm text-red-500 hover:bg-red-50 transition-colors"
                     title="Deconectare"
-                >
-                    ✕
-                </button>
+                >✕</button>
             </div>
         </div>
 
+        {/* --- TAB: COMENZI --- */}
         {activeTab === 'orders' && (
-            <>
-              {/* FILTRE ȘI ACȚIUNI */}
-              <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 p-6 mb-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                  {/* Filtre rapide */}
-                  <div>
-                    <label className="label-admin">Perioadă Rapidă</label>
-                    <div className="flex gap-2">
-                      <button onClick={() => handleQuickDateFilter('today')} className="px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded text-xs">Azi</button>
-                      <button onClick={() => handleQuickDateFilter('week')} className="px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded text-xs">7 zile</button>
-                      <button onClick={() => handleQuickDateFilter('month')} className="px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded text-xs">30 zile</button>
-                      <button onClick={() => handleQuickDateFilter('year')} className="px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded text-xs">1 an</button>
-                    </div>
-                  </div>
-
-                  {/* Data start */}
-                  <div>
-                    <label className="label-admin">De la data</label>
-                    <input 
-                      type="date" 
-                      value={startDate} 
-                      onChange={(e) => setStartDate(e.target.value)}
-                      className="input-admin"
-                    />
-                  </div>
-
-                  {/* Data end */}
-                  <div>
-                    <label className="label-admin">Până la data</label>
-                    <input 
-                      type="date" 
-                      value={endDate} 
-                      onChange={(e) => setEndDate(e.target.value)}
-                      className="input-admin"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Status filter */}
-                  <div>
-                    <label className="label-admin">Filtrare Status</label>
-                    <select 
-                      value={statusFilter} 
-                      onChange={(e) => setStatusFilter(e.target.value)}
-                      className="input-admin"
-                    >
-                      <option value="">Toate</option>
-                      <option value="pending">Pending</option>
-                      <option value="paid">Paid</option>
-                      <option value="completed">Completed</option>
-                      <option value="cancelled">Cancelled</option>
-                    </select>
-                  </div>
-
-                  <div className="flex items-end gap-2">
-                      <Button onClick={() => fetchData('orders')} variant="outline">
-                          Aplică
-                      </Button>
-                      <button
-                          onClick={() => setShowHidden(!showHidden)}
-                          className={`px-4 py-2 rounded-lg font-bold border transition-colors h-[42px] ${showHidden ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-300'}`}
-                      >
-                          {showHidden ? '📂 Ascunde Arhiva' : '📂 Arată Arhiva'}
-                      </button>
-                  </div>
-                  <div className="flex items-center gap-2 mt-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
-                      <input
-                          type="checkbox"
-                          id="auto-ecolet"
-                          checked={autoSendEcolet}
-                          onChange={(e) => setAutoSendEcolet(e.target.checked)}
-                          className="w-4 h-4"
-                      />
-                      <label htmlFor="auto-ecolet" className="text-xs text-blue-700 cursor-pointer">
-                          📮 Auto-send comenzi noi la Ecolet (doar UI, fără logică backend)
-                      </label>
-                  </div>
-                </div>
-
-                {/* ACȚIUNI BULK */}
-                {selectedOrders.length > 0 && (
-                    <div className="flex flex-wrap gap-2 items-center bg-white p-2 rounded-lg border border-blue-200 shadow-lg mt-4">
-                        <span className="text-xs font-bold text-blue-800 px-2">{selectedOrders.length} selectate:</span>
-
-                        {/* Butoane Noi */}
-                        <button onClick={handleAccountingExport} className="px-3 py-2 bg-green-600 text-white text-xs font-bold rounded hover:bg-green-700">
-                            📊 CSV Contabil
-                        </button>
-
-                        <button onClick={() => handleToggleVisibility(true)} className="px-3 py-2 bg-gray-500 text-white text-xs font-bold rounded hover:bg-gray-600">
-                            🔒 Hide
-                        </button>
-
-                        {showHidden && (
-                            <button onClick={() => handleToggleVisibility(false)} className="px-3 py-2 bg-blue-500 text-white text-xs font-bold rounded hover:bg-blue-600">
-                                🔓 Unhide
-                            </button>
+            <div className="animate-fade-in space-y-[2vh] md:space-y-6">
+                
+                {/* ZONA AUTOMATIZARE */}
+                <div className="bg-white p-[2vh] md:p-5 rounded-2xl shadow-sm border border-neutral-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-[2vh] md:gap-6">
+                    <div className="flex flex-col md:flex-row items-start md:items-center gap-[2vh] md:gap-6 w-full md:w-auto">
+                        <ToggleSwitch 
+                            checked={autoEnabled} 
+                            onChange={(v) => updateSetting('automation_enabled', v)} 
+                            label="🤖 Auto-Process" 
+                            subLabel="Procesare automată comenzi"
+                        />
+                        
+                        {autoEnabled && (
+                            <div className="flex flex-col sm:flex-row gap-[1.5vh] md:gap-4 pl-0 md:pl-6 md:border-l border-neutral-200 animate-fade-in w-full md:w-auto">
+                                <label className="flex items-center gap-2 text-[3vw] md:text-sm font-medium text-neutral-600 cursor-pointer hover:text-black transition-colors">
+                                    <input type="checkbox" checked={autoOblio} onChange={e => updateSetting('auto_oblio', e.target.checked)} className="w-4 h-4 rounded text-black focus:ring-0" />
+                                    Facturare Oblio
+                                </label>
+                                <label className="flex items-center gap-2 text-[3vw] md:text-sm font-medium text-neutral-600 cursor-pointer hover:text-black transition-colors">
+                                    <input type="checkbox" checked={autoEcolet} onChange={e => updateSetting('auto_ecolet', e.target.checked)} className="w-4 h-4 rounded text-black focus:ring-0" />
+                                    Curier Ecolet
+                                </label>
+                            </div>
                         )}
-
-                        <div className="w-px h-6 bg-gray-300 mx-1"></div>
-
-                        {/* Butoanele Vechi */}
-                        <Button onClick={handleSendInvoices} disabled={loading}>
-                            📄 Facturi Oblio
-                        </Button>
                     </div>
-                )}
-              </div>
 
-              {/* TABEL COMENZI */}
-              <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left">
-                                  <thead className="bg-neutral-50 text-neutral-500 uppercase font-bold text-[10px] tracking-wider border-b border-neutral-100">
-                                      <tr>
-                                          <th className="px-6 py-4">
-                                              <input
-                                                  type="checkbox"
-                                                  checked={selectedOrders.length === orders.length && orders.length > 0}
-                                                  onChange={selectAllOrders}
-                                                  className="w-4 h-4"
-                                              />
-                                          </th>
-                                          <th className="px-6 py-4">ID</th>
-                                          <th className="px-6 py-4">Client</th>
-                                          <th className="px-6 py-4">Prețuri</th>
-                                          <th className="px-6 py-4">Metodă</th>
-                                          <th className="px-6 py-4">Status</th>
-                                          <th className="px-6 py-4">Livrare</th>
-                                          <th className="px-6 py-4">Facturi/AWB</th>
-                                          {/* ⭐ COLOANĂ NOUĂ ECOLET */}
-                                          <th className="px-6 py-4">AWB Ecolet</th>
-                                          {/* SFÂRȘIT COLOANĂ ECOLET */}
-                                          <th className="px-6 py-4">Acțiuni</th>
-                                      </tr>
-                                  </thead>
-                                      <tbody className="divide-y divide-neutral-100">
-                                          {orders
-                                              // 1. Filtrăm dacă butonul Arhivă nu e activ
-                                              .filter(order => showHidden ? true : (order as any).is_hidden !== 1)
-                                              .map(order => {
-                                                  // 2. Verificăm dacă e ascunsă
-                                                  const isHidden = (order as any).is_hidden === 1;
-                                                  return (
-                                                      <tr key={order.id} className={`transition-colors border-b ${isHidden ? 'bg-gray-100 text-gray-400 grayscale' : 'hover:bg-neutral-50'}`}>
-                                    <td className="px-6 py-4">
-                                      <input 
-                                        type="checkbox"
-                                        checked={selectedOrders.includes(order.id)}
-                                        onChange={() => toggleOrderSelection(order.id)}
-                                        className="w-4 h-4"
-                                      />
-                                    </td>
-                                                          <td className="px-6 py-4 font-mono text-neutral-400">
-                                                              #{order.id} {isHidden && '🔒'}
-                                                          </td>
-                                    <td className="px-6 py-4">
-                                        <div className="font-bold">{order.customer_name}</div>
-                                        <div className="text-xs text-neutral-500">{order.customer_email}</div>
-                                        <div className="text-xs text-neutral-500 font-mono">{order.customer_phone}</div>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <div className="text-xs space-y-1">
-                                          <div>Subtotal: {parseFloat(order.subtotal?.toString() || '0').toFixed(2)} RON</div>
-                                          {order.discount_amount > 0 && (
-                                            <div className="text-green-600">Reducere: -{parseFloat(order.discount_amount.toString()).toFixed(2)} RON</div>
-                                          )}
-                                          <div className="font-bold text-base">Total: {parseFloat(order.total_amount.toString()).toFixed(2)} RON</div>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 uppercase text-xs font-bold text-neutral-500">
-                                        {order.payment_method === 'card' ? '💳 Card' : '💵 Ramburs'}
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border ${
-                                            order.status === 'paid' ? 'bg-green-50 text-green-600 border-green-100' : 
-                                            order.status === 'pending' ? 'bg-yellow-50 text-yellow-600 border-yellow-100' : 'bg-neutral-100 text-neutral-500'
-                                        }`}>
-                                            {order.status}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 text-xs">
-                                      <div>{order.shipping_method === 'easybox' ? '📦 Easy Box' : '🚚 Curier'}</div>
-                                      <div className="text-neutral-400 font-bold">{parseFloat(order.shipping_cost?.toString() || '0').toFixed(2)} RON</div>
-                                    </td>
-                                    <td className="px-6 py-4 text-xs">
-                                      {order.oblio_invoice_number ? (
-                                        <div className="text-green-600">✓ {order.oblio_invoice_number}</div>
-                                      ) : (
-                                        <div className="text-neutral-400">-</div>
-                                      )}
-                                      {order.awb_number && (
-                                        <div className="text-blue-600 mt-1">📦 {order.awb_number}</div>
-                                      )}
-                                    </td>
-                                    <td className="px-6 py-4 text-xs">
-                                        {/* ⭐ COLOANĂ AWB ECOLET */}
-                                        {order.awb_number ? (
-                                            <div>
-                                                <div className="font-mono text-blue-600 font-bold">
-                                                    {order.label_url ? (
-                                                        <a
-                                                            href={order.label_url}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="hover:underline flex items-center gap-1"
-                                                        >
-                                                            📦 {order.awb_number}
-                                                            <span className="text-[10px]">↗</span>
-                                                        </a>
-                                                    ) : (
-                                                        <span>📦 {order.awb_number}</span>
-                                                    )}
-                                                </div>
-                                                <div className="text-[9px] text-green-600 mt-1">
-                                                    ✓ Ecolet
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <div className="text-neutral-400 text-center">
-                                                {/* Verificăm dacă există ecolet_shipment_id pentru a arăta statusul */}
-                                                {order.ecolet_status === 'draft' ? (
-                                                    <div className="text-yellow-600">
-                                                        <div className="text-[10px]">⏳ Draft</div>
-                                                        <div className="text-[9px]">Așteaptă AWB</div>
-                                                    </div>
-                                                ) : (
-                                                    <div>-</div>
-                                                )}
-                                            </div>
-                                        )}
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <button 
-                                            onClick={() => setEditingOrder(order)}
-                                            className="text-neutral-500 hover:text-black transition-colors font-bold text-xs border border-neutral-200 px-2 py-1 rounded bg-white shadow-sm"
-                                        >
-                                            ✏️ Modifică
-                                        </button>
-                                    </td>
+                    <div className="text-right hidden md:block">
+                        <div className="text-[2vw] md:text-xs text-neutral-400 font-mono">Server Status: Online</div>
+                        <div className="text-[2vw] md:text-xs text-neutral-400 font-mono">Last Sync: {new Date().toLocaleTimeString()}</div>
+                    </div>
+                </div>
+
+                {/* FILTRE */}
+                <div className="flex flex-col md:flex-row flex-wrap gap-[1.5vh] md:gap-4 items-start md:items-end justify-between bg-white p-[2vh] md:p-4 rounded-xl border border-neutral-200 shadow-sm">
+                    {/* Filtre Rapide - Doar pe desktop */}
+                    <div className="hidden md:flex gap-2">
+                        <button onClick={() => handleQuickDateFilter('today')} className="px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded text-xs">Azi</button>
+                        <button onClick={() => handleQuickDateFilter('week')} className="px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded text-xs">7 zile</button>
+                        <button onClick={() => handleQuickDateFilter('month')} className="px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded text-xs">30 zile</button>
+                    </div>
+
+                    <div className="flex flex-wrap gap-[1.5vh] md:gap-3 w-full md:w-auto">
+                        <div className="flex-1 min-w-[25vw] md:min-w-0">
+                            <label className="label-admin">Status</label>
+                            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="input-admin py-2 text-[3vw] md:text-sm w-full">
+                                <option value="">Toate</option>
+                                <option value="paid">Paid</option>
+                                <option value="pending">Pending</option>
+                                <option value="completed">Completed</option>
+                            </select>
+                        </div>
+                        <div className="flex-1 min-w-[25vw] md:min-w-0">
+                            <label className="label-admin">Start</label>
+                            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="input-admin py-2 text-[3vw] md:text-sm w-full" />
+                        </div>
+                        <div className="flex-1 min-w-[25vw] md:min-w-0">
+                            <label className="label-admin">Final</label>
+                            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="input-admin py-2 text-[3vw] md:text-sm w-full" />
+                        </div>
+                        <div className="flex items-end gap-2 w-full md:w-auto">
+                             <Button onClick={() => fetchData('orders')} variant="outline" className="py-2 text-[3vw] md:text-sm h-[5vh] md:h-[38px] flex-1 md:flex-initial">Aplică</Button>
+                             <button 
+                                onClick={() => setShowHidden(!showHidden)}
+                                className={`px-[3vw] md:px-4 py-2 rounded-lg text-[3vw] md:text-sm font-bold border transition-all flex items-center gap-2 h-[5vh] md:h-auto ${showHidden ? 'bg-neutral-800 text-white border-neutral-800' : 'bg-white text-neutral-600 border-neutral-200 hover:border-neutral-400'}`}
+                            >
+                                {showHidden ? '📂 Ascunde' : '📂 Arhiva'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* TABEL COMENZI */}
+                <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-[2.5vw] md:text-sm text-left">
+                            <thead className="bg-neutral-50 text-neutral-500 uppercase font-bold text-[2vw] md:text-[10px] tracking-wider border-b border-neutral-100">
+                                <tr>
+                                    <th className="px-[2vw] md:px-6 py-[1.5vh] md:py-4 w-[8vw] md:w-10"><input type="checkbox" onChange={handleSelectAll} checked={selectedOrders.length === orders.length && orders.length > 0} className="w-[3vw] h-[3vw] md:w-4 md:h-4" /></th>
+                                    <th className="px-[2vw] md:px-6 py-[1.5vh] md:py-4">ID</th>
+                                    <th className="px-[2vw] md:px-6 py-[1.5vh] md:py-4">Client</th>
+                                    <th className="px-[2vw] md:px-6 py-[1.5vh] md:py-4">Total</th>
+                                    <th className="px-[2vw] md:px-6 py-[1.5vh] md:py-4">Status</th>
+                                    <th className="px-[2vw] md:px-6 py-[1.5vh] md:py-4 hidden md:table-cell">Factură</th>
+                                    <th className="px-[2vw] md:px-6 py-[1.5vh] md:py-4 hidden md:table-cell">AWB</th>
+                                    <th className="px-[2vw] md:px-6 py-[1.5vh] md:py-4 text-right">Act</th>
                                 </tr>
-                            );
-                        })}
-                        </tbody>
-                    </table>
-                </div>
-                {orders.length === 0 && !loading && <div className="p-12 text-center text-neutral-400">Nu există comenzi.</div>}
-              </div>
-
-                      {/* MODAL EDITARE COMANDĂ - ACTUALIZAT */}
-                      {editingOrder && (
-                          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-fade-in">
-                              <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-                                  <h2 className="text-xl font-black uppercase mb-6 flex justify-between items-center">
-                                      <span>Editare Comandă #{editingOrder.id}</span>
-                                      <button onClick={() => setEditingOrder(null)} className="text-neutral-400 hover:text-black">✕</button>
-                                  </h2>
-
-                                  <form onSubmit={handleUpdateOrder} className="space-y-4">
-                                      <div>
-                                          <label className="label-admin">Status Comandă</label>
-                                          <select
-                                              className="input-admin"
-                                              value={editingOrder.status}
-                                              onChange={e => setEditingOrder({ ...editingOrder, status: e.target.value })}
-                                          >
-                                              <option value="pending">Pending (În așteptare)</option>
-                                              <option value="paid">Paid (Plătit)</option>
-                                              <option value="shipped">Shipped (Livrat)</option>
-                                              <option value="completed">Completed (Finalizat)</option>
-                                              <option value="cancelled">Cancelled (Anulat)</option>
-                                              <option value="returned">Returned (Returnat)</option>
-                                          </select>
-                                      </div>
-
-                                      <div className="grid grid-cols-2 gap-4">
-                                          <div>
-                                              <label className="label-admin">Nume Client</label>
-                                              <input
-                                                  className="input-admin"
-                                                  value={editingOrder.customer_name}
-                                                  onChange={e => setEditingOrder({ ...editingOrder, customer_name: e.target.value })}
-                                              />
-                                          </div>
-                                          <div>
-                                              <label className="label-admin">Telefon</label>
-                                              <input
-                                                  className="input-admin"
-                                                  value={editingOrder.customer_phone}
-                                                  onChange={e => setEditingOrder({ ...editingOrder, customer_phone: e.target.value })}
-                                              />
-                                          </div>
-                                      </div>
-
-                                      <div>
-                                          <label className="label-admin">Email</label>
-                                          <input
-                                              className="input-admin"
-                                              value={editingOrder.customer_email}
-                                              onChange={e => setEditingOrder({ ...editingOrder, customer_email: e.target.value })}
-                                          />
-                                      </div>
-
-                                      <div className="border-t border-neutral-100 pt-4 mt-2">
-                                          <p className="text-xs font-bold uppercase text-neutral-400 mb-3">Adresă Livrare & Ecolet</p>
-
-                                          <div className="grid grid-cols-2 gap-4 mb-2">
-                                              <div>
-                                                  <label className="label-admin">Județ</label>
-                                                  <input
-                                                      className="input-admin"
-                                                      value={editingOrder.county || ''}
-                                                      onChange={e => setEditingOrder({ ...editingOrder, county: e.target.value })}
-                                                  />
-                                              </div>
-                                              <div>
-                                                  <label className="label-admin">Oraș</label>
-                                                  <input
-                                                      className="input-admin"
-                                                      value={editingOrder.city || ''}
-                                                      onChange={e => setEditingOrder({ ...editingOrder, city: e.target.value })}
-                                                  />
-                                              </div>
-                                          </div>
-
-                                          {/* ⭐ CÂMPURI NOI PENTRU ECOLET */}
-                                          <div className="grid grid-cols-3 gap-4 mb-2">
-                                              <div className="col-span-2">
-                                                  <label className="label-admin">Adresă (Stradă, Nr, Bloc)</label>
-                                                  <input
-                                                      className="input-admin"
-                                                      value={editingOrder.address_line || ''}
-                                                      onChange={e => setEditingOrder({ ...editingOrder, address_line: e.target.value })}
-                                                  />
-                                              </div>
-                                              <div>
-                                                  <label className="label-admin">Cod Poștal</label>
-                                                  <input
-                                                      className="input-admin"
-                                                      value={editingOrder.postal_code || ''}
-                                                      placeholder="000000"
-                                                      onChange={e => setEditingOrder({ ...editingOrder, postal_code: e.target.value })}
-                                                  />
-                                              </div>
-                                          </div>
-
-                                          {/* ID LOCKER (Doar informativ sau editabil dacă e EasyBox) */}
-                                          {editingOrder.shipping_method === 'easybox' && (
-                                              <div>
-                                                  <label className="label-admin">Locker ID (EasyBox)</label>
-                                                  <input
-                                                      className="input-admin bg-yellow-50 font-mono text-xs"
-                                                      value={editingOrder.locker_id || ''}
-                                                      onChange={e => setEditingOrder({ ...editingOrder, locker_id: e.target.value })}
-                                                  />
-                                              </div>
-                                          )}
-                                      </div>
-
-                                      <div className="flex gap-3 pt-6">
-                                          <Button fullWidth type="submit">Salvează Modificările</Button>
-                                          <Button fullWidth variant="outline" type="button" onClick={() => setEditingOrder(null)}>Anulează</Button>
-                                      </div>
-                                  </form>
-                              </div>
-                          </div>
-                      )}
-            </>
-        )}
-
-        {activeTab === 'discounts' && (
-            <div>
-                <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-xl font-bold">Coduri de Reducere</h2>
-                    <Button onClick={() => {
-                        setEditingDiscount({
-                            code: '', 
-                            discount_type: 'percentage', 
-                            discount_value: 10, 
-                            min_order_amount: 0, 
-                            max_uses: null,
-                            used_count: 0,
-                            valid_from: new Date().toISOString().split('T')[0],
-                            valid_until: null,
-                            is_active: true
-                        });
-                        setShowDiscountForm(true);
-                    }}>+ Adaugă Cod Reducere</Button>
+                            </thead>
+                            <tbody className="divide-y divide-neutral-100">
+                                {orders.length === 0 && (
+                                    <tr><td colSpan={8} className="p-[3vh] md:p-8 text-center text-neutral-400 text-[3vw] md:text-base">Nu există comenzi de afișat.</td></tr>
+                                )}
+                                {orders.map(order => {
+                                    const isHidden = order.is_hidden === 1;
+                                    return (
+                                        <tr 
+                                            key={order.id} 
+                                            className={`transition-colors duration-200 ${isHidden ? 'bg-neutral-100/50 text-neutral-400' : 'hover:bg-neutral-50'}`}
+                                        >
+                                            <td className="px-[2vw] md:px-6 py-[1.5vh] md:py-4"><input type="checkbox" checked={selectedOrders.includes(order.id)} onChange={() => toggleSelection(order.id)} className="w-[3vw] h-[3vw] md:w-4 md:h-4" /></td>
+                                            <td className="px-[2vw] md:px-6 py-[1.5vh] md:py-4 font-mono">
+                                                <div className="flex items-center gap-1">
+                                                    #{order.id}
+                                                    {isHidden && <span title="Arhivat" className="text-[4vw] md:text-lg leading-none">🔒</span>}
+                                                </div>
+                                                <div className="text-[2vw] md:text-[10px] text-neutral-400">{new Date(order.created_at).toLocaleDateString()}</div>
+                                            </td>
+                                            <td className="px-[2vw] md:px-6 py-[1.5vh] md:py-4">
+                                                <div className={`font-bold text-[2.8vw] md:text-sm ${isHidden ? 'text-neutral-500' : 'text-neutral-900'}`}>{order.customer_name}</div>
+                                                <div className="text-[2.2vw] md:text-xs opacity-70 truncate max-w-[30vw] md:max-w-none">{order.customer_email}</div>
+                                            </td>
+                                            <td className="px-[2vw] md:px-6 py-[1.5vh] md:py-4 font-bold text-[3vw] md:text-sm">
+                                                {parseFloat(order.total_amount.toString()).toFixed(2)} RON
+                                                <div className="text-[2vw] md:text-[10px] font-normal uppercase text-neutral-500">{order.payment_method}</div>
+                                            </td>
+                                            <td className="px-[2vw] md:px-6 py-[1.5vh] md:py-4">
+                                                <StatusBadge status={order.status} />
+                                            </td>
+                                            <td className="px-[2vw] md:px-6 py-[1.5vh] md:py-4 text-[2.5vw] md:text-xs font-mono hidden md:table-cell">
+                                                {order.oblio_invoice_number ? (
+                                                    <span className="text-green-600 bg-green-50 px-2 py-1 rounded">✓ {order.oblio_invoice_number}</span>
+                                                ) : <span className="opacity-50">-</span>}
+                                            </td>
+                                            <td className="px-[2vw] md:px-6 py-[1.5vh] md:py-4 text-[2.5vw] md:text-xs hidden md:table-cell">
+                                                {order.awb_number ? (
+                                                    <a href={order.label_url || '#'} target="_blank" rel="noreferrer" className="text-blue-600 bg-blue-50 px-2 py-1 rounded hover:underline">
+                                                        📦 {order.awb_number}
+                                                    </a>
+                                                ) : (
+                                                    order.ecolet_status === 'draft' ? <span className="text-orange-500">⏳</span> : <span className="opacity-50">-</span>
+                                                )}
+                                            </td>
+                                            <td className="px-[2vw] md:px-6 py-[1.5vh] md:py-4 text-right">
+                                                <button 
+                                                    onClick={() => setEditingOrder(order)} 
+                                                    className="text-neutral-400 hover:text-black transition-colors p-[1vh] md:p-2 rounded-full hover:bg-white border border-transparent hover:border-neutral-200 text-[4vw] md:text-base"
+                                                    title="Editează"
+                                                >
+                                                    ✏️
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
 
-                {showDiscountForm && editingDiscount && (
-                    <div className="bg-white p-6 rounded-2xl shadow-xl mb-8 border border-neutral-200 animate-fade-in">
-                         <h3 className="text-lg font-bold mb-4 border-b border-neutral-100 pb-2">
-                             {editingDiscount.id ? '✏️ Editează Cod' : '✨ Cod Nou'}
-                         </h3>
-                         <form onSubmit={handleDiscountSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div>
-                                <label className="label-admin">Cod Reducere (Ex: VARA20)</label>
-                                <input 
-                                    className="input-admin uppercase font-mono font-bold text-lg" 
-                                    required 
-                                    value={editingDiscount.code} 
-                                    onChange={e => setEditingDiscount({...editingDiscount, code: e.target.value.toUpperCase()})} 
-                                    placeholder="COD-PROMO"
-                                />
-                            </div>
+                {/* FLOATING ACTION BAR */}
+                {selectedOrders.length > 0 && (
+                    <div className="fixed bottom-[2vh] md:bottom-8 left-1/2 transform -translate-x-1/2 bg-neutral-900/95 backdrop-blur-md text-white px-[1vw] md:px-2 py-[1vh] md:py-2 pr-[3vw] md:pr-6 rounded-full shadow-2xl flex items-center gap-[1vw] md:gap-1 z-50 animate-bounce-in border border-neutral-700 max-w-[95vw] overflow-x-auto">
+                        <div className="bg-neutral-800 rounded-full px-[2vw] md:px-4 py-[1vh] md:py-2 font-bold text-[2.5vw] md:text-sm mr-[1vw] md:mr-2 shadow-inner whitespace-nowrap">
+                            {selectedOrders.length} sel
+                        </div>
+                        
+                        <button onClick={handleSendInvoices} className="hover:bg-neutral-700 px-[2vw] md:px-4 py-[1vh] md:py-2 rounded-full text-[2.5vw] md:text-sm font-medium transition-colors flex items-center gap-1 whitespace-nowrap">
+                            📄 <span className="hidden sm:inline">Oblio</span>
+                        </button>
+                        
+                        <button onClick={handleEcoletExport} className="hover:bg-neutral-700 px-[2vw] md:px-4 py-[1vh] md:py-2 rounded-full text-[2.5vw] md:text-sm font-medium transition-colors flex items-center gap-1 whitespace-nowrap">
+                            🚚 <span className="hidden sm:inline">Ecolet</span>
+                        </button>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="label-admin">Tip Reducere</label>
-                                    <select 
-                                        className="input-admin" 
-                                        value={editingDiscount.discount_type} 
-                                        onChange={e => setEditingDiscount({...editingDiscount, discount_type: e.target.value as any})}
-                                    >
-                                        <option value="percentage">Procent (%)</option>
-                                        <option value="fixed">Sumă Fixă (RON)</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="label-admin">Valoare</label>
-                                    <input 
-                                        type="number" step="0.01" 
-                                        className="input-admin font-bold" 
-                                        required 
-                                        value={editingDiscount.discount_value} 
-                                        onChange={e => setEditingDiscount({...editingDiscount, discount_value: parseFloat(e.target.value)})} 
-                                    />
-                                </div>
-                            </div>
+                        <button onClick={handleAccountingExport} className="hover:bg-neutral-700 px-[2vw] md:px-4 py-[1vh] md:py-2 rounded-full text-[2.5vw] md:text-sm font-medium transition-colors flex items-center gap-1 whitespace-nowrap">
+                            📊 <span className="hidden sm:inline">CSV</span>
+                        </button>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="label-admin">Comanda Minimă (RON)</label>
-                                    <input 
-                                        type="number" 
-                                        className="input-admin" 
-                                        value={editingDiscount.min_order_amount} 
-                                        onChange={e => setEditingDiscount({...editingDiscount, min_order_amount: parseFloat(e.target.value)})} 
-                                    />
-                                </div>
-                                <div>
-                                    <label className="label-admin">Nr. Maxim Utilizări</label>
-                                    <input 
-                                        type="number" 
-                                        className="input-admin" 
-                                        placeholder="Nelimitat" 
-                                        value={editingDiscount.max_uses || ''} 
-                                        onChange={e => setEditingDiscount({...editingDiscount, max_uses: e.target.value ? parseInt(e.target.value) : null})} 
-                                    />
-                                </div>
-                            </div>
+                        <div className="w-px h-[3vh] md:h-6 bg-neutral-700 mx-[1vw] md:mx-2"></div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="label-admin">Valabil De La</label>
-                                    <input 
-                                        type="datetime-local" 
-                                        className="input-admin" 
-                                        required 
-                                        value={editingDiscount.valid_from ? new Date(editingDiscount.valid_from).toISOString().slice(0, 16) : ''} 
-                                        onChange={e => setEditingDiscount({...editingDiscount, valid_from: e.target.value})} 
-                                    />
-                                </div>
-                                <div>
-                                    <label className="label-admin">Expiră La (Opțional)</label>
-                                    <input 
-                                        type="datetime-local" 
-                                        className="input-admin" 
-                                        value={editingDiscount.valid_until ? new Date(editingDiscount.valid_until).toISOString().slice(0, 16) : ''} 
-                                        onChange={e => setEditingDiscount({...editingDiscount, valid_until: e.target.value || null})} 
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="flex items-center gap-2 bg-neutral-50 p-3 rounded-lg border border-neutral-100">
-                                <input 
-                                    type="checkbox" 
-                                    id="active" 
-                                    className="w-5 h-5 accent-black" 
-                                    checked={editingDiscount.is_active} 
-                                    onChange={e => setEditingDiscount({...editingDiscount, is_active: e.target.checked})} 
-                                />
-                                <label htmlFor="active" className="font-bold text-sm cursor-pointer select-none">Activează acest cod de reducere</label>
-                            </div>
-
-                            <div className="md:col-span-2 flex gap-4 mt-2">
-                                <Button type="submit">Salvează Codul</Button>
-                                <Button variant="outline" type="button" onClick={() => setShowDiscountForm(false)}>Anulează</Button>
-                            </div>
-                         </form>
+                        <button 
+                            onClick={() => handleToggleVisibility(showHidden ? false : true)} 
+                            className={`px-[2vw] md:px-4 py-[1vh] md:py-2 rounded-full text-[2.5vw] md:text-sm font-bold transition-colors flex items-center gap-1 whitespace-nowrap ${showHidden ? 'bg-green-600 hover:bg-green-500' : 'bg-red-600 hover:bg-red-500'}`}
+                        >
+                            {showHidden ? '🔓' : '🔒'} <span className="hidden sm:inline">{showHidden ? 'Reactiv' : 'Arhiv'}</span>
+                        </button>
                     </div>
                 )}
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {discounts.map(d => (
-                        <div key={d.id} className={`p-5 rounded-xl border transition-all ${d.is_active ? 'bg-white border-neutral-200 shadow-sm hover:shadow-md' : 'bg-neutral-50 border-neutral-100 opacity-60 grayscale'}`}>
-                            <div className="flex justify-between items-start mb-2">
-                                <div className="font-mono font-black text-xl uppercase tracking-wider text-brand-yellow-darker bg-yellow-50 px-2 py-1 rounded">
-                                    {d.code}
-                                </div>
-                                <div className="flex gap-2">
-                                    <button 
-                                        onClick={() => { setEditingDiscount(d); setShowDiscountForm(true); window.scrollTo({top: 0, behavior: 'smooth'}); }} 
-                                        className="text-xs bg-black text-white px-2 py-1 rounded font-bold hover:bg-neutral-800"
-                                    >
-                                        Edit
-                                    </button>
-                                    <button 
-                                        onClick={() => handleDeleteDiscount(d.id)} 
-                                        className="text-xs text-red-500 hover:bg-red-50 px-2 py-1 rounded border border-red-100 font-bold"
-                                    >
-                                        Șterge
-                                    </button>
-                                </div>
-                            </div>
-                            
-                            <div className="text-2xl font-black mb-3">
-                                -{d.discount_value}{d.discount_type === 'percentage' ? '%' : <span className="text-sm font-normal text-neutral-500"> RON</span>}
-                            </div>
-                            
-                            <div className="space-y-1 text-xs text-neutral-500 border-t border-neutral-100 pt-3">
-                                <div className="flex justify-between">
-                                    <span>Utilizări:</span>
-                                    <span className="font-bold text-black">{d.used_count} {d.max_uses ? `/ ${d.max_uses}` : '(Nelimitat)'}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span>Comandă Minimă:</span>
-                                    <span className="font-bold text-black">{d.min_order_amount} RON</span>
-                                </div>
-                                {d.valid_until && (
-                                    <div className="flex justify-between text-orange-600">
-                                        <span>Expiră:</span>
-                                        <span className="font-bold">{new Date(d.valid_until).toLocaleDateString()}</span>
-                                    </div>
-                                )}
-                                <div className="flex justify-between">
-                                    <span>Status:</span>
-                                    <span className={`font-bold ${d.is_active ? 'text-green-600' : 'text-red-600'}`}>
-                                        {d.is_active ? 'ACTIV' : 'INACTIV'}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                    
-                    {discounts.length === 0 && (
-                        <div className="col-span-full py-12 text-center text-neutral-400 border-2 border-dashed border-neutral-200 rounded-xl">
-                            Nu există coduri de reducere create.
-                        </div>
-                    )}
-                </div>
             </div>
         )}
 
+        {/* --- TAB: PRODUSE --- */}
         {activeTab === 'products' && (
-            <div>
-                <div className="flex justify-end mb-6">
+            <div className="animate-fade-in">
+                <div className="flex justify-end mb-[2vh] md:mb-6">
                     <Button onClick={() => {
-                        setEditingProduct({
-                            name: '', price: 0, original_price: null, stock_quantity: 10, description: '', 
-                            category: 'Ochelari', imageUrl: '', gallery: [], colors: [], details: []
-                        });
+                        setEditingProduct({ name: '', price: 0, stock_quantity: 10, description: '', category: 'Ochelari', imageUrl: '', gallery: [], colors: [], details: [] });
                         setShowProductForm(true);
-                    }}>+ Adaugă Produs Nou</Button>
+                    }} className="text-[3vw] md:text-sm">+ Produs Nou</Button>
                 </div>
 
                 {showProductForm && editingProduct && (
-                    <div className="bg-white p-8 rounded-2xl shadow-xl mb-8 border border-neutral-200 animate-fade-in relative scroll-mt-24" id="productForm">
-                        <h3 className="text-xl font-bold mb-6 flex items-center gap-2 border-b border-neutral-100 pb-4">
-                             {editingProduct.id ? '✏️ Editează Produs' : '✨ Produs Nou'}
+                    <div className="bg-white p-[2vh] md:p-8 rounded-2xl shadow-xl mb-[2vh] md:mb-8 border border-neutral-200 animate-fade-in" id="productForm">
+                        <h3 className="text-[4vw] md:text-xl font-bold mb-[2vh] md:mb-6 flex items-center gap-2 border-b border-neutral-100 pb-[1vh] md:pb-4">
+                             {editingProduct.id ? '✏️ Editează' : '✨ Nou'}
                         </h3>
-                        
-                        <form onSubmit={handleProductSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="label-admin">Nume Produs</label>
-                                    <input 
-                                        className="input-admin"
-                                        value={editingProduct.name}
-                                        onChange={e => setEditingProduct({...editingProduct, name: e.target.value})}
-                                        required
-                                        placeholder="ex: Oclar Pro Titanium"
-                                    />
+                        <form onSubmit={handleProductSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-[2vh] md:gap-8">
+                            <div className="space-y-[1.5vh] md:space-y-4">
+                                <div><label className="label-admin">Nume</label><input className="input-admin text-[3vw] md:text-sm" value={editingProduct.name} onChange={e => setEditingProduct({...editingProduct, name: e.target.value})} required /></div>
+                                <div className="grid grid-cols-2 gap-[1.5vh] md:gap-4">
+                                    <div><label className="label-admin">Preț</label><input type="number" step="0.01" className="input-admin font-bold text-[3vw] md:text-sm" value={editingProduct.price} onChange={e => setEditingProduct({...editingProduct, price: parseFloat(e.target.value)})} required /></div>
+                                    <div><label className="label-admin">Preț Vechi</label><input type="number" step="0.01" className="input-admin text-[3vw] md:text-sm" value={editingProduct.original_price || ''} onChange={e => setEditingProduct({...editingProduct, original_price: e.target.value ? parseFloat(e.target.value) : null})} /></div>
                                 </div>
-                                
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="label-admin">Preț Actual (RON)</label>
-                                        <input 
-                                            type="number" step="0.01"
-                                            className="input-admin font-bold"
-                                            value={editingProduct.price}
-                                            onChange={e => setEditingProduct({...editingProduct, price: parseFloat(e.target.value)})}
-                                            required
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="label-admin text-red-500">Preț Vechi (Reducere)</label>
-                                        <input 
-                                            type="number" step="0.01"
-                                            className="input-admin text-red-500"
-                                            placeholder="Opțional"
-                                            value={editingProduct.original_price || ''}
-                                            onChange={e => setEditingProduct({...editingProduct, original_price: e.target.value ? parseFloat(e.target.value) : null})}
-                                        />
-                                    </div>
+                                <div className="grid grid-cols-2 gap-[1.5vh] md:gap-4">
+                                    <div><label className="label-admin">Stoc</label><input type="number" className="input-admin text-[3vw] md:text-sm" value={editingProduct.stock_quantity} onChange={e => setEditingProduct({...editingProduct, stock_quantity: parseInt(e.target.value)})} required /></div>
+                                    <div><label className="label-admin">Categorie</label><input className="input-admin text-[3vw] md:text-sm" value={editingProduct.category} onChange={e => setEditingProduct({...editingProduct, category: e.target.value})} required /></div>
                                 </div>
-
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="label-admin">Stoc</label>
-                                        <input 
-                                            type="number" 
-                                            className="input-admin"
-                                            value={editingProduct.stock_quantity}
-                                            onChange={e => setEditingProduct({...editingProduct, stock_quantity: parseInt(e.target.value)})}
-                                            required
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="label-admin">Categorie</label>
-                                        <input 
-                                            className="input-admin"
-                                            value={editingProduct.category}
-                                            onChange={e => setEditingProduct({...editingProduct, category: e.target.value})}
-                                            required
-                                            placeholder="ex: Daytime"
-                                        />
-                                    </div>
-                                </div>
-                                
-                                <div>
-                                    <label className="label-admin">Descriere</label>
-                                    <textarea 
-                                        className="input-admin h-32 resize-none"
-                                        value={editingProduct.description}
-                                        onChange={e => setEditingProduct({...editingProduct, description: e.target.value})}
-                                        required
-                                    />
-                                </div>
-
-                                <div className="bg-neutral-50 p-4 rounded-xl border border-neutral-200">
-                                    <label className="label-admin mb-2 block">Specificații Tehnice</label>
-                                    {editingProduct.details.map((spec, idx) => (
-                                        <div key={idx} className="flex gap-2 mb-2">
-                                            <input 
-                                                className="input-admin py-1 text-sm bg-white" 
-                                                value={spec} 
-                                                onChange={(e) => {
-                                                    const newSpecs = [...editingProduct.details];
-                                                    newSpecs[idx] = e.target.value;
-                                                    setEditingProduct({...editingProduct, details: newSpecs});
-                                                }}
-                                            />
-                                            <button type="button" onClick={() => {
-                                                const newSpecs = editingProduct.details.filter((_, i) => i !== idx);
-                                                setEditingProduct({...editingProduct, details: newSpecs});
-                                            }} className="text-red-500 px-2 font-bold hover:bg-red-50 rounded">×</button>
-                                        </div>
-                                    ))}
-                                    <Button 
-                                        type="button" 
-                                        variant="outline" 
-                                        className="w-full py-2 text-xs border-dashed border-neutral-300 hover:border-black" 
-                                        onClick={() => setEditingProduct({...editingProduct, details: [...editingProduct.details, "Caracteristică: Valoare"]})}
-                                    >
-                                        + Adaugă Specificație
-                                    </Button>
-                                </div>
+                                <div><label className="label-admin">Descriere</label><textarea className="input-admin h-[12vh] md:h-32 resize-none text-[3vw] md:text-sm" value={editingProduct.description} onChange={e => setEditingProduct({...editingProduct, description: e.target.value})} required /></div>
                             </div>
-
-                            <div className="space-y-6">
+                            <div className="space-y-[2vh] md:space-y-6">
                                 <div>
-                                    <label className="label-admin">Imagine Principală (Cover)</label>
-                                    <div className="border-2 border-dashed border-neutral-300 rounded-xl p-4 text-center hover:bg-neutral-50 transition-colors cursor-pointer relative group overflow-hidden bg-neutral-50 min-h-[200px] flex items-center justify-center">
+                                    <label className="label-admin">Poză Principală</label>
+                                    <div className="border-2 border-dashed border-neutral-300 rounded-xl p-[2vh] md:p-4 text-center hover:bg-neutral-50 transition-colors cursor-pointer relative overflow-hidden bg-neutral-50 min-h-[20vh] md:min-h-[200px] flex items-center justify-center">
                                         <input type="file" onChange={(e) => handleImageFile(e, false)} className="absolute inset-0 opacity-0 cursor-pointer z-10" accept="image/*" />
-                                        {editingProduct.imageUrl ? (
-                                            <img src={editingProduct.imageUrl} className="w-full h-full object-contain" alt="Cover" />
-                                        ) : (
-                                            <div className="text-neutral-400 text-sm">
-                                                <span className="block text-2xl mb-2">📷</span>
-                                                Click sau Trage o poză aici
-                                            </div>
-                                        )}
-                                        {editingProduct.imageUrl && (
-                                            <div className="absolute inset-0 bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">Schimbă Poza</div>
-                                        )}
+                                        {editingProduct.imageUrl ? <img src={editingProduct.imageUrl} className="w-full h-full object-contain" alt="Cover" /> : <div className="text-neutral-400 text-[3vw] md:text-sm">Click pentru upload</div>}
                                     </div>
                                 </div>
-
                                 <div>
-                                    <label className="label-admin">Galerie (Mai multe poze)</label>
-                                    <div className="grid grid-cols-3 gap-2 mb-2">
+                                    <label className="label-admin">Galerie</label>
+                                    <div className="grid grid-cols-3 gap-[1vh] md:gap-2">
                                         {editingProduct.gallery.map((img, idx) => (
-                                            <div key={idx} className="relative group aspect-square border rounded-lg overflow-hidden bg-white shadow-sm">
-                                                <img src={img} className="w-full h-full object-cover" alt={`Gallery ${idx}`} />
+                                            <div key={idx} className="relative aspect-square border rounded-lg overflow-hidden bg-white group">
+                                                <img src={img} className="w-full h-full object-cover" alt="Gal" />
                                                 <button 
                                                     type="button" 
-                                                    onClick={() => removeGalleryImage(idx)} 
-                                                    className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-red-600"
-                                                >
-                                                    ×
-                                                </button>
+                                                    onClick={() => removeGalleryImage(idx)}
+                                                    className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-[4vh] h-[4vh] md:w-5 md:h-5 text-[2.5vw] md:text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                                >×</button>
                                             </div>
                                         ))}
-                                        <div className="border-2 border-dashed border-neutral-300 rounded-lg flex items-center justify-center aspect-square hover:bg-neutral-50 cursor-pointer relative text-neutral-300 hover:text-neutral-500 transition-colors">
+                                        <div className="border-2 border-dashed border-neutral-300 rounded-lg flex items-center justify-center aspect-square hover:bg-neutral-50 cursor-pointer relative">
                                             <input type="file" onChange={(e) => handleImageFile(e, true)} className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" />
-                                            <span className="text-4xl font-light">+</span>
+                                            <span className="text-[6vw] md:text-2xl text-neutral-300">+</span>
                                         </div>
                                     </div>
                                 </div>
-
-                                <div>
-                                    <label className="label-admin">Culori Disponibile (HEX)</label>
-                                    <input 
-                                        className="input-admin"
-                                        placeholder="#000000, #FFFFFF" 
-                                        value={editingProduct.colors.join(', ')}
-                                        onChange={e => setEditingProduct({...editingProduct, colors: e.target.value.split(',').map(c => c.trim())})}
-                                    />
-                                    <div className="flex gap-2 mt-2 h-6 items-center">
-                                        <span className="text-xs text-neutral-400">Preview:</span>
-                                        {editingProduct.colors.filter(c => c.startsWith('#')).map((c, i) => (
-                                            <div key={i} className="w-5 h-5 rounded-full border border-neutral-200 shadow-sm" style={{backgroundColor: c}}></div>
-                                        ))}
-                                    </div>
-                                </div>
                             </div>
-
-                            <div className="md:col-span-2 flex gap-4 mt-4 border-t border-neutral-100 pt-6">
-                                <Button type="submit">Salvează Modificările</Button>
-                                <Button variant="outline" onClick={() => setShowProductForm(false)} type="button">Anulează</Button>
+                            <div className="md:col-span-2 flex gap-[1.5vh] md:gap-4 border-t border-neutral-100 pt-[2vh] md:pt-6">
+                                <Button type="submit" className="text-[3vw] md:text-sm">Salvează</Button>
+                                <Button variant="outline" onClick={() => setShowProductForm(false)} type="button" className="text-[3vw] md:text-sm">Anulează</Button>
                             </div>
                         </form>
                     </div>
                 )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-[2vh] md:gap-6">
                     {products.map(p => (
-                        <div key={p.id} className="bg-white p-5 rounded-2xl shadow-sm border border-neutral-100 flex flex-col group hover:shadow-md transition-shadow">
-                            <div className="flex justify-between items-start mb-4">
-                                <div className="w-20 h-20 rounded-lg overflow-hidden border border-neutral-100 bg-neutral-50 relative">
-                                    <img src={p.imageUrl} className="w-full h-full object-cover" alt={p.name} />
-                                    {p.gallery && p.gallery.length > 0 && (
-                                        <div className="absolute bottom-0 right-0 bg-black/50 text-white text-[9px] px-1">+{p.gallery.length}</div>
-                                    )}
-                                </div>
+                        <div key={p.id} className="bg-white p-[2vh] md:p-5 rounded-2xl shadow-sm border border-neutral-100 flex flex-col group hover:shadow-md transition-shadow">
+                            <div className="flex justify-between items-start mb-[1.5vh] md:mb-4">
+                                <div className="w-[15vw] h-[15vw] md:w-20 md:h-20 rounded-lg overflow-hidden border border-neutral-100 bg-neutral-50 relative"><img src={p.imageUrl} className="w-full h-full object-cover" alt={p.name} /></div>
                                 <div className="text-right">
-                                    <div className="font-bold text-xl">{p.price} <span className="text-xs font-normal">RON</span></div>
-                                    {p.original_price && p.original_price > p.price && (
-                                        <div className="text-xs text-red-500 line-through font-mono">
-                                            {p.original_price} RON
-                                        </div>
-                                    )}
-                                    <div className={`mt-2 px-2 py-1 rounded text-[10px] font-bold uppercase inline-block ${p.stock_quantity > 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                                        Stoc: {p.stock_quantity}
-                                    </div>
+                                    <div className="font-bold text-[4vw] md:text-xl">{p.price} <span className="text-[2.5vw] md:text-xs font-normal">RON</span></div>
+                                    <div className={`mt-[0.5vh] md:mt-2 px-2 py-1 rounded text-[2vw] md:text-[10px] font-bold uppercase inline-block ${p.stock_quantity > 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>Stoc: {p.stock_quantity}</div>
                                 </div>
                             </div>
-                            
-                            <h3 className="font-bold text-lg mb-1">{p.name}</h3>
-                            <p className="text-xs text-neutral-500 line-clamp-2 mb-4 flex-1">{p.description}</p>
-                            
-                            <div className="flex gap-2 border-t border-neutral-100 pt-4">
-                                <button 
-                                    onClick={() => { 
-                                        setEditingProduct(p); 
-                                        setShowProductForm(true); 
-                                        setTimeout(() => document.getElementById('productForm')?.scrollIntoView({behavior: 'smooth'}), 100);
-                                    }}
-                                    className="flex-1 bg-neutral-50 hover:bg-neutral-100 text-neutral-900 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors"
-                                >
-                                    Editează
-                                </button>
-                                <button 
-                                    onClick={() => p.id && handleDeleteProduct(p.id)}
-                                    className="px-3 bg-white border border-red-100 text-red-500 rounded-lg hover:bg-red-50 transition-colors"
-                                    title="Șterge Produs"
-                                >
-                                    ✕
-                                </button>
+                            <h3 className="font-bold text-[3.5vw] md:text-lg mb-[0.5vh] md:mb-1">{p.name}</h3>
+                            <div className="flex gap-[1vh] md:gap-2 border-t border-neutral-100 pt-[1.5vh] md:pt-4 mt-auto">
+                                <button onClick={() => { setEditingProduct(p); setShowProductForm(true); setTimeout(() => document.getElementById('productForm')?.scrollIntoView({behavior: 'smooth'}), 100); }} className="flex-1 bg-neutral-50 hover:bg-neutral-100 py-[1vh] md:py-2 rounded-lg text-[2.5vw] md:text-xs font-bold uppercase">Edit</button>
+                                <button onClick={() => p.id && handleDeleteProduct(p.id)} className="px-[2vw] md:px-3 bg-white border border-red-100 text-red-500 rounded-lg hover:bg-red-50 text-[3vw] md:text-base">✕</button>
                             </div>
                         </div>
                     ))}
                 </div>
             </div>
         )}
+
+        {/* --- TAB: REDUCERI --- */}
+        {activeTab === 'discounts' && (
+            <div className="animate-fade-in">
+                <div className="flex justify-between items-center mb-[2vh] md:mb-6">
+                    <h2 className="text-[4vw] md:text-xl font-bold">Coduri Reducere</h2>
+                    <Button onClick={() => { setEditingDiscount({ code: '', discount_type: 'percentage', discount_value: 10, min_order_amount: 0, used_count: 0, valid_from: new Date().toISOString().split('T')[0], is_active: true }); setShowDiscountForm(true); }} className="text-[3vw] md:text-sm">+ Cod</Button>
+                </div>
+
+                {showDiscountForm && editingDiscount && (
+                    <div className="bg-white p-[2vh] md:p-6 rounded-2xl shadow-xl mb-[2vh] md:mb-8 border border-neutral-200">
+                        <form onSubmit={handleDiscountSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-[2vh] md:gap-6">
+                            <div><label className="label-admin">Cod</label><input className="input-admin uppercase font-bold text-[3vw] md:text-sm" value={editingDiscount.code} onChange={e=>setEditingDiscount({...editingDiscount, code: e.target.value.toUpperCase()})} required /></div>
+                            <div className="grid grid-cols-2 gap-[1.5vh] md:gap-4">
+                                <div><label className="label-admin">Tip</label><select className="input-admin text-[3vw] md:text-sm" value={editingDiscount.discount_type} onChange={e=>setEditingDiscount({...editingDiscount, discount_type: e.target.value as any})}><option value="percentage">%</option><option value="fixed">RON</option></select></div>
+                                <div><label className="label-admin">Val</label><input type="number" className="input-admin text-[3vw] md:text-sm" value={editingDiscount.discount_value} onChange={e=>setEditingDiscount({...editingDiscount, discount_value: parseFloat(e.target.value)})} required /></div>
+                            </div>
+                            <div className="md:col-span-2 flex gap-[1.5vh] md:gap-4"><Button type="submit" className="text-[3vw] md:text-sm">Salvează</Button><Button variant="outline" onClick={()=>setShowDiscountForm(false)} type="button" className="text-[3vw] md:text-sm">Anulează</Button></div>
+                        </form>
+                    </div>
+                )}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-[2vh] md:gap-4">
+                    {discounts.map(d => (
+                        <div key={d.id} className={`p-[2vh] md:p-5 rounded-xl border ${d.is_active ? 'bg-white border-neutral-200' : 'bg-neutral-50 border-neutral-100 opacity-60'}`}>
+                            <div className="flex justify-between mb-[1vh] md:mb-2">
+                                <div className="font-mono font-black text-[4vw] md:text-xl bg-yellow-50 px-2 rounded">{d.code}</div>
+                                <button onClick={()=>handleDeleteDiscount(d.id)} className="text-red-500 text-[2.5vw] md:text-xs font-bold">Șterge</button>
+                            </div>
+                            <div className="text-[3vw] md:text-sm">Reducere: <b>{d.discount_value}{d.discount_type === 'percentage' ? '%' : ' RON'}</b></div>
+                            <div className="text-[2.5vw] md:text-xs text-neutral-500 mt-[1vh] md:mt-2">Utilizări: {d.used_count}</div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        )}
+
+        {/* MODAL EDITARE COMANDĂ */}
+        {editingOrder && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-[2vw] md:p-4 backdrop-blur-sm">
+                <div className="bg-white rounded-2xl p-[3vh] md:p-8 w-full max-w-[90vw] md:max-w-lg max-h-[85vh] overflow-y-auto">
+                    <h2 className="text-[4vw] md:text-xl font-bold mb-[2vh] md:mb-4 flex justify-between items-center">
+                        <span>Editare #{editingOrder.id}</span>
+                        <button onClick={() => setEditingOrder(null)} className="text-neutral-400 hover:text-black text-[5vw] md:text-2xl">✕</button>
+                    </h2>
+                    <form onSubmit={handleUpdateOrder} className="space-y-[1.5vh] md:space-y-4">
+                        <div>
+                            <label className="label-admin">Status</label>
+                            <select className="input-admin text-[3vw] md:text-sm" value={editingOrder.status} onChange={e=>setEditingOrder({...editingOrder, status: e.target.value})}>
+                                <option value="pending">Pending</option>
+                                <option value="paid">Paid</option>
+                                <option value="completed">Completed</option>
+                                <option value="cancelled">Cancelled</option>
+                            </select>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-[1.5vh] md:gap-4">
+                            <div><label className="label-admin">Nume</label><input className="input-admin text-[3vw] md:text-sm" value={editingOrder.customer_name} onChange={e=>setEditingOrder({...editingOrder, customer_name: e.target.value})} /></div>
+                            <div><label className="label-admin">Telefon</label><input className="input-admin text-[3vw] md:text-sm" value={editingOrder.customer_phone} onChange={e=>setEditingOrder({...editingOrder, customer_phone: e.target.value})} /></div>
+                        </div>
+                        
+                        <div><label className="label-admin">Email</label><input className="input-admin text-[3vw] md:text-sm" value={editingOrder.customer_email} onChange={e=>setEditingOrder({...editingOrder, customer_email: e.target.value})} /></div>
+                        
+                        <div className="border-t border-neutral-100 pt-[1.5vh] md:pt-4">
+                            <p className="text-[2.5vw] md:text-xs font-bold uppercase text-neutral-400 mb-[1vh] md:mb-3">Adresă Livrare</p>
+                            <div className="grid grid-cols-2 gap-[1.5vh] md:gap-4 mb-[1vh] md:mb-2">
+                                <div><label className="label-admin">Județ</label><input className="input-admin text-[3vw] md:text-sm" value={editingOrder.county || ''} onChange={e=>setEditingOrder({...editingOrder, county: e.target.value})} /></div>
+                                <div><label className="label-admin">Oraș</label><input className="input-admin text-[3vw] md:text-sm" value={editingOrder.city || ''} onChange={e=>setEditingOrder({...editingOrder, city: e.target.value})} /></div>
+                            </div>
+                            <div className="grid grid-cols-3 gap-[1.5vh] md:gap-4">
+                                <div className="col-span-2"><label className="label-admin">Adresă</label><input className="input-admin text-[3vw] md:text-sm" value={editingOrder.address_line || ''} onChange={e=>setEditingOrder({...editingOrder, address_line: e.target.value})} /></div>
+                                <div><label className="label-admin">Cod</label><input className="input-admin text-[3vw] md:text-sm" value={editingOrder.postal_code || ''} onChange={e=>setEditingOrder({...editingOrder, postal_code: e.target.value})} /></div>
+                            </div>
+                            {editingOrder.shipping_method === 'easybox' && (
+                                <div className="mt-[1.5vh] md:mt-2"><label className="label-admin">Locker ID</label><input className="input-admin bg-yellow-50 font-mono text-[3vw] md:text-xs" value={editingOrder.locker_id || ''} onChange={e=>setEditingOrder({...editingOrder, locker_id: e.target.value})} /></div>
+                            )}
+                        </div>
+                        
+                        <div className="flex gap-[1.5vh] md:gap-3 pt-[2vh] md:pt-6">
+                            <Button fullWidth type="submit" className="text-[3vw] md:text-sm">Salvează</Button>
+                            <Button fullWidth variant="outline" onClick={()=>setEditingOrder(null)} type="button" className="text-[3vw] md:text-sm">Anulează</Button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        )}
+
       </div>
       
       <style>{`
-        .input-admin { 
-            width: 100%; 
-            padding: 0.75rem; 
-            border: 1px solid #e5e5e5; 
-            border-radius: 0.5rem; 
-            transition: all 0.2s; 
-            outline: none; 
-            font-size: 0.875rem;
-        }
-        .input-admin:focus { 
-            border-color: black; 
-            box-shadow: 0 0 0 1px black;
-        }
-        .label-admin { 
-            display: block; 
-            font-size: 0.75rem; 
-            font-weight: 700; 
-            text-transform: uppercase; 
-            color: #737373; 
-            margin-bottom: 0.35rem; 
-            letter-spacing: 0.05em;
+        .input-admin { width: 100%; padding: 0.75rem; border: 1px solid #e5e5e5; border-radius: 0.5rem; outline: none; transition: border-color 0.2s; }
+        .input-admin:focus { border-color: black; }
+        .label-admin { display: block; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: #737373; margin-bottom: 0.35rem; letter-spacing: 0.05em; }
+        @keyframes bounce-in { 0% { opacity: 0; transform: translate(-50%, 20px); } 100% { opacity: 1; transform: translate(-50%, 0); } }
+        .animate-bounce-in { animation: bounce-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        @media (max-width: 768px) {
+          .input-admin { padding: 0.5rem; }
         }
       `}</style>
     </div>
