@@ -6,7 +6,6 @@ import { pool } from './db.js'; // Asta se execută prima!
 import { sendOrderEmails } from './services/email.js';
 import { sendOblioInvoice, generateAWB } from './services/oblio.js';
 import { createDraftShipment, getShipmentStatus, getShipmentLabel } from './services/ecolet.js';
-import { createPaymentSession, decryptIPN } from './services/netopia.js';
 import { createPaymentSession, validatePaymentNotification } from './services/netopia.js';
 
 dotenv.config(); // Încarcă variabilele pentru acest fișier
