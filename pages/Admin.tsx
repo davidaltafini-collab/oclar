@@ -744,58 +744,60 @@ export const Admin: React.FC = () => {
                     </select>
                   </div>
 
-                              <div className="flex items-end gap-2">
-                                  <Button onClick={() => fetchData('orders')} variant="outline">
-                                      Aplică
-                                  </Button>
-                                  <button
-                                      onClick={() => setShowHidden(!showHidden)}
-                                      className={`px-4 py-2 rounded-lg font-bold border transition-colors h-[42px] ${showHidden ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-300'}`}
-                                  >
-                                      {showHidden ? '📂 Ascunde Arhiva' : '📂 Arată Arhiva'}
-                                  </button>
-                              </div>
-                              <div className="flex items-center gap-2 mt-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
-                                  <input
-                                      type="checkbox"
-                                      id="auto-ecolet"
-                                      checked={autoSendEcolet}
-                                      onChange={(e) => setAutoSendEcolet(e.target.checked)}
-                                      className="w-4 h-4"
-                                  />
-                                  <label htmlFor="auto-ecolet" className="text-xs text-blue-700 cursor-pointer">
-                                      📮 Auto-send comenzi noi la Ecolet (doar UI, fără logică backend)
-                                  </label>
-                              </div>
+                  <div className="flex items-end gap-2">
+                      <Button onClick={() => fetchData('orders')} variant="outline">
+                          Aplică
+                      </Button>
+                      <button
+                          onClick={() => setShowHidden(!showHidden)}
+                          className={`px-4 py-2 rounded-lg font-bold border transition-colors h-[42px] ${showHidden ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-300'}`}
+                      >
+                          {showHidden ? '📂 Ascunde Arhiva' : '📂 Arată Arhiva'}
+                      </button>
+                  </div>
+                  <div className="flex items-center gap-2 mt-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
+                      <input
+                          type="checkbox"
+                          id="auto-ecolet"
+                          checked={autoSendEcolet}
+                          onChange={(e) => setAutoSendEcolet(e.target.checked)}
+                          className="w-4 h-4"
+                      />
+                      <label htmlFor="auto-ecolet" className="text-xs text-blue-700 cursor-pointer">
+                          📮 Auto-send comenzi noi la Ecolet (doar UI, fără logică backend)
+                      </label>
+                  </div>
                 </div>
 
-                          {/* ACȚIUNI BULK */}
-                          {selectedOrders.length > 0 && (
-                              <div className="flex flex-wrap gap-2 items-center bg-white p-2 rounded-lg border border-blue-200 shadow-lg">
-                                  <span className="text-xs font-bold text-blue-800 px-2">{selectedOrders.length} selectate:</span>
+                {/* ACȚIUNI BULK */}
+                {selectedOrders.length > 0 && (
+                    <div className="flex flex-wrap gap-2 items-center bg-white p-2 rounded-lg border border-blue-200 shadow-lg mt-4">
+                        <span className="text-xs font-bold text-blue-800 px-2">{selectedOrders.length} selectate:</span>
 
-                                  {/* Butoane Noi */}
-                                  <button onClick={handleAccountingExport} className="px-3 py-2 bg-green-600 text-white text-xs font-bold rounded hover:bg-green-700">
-                                      📊 CSV Contabil
-                                  </button>
+                        {/* Butoane Noi */}
+                        <button onClick={handleAccountingExport} className="px-3 py-2 bg-green-600 text-white text-xs font-bold rounded hover:bg-green-700">
+                            📊 CSV Contabil
+                        </button>
 
-                                  <button onClick={() => handleToggleVisibility(true)} className="px-3 py-2 bg-gray-500 text-white text-xs font-bold rounded hover:bg-gray-600">
-                                      🔒 Hide
-                                  </button>
+                        <button onClick={() => handleToggleVisibility(true)} className="px-3 py-2 bg-gray-500 text-white text-xs font-bold rounded hover:bg-gray-600">
+                            🔒 Hide
+                        </button>
 
-                                  {showHidden && (
-                                      <button onClick={() => handleToggleVisibility(false)} className="px-3 py-2 bg-blue-500 text-white text-xs font-bold rounded hover:bg-blue-600">
-                                          🔓 Unhide
-                                      </button>
-                                  )}
+                        {showHidden && (
+                            <button onClick={() => handleToggleVisibility(false)} className="px-3 py-2 bg-blue-500 text-white text-xs font-bold rounded hover:bg-blue-600">
+                                🔓 Unhide
+                            </button>
+                        )}
 
-                                  <div className="w-px h-6 bg-gray-300 mx-1"></div>
+                        <div className="w-px h-6 bg-gray-300 mx-1"></div>
 
-                                  {/* Butoanele Vechi */}
-                                  <Button onClick={handleSendInvoices} disabled={loading}>
-                                      📄 Facturi Oblio
-                                  </Button>
-                                 </div>
+                        {/* Butoanele Vechi */}
+                        <Button onClick={handleSendInvoices} disabled={loading}>
+                            📄 Facturi Oblio
+                        </Button>
+                    </div>
+                )}
+              </div>
 
               {/* TABEL COMENZI */}
               <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
@@ -929,7 +931,8 @@ export const Admin: React.FC = () => {
                                         </button>
                                     </td>
                                 </tr>
-                            ))}
+                            );
+                        })}
                         </tbody>
                     </table>
                 </div>
