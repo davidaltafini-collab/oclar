@@ -19,7 +19,7 @@ export async function createPaymentSession(paymentData) {
   const payload = {
     config: {
       notifyUrl: "https://api.oclar.ro/api/netopia/confirm",
-      redirectUrl: "https://oclar.ro/#/success",
+      redirectUrl: "https://oclar.ro/success",
       language: "ro"
     },
     payment: {
