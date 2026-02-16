@@ -111,7 +111,7 @@ function App() {
               <Route path="/terms" element={<Terms />} />
               <Route path="/privacy" element={<Privacy />} />
               
-              {/* Rutele noi activate */}
+              <Route path="/success" element={<Success />} />
               <Route path="/contact" element={<Contact />} />
               <Route path="/cookies" element={<Cookies />} />
             </Routes>
