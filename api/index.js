@@ -44,12 +44,27 @@ async function checkAutomation(key) {
             [key]
         );
         connection.release();
-        
-        // Returnează true doar dacă valoarea este exact 'true' (string)
-        return rows.length > 0 && rows[0].setting_value === 'true';
+        // Acceptă atât boolean true cât și string 'true'
+        const val = rows.length > 0 ? rows[0].setting_value : 'false';
+        return val === 'true' || val === true;
     } catch (e) {
         console.error('⚠️ Automation check failed:', e);
         return false;
+    }
+}
+
+// Citește TOATE setările dintr-o singură query (mai eficient + mai reliable)
+async function getAllAutomationSettings() {
+    try {
+        const connection = await pool.getConnection();
+        const [rows] = await connection.query('SELECT setting_key, setting_value FROM admin_settings');
+        connection.release();
+        const settings = {};
+        rows.forEach(r => { settings[r.setting_key] = r.setting_value === 'true' || r.setting_value === true; });
+        return settings;
+    } catch (e) {
+        console.error('⚠️ getAllAutomationSettings failed:', e);
+        return {};
     }
 }
 
@@ -58,20 +73,21 @@ async function checkAutomation(key) {
  * Apelată după: Stripe Webhook, Netopia IPN, Ramburs Create
  */
 async function runAutomations(orderId, source) {
-    console.log(`🤖 [Auto] Verificare automatizări pentru comanda #${orderId} (sursa: ${source})...`);
+    console.log(`🤖 [Auto] Verificare automatizări #${orderId} (${source})...`);
     
-    // 1. Verificăm "Master Switch"-ul global
-    const autoEnabled = await checkAutomation('automation_enabled');
+    // ⭐ Citim TOATE setările dintr-o singură query (fix reliability)
+    const settings = await getAllAutomationSettings();
+    
+    const autoEnabled = settings['automation_enabled'] || false;
     if (!autoEnabled) {
-        console.log('🤖 [Auto] Automatizarea este OPRITĂ (master switch OFF).');
+        console.log('🤖 [Auto] Master switch: OPRIT.');
         return;
     }
 
-    // 2. Verificăm ce automatizări sunt active
-    const autoOblio = await checkAutomation('auto_oblio');
-    const autoEcolet = await checkAutomation('auto_ecolet');
+    const autoOblio = settings['auto_oblio'] !== false;  // Default true dacă nu există
+    const autoEcolet = settings['auto_ecolet'] !== false; // Default true dacă nu există
 
-    console.log(`🤖 [Auto] Status: Oblio=${autoOblio}, Ecolet=${autoEcolet}`);
+    console.log(`🤖 [Auto] Master=ON | Oblio=${autoOblio} | Ecolet=${autoEcolet}`);
 
     // 3. Luăm datele comenzii din baza de date
     const connection = await pool.getConnection();
@@ -858,6 +874,18 @@ app.all('/api/admin', authAdmin, async (req, res) => {
                 if (status) {
                     query += ' AND status = ?';
                     params.push(status);
+                }
+
+                // ⭐ FILTRU NOU: Metodă plată (card / ramburs)
+                if (req.query.paymentMethod) {
+                    query += ' AND payment_method = ?';
+                    params.push(req.query.paymentMethod);
+                }
+
+                // ⭐ FILTRU NOU: Metodă livrare (courier / easybox)
+                if (req.query.shippingMethod) {
+                    query += ' AND shipping_method = ?';
+                    params.push(req.query.shippingMethod);
                 }
 
                 query += ' ORDER BY created_at DESC';
