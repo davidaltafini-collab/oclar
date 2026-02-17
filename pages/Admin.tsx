@@ -727,79 +727,75 @@ export const Admin: React.FC = () => {
                 </div>
 
                 {/* 🔥 BARA PLUTITOARE MOBILE-OPTIMIZED */}
-                {selectedOrders.length > 0 && (
-                    <div className="fixed bottom-0 left-0 right-0 bg-neutral-900/98 backdrop-blur-md text-white p-3 md:p-4 z-50 border-t border-neutral-700 shadow-2xl">
-                        <div className="max-w-7xl mx-auto">
-                            {/* Header cu număr selectate */}
-                            <div className="flex items-center justify-between mb-2 md:mb-3">
-                                <div className="flex items-center gap-2">
-                                    <div className="bg-brand-yellow text-black rounded-full w-6 h-6 flex items-center justify-center text-xs font-black">
-                                        {selectedOrders.length}
-                                    </div>
-                                    <span className="text-xs md:text-sm font-medium">comenzi selectate</span>
-                                </div>
-                                <button 
-                                    onClick={() => setSelectedOrders([])}
-                                    className="text-xs text-neutral-400 hover:text-white"
-                                >
-                                    ✕ Anulează
-                                </button>
-                            </div>
+                      {selectedOrders.length > 0 && (
+                          <div className="fixed bottom-0 left-0 right-0 bg-neutral-900/98 backdrop-blur-md text-white p-3 md:p-4 z-50 border-t border-neutral-700 shadow-2xl animate-bounce-in">
+                              <div className="max-w-7xl mx-auto">
+                                  {/* Header cu număr selectate */}
+                                  <div className="flex items-center justify-between mb-3">
+                                      <div className="flex items-center gap-2">
+                                          <div className="bg-brand-yellow text-black rounded-full w-6 h-6 flex items-center justify-center text-xs font-black shadow-[0_0_10px_rgba(250,204,21,0.4)]">
+                                              {selectedOrders.length}
+                                          </div>
+                                          <span className="text-sm font-bold text-neutral-200">comenzi selectate</span>
+                                      </div>
+                                      <button
+                                          onClick={() => setSelectedOrders([])}
+                                          className="text-xs text-neutral-400 hover:text-white font-medium transition-colors px-2 py-1 rounded hover:bg-white/10"
+                                      >
+                                          ✕ Anulează
+                                      </button>
+                                  </div>
 
-                            {/* Grid butoane - 2 coloane pe mobil, 4+ pe desktop */}
-                            <div className="grid grid-cols-2 md:grid-cols-4 lg:flex lg:flex-wrap gap-2">
-                                <button 
-                                    onClick={() => handleAction('oblio')} 
-                                    className="bg-white/10 hover:bg-white/20 px-3 py-2.5 rounded-lg text-xs md:text-sm font-medium transition-colors flex items-center justify-center gap-2 whitespace-nowrap disabled:opacity-50"
-                                    disabled={loading}
-                                >
-                                    <span className="text-base">📄</span>
-                                    <span className="hidden md:inline">Oblio</span>
-                                    <span className="md:hidden">Facturi</span>
-                                </button>
-                                
-                                <button 
-                                    onClick={() => handleAction('ecolet')} 
-                                    className="bg-white/10 hover:bg-white/20 px-3 py-2.5 rounded-lg text-xs md:text-sm font-medium transition-colors flex items-center justify-center gap-2 whitespace-nowrap disabled:opacity-50"
-                                    disabled={loading}
-                                >
-                                    <span className="text-base">🚚</span>
-                                    <span>Ecolet</span>
-                                </button>
+                                  {/* --- GRILA DE BUTOANE --- */}
+                                  <div className="grid grid-cols-2 md:flex md:flex-wrap gap-2 md:gap-3">
 
-                                <button 
-                                    onClick={handleEcoletSync} 
-                                    className="bg-white/10 hover:bg-white/20 px-3 py-2.5 rounded-lg text-xs md:text-sm font-medium transition-colors flex items-center justify-center gap-2 whitespace-nowrap disabled:opacity-50"
-                                    disabled={ecoletLoading}
-                                    title="Sincronizare AWB Ecolet"
-                                >
-                                    <span className="text-base">{ecoletLoading ? '⏳' : '🔄'}</span>
-                                    <span>Sync</span>
-                                </button>
+                                      {/* 1. OBLIO */}
+                                      <button
+                                          onClick={handleSendInvoices}
+                                          className="bg-white text-neutral-900 hover:bg-neutral-200 px-4 py-3 md:py-2 rounded-lg text-xs md:text-sm font-bold transition-all shadow-sm flex items-center justify-center gap-2"
+                                      >
+                                          <span className="text-base">📄</span> Oblio
+                                      </button>
 
-                                <button 
-                                    onClick={() => handleAction('csv')} 
-                                    className="bg-white/10 hover:bg-white/20 px-3 py-2.5 rounded-lg text-xs md:text-sm font-medium transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
-                                >
-                                    <span className="text-base">📊</span>
-                                    <span>CSV</span>
-                                </button>
+                                      {/* 2. ECOLET */}
+                                      <button
+                                          onClick={handleEcoletExport}
+                                          className="bg-white text-neutral-900 hover:bg-neutral-200 px-4 py-3 md:py-2 rounded-lg text-xs md:text-sm font-bold transition-all shadow-sm flex items-center justify-center gap-2"
+                                      >
+                                          <span className="text-base">📮</span> Ecolet
+                                      </button>
 
-                                {/* Separator vizibil doar pe desktop */}
-                                <div className="hidden lg:block w-px h-8 bg-neutral-700 self-center"></div>
+                                      {/* 3. SYNC */}
+                                      <button
+                                          onClick={handleEcoletSync}
+                                          className="bg-neutral-700 text-white hover:bg-neutral-600 px-4 py-3 md:py-2 rounded-lg text-xs md:text-sm font-bold transition-all shadow-sm flex items-center justify-center gap-2"
+                                      >
+                                          <span className="text-base">🔄</span> Sync
+                                      </button>
 
-                                {/* Buton Arhivează/Reactivează - Span 2 coloane pe mobil */}
-                                <button 
-                                    onClick={() => handleAction(showHidden ? 'unhide' : 'hide')} 
-                                    className={`col-span-2 md:col-span-1 px-4 py-2.5 rounded-lg text-xs md:text-sm font-bold transition-colors flex items-center justify-center gap-2 ${showHidden ? 'bg-green-600 hover:bg-green-500' : 'bg-red-600 hover:bg-red-500'}`}
-                                >
-                                    <span className="text-base">{showHidden ? '🔓' : '🔒'}</span>
-                                    <span>{showHidden ? 'Reactivează' : 'Arhivează'}</span>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                                      {/* 4. CSV */}
+                                      <button
+                                          onClick={handleAccountingExport}
+                                          className="bg-green-500 text-black hover:bg-green-400 px-4 py-3 md:py-2 rounded-lg text-xs md:text-sm font-bold transition-all shadow-sm flex items-center justify-center gap-2"
+                                      >
+                                          <span className="text-base">📊</span> CSV
+                                      </button>
+
+                                      {/* Separator */}
+                                      <div className="hidden md:block w-px h-8 bg-neutral-700 mx-2"></div>
+
+                                      {/* 5. HIDE / UNHIDE */}
+                                      <button
+                                          onClick={() => handleToggleVisibility(!showHidden)}
+                                          className={`col-span-2 md:col-span-1 px-4 py-3 md:py-2 rounded-lg text-xs md:text-sm font-bold transition-all shadow-sm flex items-center justify-center gap-2 ${showHidden ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-red-600 hover:bg-red-500 text-white'}`}
+                                      >
+                                          <span className="text-base">{showHidden ? '🔓' : '🔒'}</span>
+                                          {showHidden ? 'Reactivează' : 'Arhivează'}
+                                      </button>
+                                  </div>
+                              </div>
+                          </div>
+                      )}
             </div>
         )}
 
