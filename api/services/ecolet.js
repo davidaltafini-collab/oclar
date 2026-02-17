@@ -321,3 +321,25 @@ export async function getShipmentLabel(shipmentId) {
         return { success: false, message: e.message };
     }
 }
+
+// ============================================================
+// 6. DEBUG: Listează serviciile disponibile în contul tău
+// Apelează GET /api/admin/ecolet/services din Admin să vezi
+// ce valori exacte acceptă câmpul courier.service
+// ============================================================
+export async function getAvailableServices() {
+    try {
+        const token = await authenticate();
+        const response = await fetch(`${ECOLET_BASE_URL}/services`, {
+            headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
+        });
+        if (!response.ok) throw new Error(`Services API ${response.status}`);
+        const data = await response.json();
+        const services = data.services || data;
+        console.log('📋 Servicii Ecolet disponibile:');
+        services.forEach(s => console.log(`  - slug: "${s.slug}" | name: "${s.full_name}" | courier: "${s.courier?.slug}"`));
+        return { success: true, services };
+    } catch (e) {
+        return { success: false, message: e.message };
+    }
+}

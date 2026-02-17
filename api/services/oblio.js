@@ -9,6 +9,11 @@ const OBLIO_SECRET = process.env.OBLIO_SECRET;
 
 /**
  * Trimite factură în Oblio pentru o comandă
+ * 
+ * FIX: Metode de încasare acceptate de Oblio:
+ *   Card    → { type: 'Card', value: total }
+ *   Ramburs → { type: 'Ramburs', value: total }
+ *   'OP' nu este acceptat!
  */
 export async function sendOblioInvoice(orderDetails) {
   const {
@@ -37,26 +42,22 @@ export async function sendOblioInvoice(orderDetails) {
       })
     });
 
-    if (!authResponse.ok) {
-      throw new Error('Oblio authentication failed');
-    }
-
+    if (!authResponse.ok) throw new Error('Oblio authentication failed');
     const { access_token } = await authResponse.json();
 
-    // 2. Construim produsele pentru factură
+    // 2. Produse
     const oblioProducts = items.map(item => ({
       name: item.name,
       code: `PROD-${item.id || '000'}`,
       description: item.name,
       price: parseFloat(item.price),
       currency: 'RON',
-      vat: 19, // TVA 19%
+      vat: 19,
       quantity: item.quantity,
       unit: 'buc',
       product_type: 'Marfa'
     }));
 
-    // Adăugăm livrarea ca produs separat
     if (shippingCost > 0) {
       oblioProducts.push({
         name: 'Transport',
@@ -71,7 +72,6 @@ export async function sendOblioInvoice(orderDetails) {
       });
     }
 
-    // Discount ca produs cu valoare negativă (dacă există)
     if (discountAmount > 0) {
       oblioProducts.push({
         name: `Reducere${discountCode ? ` (${discountCode})` : ''}`,
@@ -86,43 +86,57 @@ export async function sendOblioInvoice(orderDetails) {
       });
     }
 
-    // 3. Construim clientul
+    // 3. Client
     const client = {
       name: customerName,
       email: customerEmail || '',
       phone: customerPhone || '',
-      address: address.line1 || address.line || '',
-      city: address.city || '',
-      county: address.county || '',
+      address: address?.line1 || address?.line || address?.address_line || '',
+      city: address?.city || '',
+      county: address?.county || '',
       country: 'Romania',
-      rc: '', // Cod fiscal (pentru persoane juridice)
-      cif: '', // CUI (pentru persoane juridice)
+      rc: '',
+      cif: '',
       save: false
     };
 
-    // 4. Setăm detaliile de plată (OP doar pentru card)
-    const collectData = orderDetails.paymentMethod === 'card' 
-      ? { type: 'OP', value: parseFloat(totalAmount) } 
-      : null;
+    // ⭐ FIX CRITIC: Metoda de încasare corectă
+    // Oblio acceptă EXACT: 'Chitanta', 'Bon fiscal', 'Alta incasare numerar',
+    //   'Ordin de plata', 'Mandat postal', 'Card', 'CEC', 'Bilet ordin',
+    //   'Ramburs', 'Alta incasare banca'
+    // NU acceptă: 'OP', 'online', 'stripe', 'card' (lowercase!) etc.
+    const paymentMethod = orderDetails.paymentMethod;
 
-    // --- AICI AM ADĂUGAT seriesName ---
+    let collectType;
+    if (paymentMethod === 'card') {
+      collectType = 'Card';               // plata online
+    } else if (paymentMethod === 'ramburs') {
+      collectType = 'Ramburs';            // cash la livrare
+    } else {
+      collectType = 'Alta incasare banca'; // fallback
+    }
+
+    // 4. Factură
     const invoiceData = {
-      cif: process.env.OBLIO_CIF, // CUI-ul firmei tale din .env
+      cif: process.env.OBLIO_CIF,
       client,
-      seriesName: process.env.OBLIO_SERIES_NAME || '', // <--- FIXUL ESTE AICI
+      seriesName: process.env.OBLIO_SERIES_NAME || '',
       issueDate: new Date().toISOString().split('T')[0],
       dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       currency: 'RON',
       products: oblioProducts,
       language: 'RO',
       precision: 2,
-      mentions: `Comanda #${orderId} - Plata: ${orderDetails.paymentMethod === 'ramburs' ? 'Ramburs' : 'Card online'}.`,
-      useStock: false
+      mentions: `Comanda #${orderId} - Plata: ${paymentMethod === 'ramburs' ? 'Ramburs' : 'Card online'}.`,
+      useStock: false,
+      // ⭐ Mereu trimitem collect cu tipul corect (nu null!)
+      collect: {
+        type: collectType,
+        value: parseFloat(totalAmount)
+      }
     };
 
-    if (collectData) {
-        invoiceData.collect = collectData;
-    }
+    console.log(`📄 Oblio: #${orderId} | Metoda incasare: "${collectType}" | Total: ${totalAmount} RON`);
 
     const invoiceResponse = await fetch(`${OBLIO_API_URL}/docs/invoice`, {
       method: 'POST',
@@ -139,9 +153,8 @@ export async function sendOblioInvoice(orderDetails) {
     }
 
     const invoiceResult = await invoiceResponse.json();
+    console.log(`✅ Factură Oblio #${orderId}: ${invoiceResult.data?.seriesName}${invoiceResult.data?.number}`);
 
-    console.log(`✅ Factură Oblio creată pentru comanda #${orderId}`);
-    
     return {
       success: true,
       invoiceId: invoiceResult.data?.id,
@@ -151,10 +164,7 @@ export async function sendOblioInvoice(orderDetails) {
 
   } catch (error) {
     console.error('❌ Eroare creare factură Oblio:', error);
-    return {
-      success: false,
-      error: error.message
-    };
+    return { success: false, error: error.message };
   }
 }
 
@@ -164,9 +174,7 @@ export async function sendOblioInvoice(orderDetails) {
 async function getEcoletToken() {
   const res = await fetch(`${process.env.ECOLET_BASE_URL}/oauth/token`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded'
-    },
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       grant_type: 'client_credentials',
       client_id: process.env.ECOLET_CLIENT_ID,
@@ -183,9 +191,6 @@ async function getEcoletToken() {
   return data.access_token;
 }
 
-/**
- * Generează AWB prin ECOLET (Alsendo)
- */
 export async function generateAWB(orderDetails, courierService) {
   const {
     orderId,
@@ -199,10 +204,6 @@ export async function generateAWB(orderDetails, courierService) {
 
   try {
     const token = await getEcoletToken();
-
-    /* =========================
-       PAYLOAD ECOLET
-    ========================= */
 
     const payload = {
       service: courierService,
@@ -221,34 +222,21 @@ export async function generateAWB(orderDetails, courierService) {
         city: address.city,
         county: address.county
       },
-      parcels: [
-        {
-          weight: Math.max(0.5, Number(orderDetails.weight || 1)),
-          cash_on_delivery:
-            paymentMethod === 'ramburs'
-              ? parseFloat(totalAmount)
-              : 0
-        }
-      ],
+      parcels: [{
+        weight: Math.max(0.5, Number(orderDetails.weight || 1)),
+        cash_on_delivery: paymentMethod === 'ramburs' ? parseFloat(totalAmount) : 0
+      }],
       reference: `ORDER-${orderId}`
     };
 
-
-    /* =========================
-       API CALL ECOLET
-    ========================= */
-
-    const awbRes = await fetch(
-      `${process.env.ECOLET_BASE_URL}/send-order`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(payload)
-      }
-    );
+    const awbRes = await fetch(`${process.env.ECOLET_BASE_URL}/send-order`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(payload)
+    });
 
     if (!awbRes.ok) {
       const err = await awbRes.text();
@@ -256,11 +244,6 @@ export async function generateAWB(orderDetails, courierService) {
     }
 
     const result = await awbRes.json();
-
-    /* =========================
-       RETURN STRUCTURĂ AȘTEPTATĂ
-    ========================= */
-
     return {
       success: true,
       awbNumber: result?.data?.waybill_number,
@@ -270,10 +253,6 @@ export async function generateAWB(orderDetails, courierService) {
 
   } catch (error) {
     console.error('❌ Ecolet AWB error:', error.message);
-
-    return {
-      success: false,
-      error: error.message
-    };
+    return { success: false, error: error.message };
   }
 }

@@ -5,7 +5,7 @@ import Stripe from 'stripe';
 import { pool } from './db.js';
 import { sendOrderEmails } from './services/email.js';
 import { sendOblioInvoice, generateAWB } from './services/oblio.js';
-import { createDraftShipment, getShipmentStatus } from './services/ecolet.js';
+import { createDraftShipment, getShipmentStatus, getAvailableServices } from './services/ecolet.js';
 import { createPaymentSession, validatePaymentNotification } from './services/netopia.js';
 
 dotenv.config();
@@ -163,7 +163,7 @@ async function runAutomations(orderId, source) {
                 );
                 console.log(`✅ [Auto] Ecolet SUCCESS - Shipment ${ecoletResult.ecolet_shipment_id} creat.`);
             } else {
-                console.error(`❌ [Auto] Ecolet FAILED:`, ecoletResult.error);
+                console.error(`❌ [Auto] Ecolet FAILED:`, ecoletResult.message || ecoletResult.error);
             }
         } catch (e) {
             console.error(`❌ [Auto] Ecolet ERROR:`, e);
@@ -1227,6 +1227,17 @@ app.post('/api/admin/ecolet/sync', authAdmin, async (req, res) => {
         res.status(500).json({ error: e.message });
     } finally {
         if (connection) connection.release();
+    }
+});
+
+// ⭐ DEBUG: Listează serviciile Ecolet disponibile în contul tău
+// Apelează GET /api/admin/ecolet/services ca să afli slug-urile corecte
+app.get('/api/admin/ecolet/services', authAdmin, async (req, res) => {
+    try {
+        const result = await getAvailableServices();
+        res.json(result);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
     }
 });
 
