@@ -42,7 +42,7 @@ interface Order {
     ecolet_shipment_id?: string;
     label_url?: string;
     ecolet_status?: string;
-    is_hidden?: number; // ⭐ NOU: Arhivare
+    is_hidden?: number;
 }
 
 interface DiscountCode {
@@ -58,12 +58,12 @@ interface DiscountCode {
   is_active: boolean;
 }
 
-// --- COMPONENTE UI REUTILIZABILE ---
+// --- COMPONENTE UI ---
 
 // Slider Apple Style 🍎
-const ToggleSwitch = ({ checked, onChange, label, subLabel }: { checked: boolean, onChange: (v: boolean) => void, label: string, subLabel?: string }) => (
+const ToggleSwitch = ({ checked, onChange, label, subLabel, disabled }: { checked: boolean, onChange: (v: boolean) => void, label: string, subLabel?: string, disabled?: boolean }) => (
   <div className="flex flex-col">
-      <div className="flex items-center gap-3 cursor-pointer" onClick={() => onChange(!checked)}>
+      <div className={`flex items-center gap-3 ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`} onClick={() => !disabled && onChange(!checked)}>
         <div className={`w-11 h-6 rounded-full p-1 transition-colors duration-300 ease-in-out relative ${checked ? 'bg-green-500' : 'bg-neutral-300'}`}>
           <div className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform duration-300 ease-in-out absolute top-1 left-1 ${checked ? 'translate-x-5' : 'translate-x-0'}`} />
         </div>
@@ -93,29 +93,25 @@ export const Admin: React.FC = () => {
   const [secret, setSecret] = useState('');
   const [activeTab, setActiveTab] = useState<'orders' | 'products' | 'discounts'>('orders');
   
-  // Date
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [discounts, setDiscounts] = useState<DiscountCode[]>([]);
   
-  // UI Loading
   const [loading, setLoading] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [ecoletLoading, setEcoletLoading] = useState(false);
 
-  // Filtre & Selecție
   const [selectedOrders, setSelectedOrders] = useState<number[]>([]);
-  const [showHidden, setShowHidden] = useState(false); // ⭐ NOU: Toggle Arhivă
+  const [showHidden, setShowHidden] = useState(false);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
 
-  // ⭐ SETĂRI AUTOMATIZARE (Slider Apple)
+  // ⭐ SETĂRI AUTOMATIZARE
   const [autoEnabled, setAutoEnabled] = useState(false);
   const [autoOblio, setAutoOblio] = useState(true);
   const [autoEcolet, setAutoEcolet] = useState(true);
 
-  // Formulare (Editare)
   const [editingProduct, setEditingProduct] = useState<AdminProduct | null>(null);
   const [showProductForm, setShowProductForm] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -165,33 +161,44 @@ export const Admin: React.FC = () => {
 
   // --- API CALLS ---
 
-  // 1. Încarcă Setările Automatizării
   const fetchSettings = async (token: string) => {
     try {
       const res = await fetch(`${API_URL}/admin/settings`, {
         headers: { 'x-admin-secret': token }
       });
       const data = await res.json();
-      setAutoEnabled(data.automation_enabled || false);
-      setAutoOblio(data.auto_oblio !== false);
-      setAutoEcolet(data.auto_ecolet !== false);
-    } catch (e) { console.error('Settings err:', e); }
+      
+      // 🔥 FIX: Convertim corect Boolean din response
+      setAutoEnabled(data.automation_enabled === true || data.automation_enabled === 'true');
+      setAutoOblio(data.auto_oblio === true || data.auto_oblio === 'true');
+      setAutoEcolet(data.auto_ecolet === true || data.auto_ecolet === 'true');
+      
+      console.log('✅ Settings loaded:', data);
+    } catch (e) { 
+      console.error('Settings err:', e); 
+    }
   };
 
-  // 2. Salvează Setare (Când muți slider-ul)
   const updateSetting = async (key: string, value: boolean) => {
+    // Update optimist în UI
     if(key === 'automation_enabled') setAutoEnabled(value);
     if(key === 'auto_oblio') setAutoOblio(value);
     if(key === 'auto_ecolet') setAutoEcolet(value);
 
-    await fetch(`${API_URL}/admin/settings`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-admin-secret': secret },
-      body: JSON.stringify({ key, value })
-    });
+    // Trimite la Backend
+    try {
+      await fetch(`${API_URL}/admin/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-secret': secret },
+        body: JSON.stringify({ key, value })
+      });
+      console.log(`✅ Setting saved: ${key} = ${value}`);
+    } catch (e) {
+      console.error('❌ Error saving setting:', e);
+      alert('Eroare la salvare setare!');
+    }
   };
 
-  // 3. Încarcă Datele (Comenzi/Produse)
   const fetchData = async (type: 'orders' | 'products' | 'discounts') => {
     setLoading(true);
     try {
@@ -231,10 +238,9 @@ export const Admin: React.FC = () => {
     if (isAuthenticated) fetchData(activeTab);
   }, [activeTab, showHidden, isAuthenticated]);
 
-  // --- HANDLERS ACȚIUNI ---
+  // --- HANDLERS ---
 
   const handleSelectAll = () => {
-    // Select All exclude comenzile ascunse automat
     const visibleOrders = orders.filter(o => o.is_hidden !== 1);
     if (selectedOrders.length === visibleOrders.length) {
       setSelectedOrders([]);
@@ -247,7 +253,6 @@ export const Admin: React.FC = () => {
     setSelectedOrders(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
-  // Handler Generic pentru Acțiuni (Hide, Oblio, Ecolet, Export)
   const handleAction = async (action: 'hide' | 'unhide' | 'oblio' | 'ecolet' | 'csv' | 'xml') => {
     if (selectedOrders.length === 0) return alert('Selectează comenzi!');
     
@@ -258,7 +263,6 @@ export const Admin: React.FC = () => {
 
     setLoading(true);
     try {
-        // 1. HIDE / UNHIDE
         if (action === 'hide' || action === 'unhide') {
             await fetch(`${API_URL}/admin/toggle-visibility`, {
                 method: 'POST',
@@ -268,7 +272,6 @@ export const Admin: React.FC = () => {
             fetchData('orders');
         }
         
-        // 2. OBLIO MANUAL
         else if (action === 'oblio') {
             const res = await fetch(`${API_URL}/admin/send-invoices`, {
                 method: 'POST',
@@ -281,7 +284,6 @@ export const Admin: React.FC = () => {
             fetchData('orders');
         }
 
-        // 3. ECOLET MANUAL
         else if (action === 'ecolet') {
             const res = await fetch(`${API_URL}/admin/ecolet/export`, {
                 method: 'POST',
@@ -294,7 +296,6 @@ export const Admin: React.FC = () => {
             fetchData('orders');
         }
 
-        // 4. EXPORT CSV/XML
         else if (action === 'csv' || action === 'xml') {
             const res = await fetch(`${API_URL}/admin/export-orders`, {
                 method: 'POST',
@@ -317,7 +318,6 @@ export const Admin: React.FC = () => {
     }
   };
 
-  // Handler pentru Sincronizare AWB Ecolet
   const handleEcoletSync = async () => {
     if (selectedOrders.length === 0) return alert('Selectează comenzi!');
     
@@ -517,7 +517,7 @@ export const Admin: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-50 pt-20 px-4 pb-32 animate-fade-in relative font-sans">
+    <div className="min-h-screen bg-neutral-50 pt-20 px-4 pb-40 animate-fade-in relative font-sans">
       <div className="max-w-7xl mx-auto">
         
         {/* HEADER & NAVIGARE */}
@@ -545,11 +545,11 @@ export const Admin: React.FC = () => {
             </div>
         </div>
 
-        {/* --- CONȚINUT TAB: COMENZI --- */}
+        {/* --- TAB COMENZI --- */}
         {activeTab === 'orders' && (
             <div className="animate-fade-in space-y-6">
                 
-                {/* 1. ZONA AUTOMATIZARE & SETĂRI GLOBALE */}
+                {/* ZONA AUTOMATIZARE */}
                 <div className="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-neutral-200 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 lg:gap-6">
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6 w-full lg:w-auto">
                         <ToggleSwitch 
@@ -579,10 +579,9 @@ export const Admin: React.FC = () => {
                     </div>
                 </div>
 
-                {/* 2. FILTRE & CONTROL VIZUALIZARE */}
+                {/* FILTRE */}
                 <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 p-4 md:p-6 space-y-4">
                     <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-end justify-between">
-                        {/* Filtre Rapide */}
                         <div className="w-full lg:w-auto">
                             <label className="label-admin">Perioadă Rapidă</label>
                             <div className="flex flex-wrap gap-2">
@@ -593,7 +592,6 @@ export const Admin: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Toggle Arhivă */}
                         <button 
                             onClick={() => setShowHidden(!showHidden)}
                             className={`px-4 py-2 rounded-lg text-sm font-bold border transition-all flex items-center gap-2 whitespace-nowrap ${showHidden ? 'bg-neutral-800 text-white border-neutral-800' : 'bg-white text-neutral-600 border-neutral-200 hover:border-neutral-400'}`}
@@ -627,7 +625,7 @@ export const Admin: React.FC = () => {
                     </div>
                 </div>
 
-                {/* 3. TABEL COMENZI */}
+                {/* TABEL COMENZI */}
                 <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm text-left min-w-[800px]">
@@ -728,59 +726,84 @@ export const Admin: React.FC = () => {
                     </div>
                 </div>
 
-                {/* 4. BARA PLUTITOARE DE ACȚIUNI */}
+                {/* 🔥 BARA PLUTITOARE MOBILE-OPTIMIZED */}
                 {selectedOrders.length > 0 && (
-                    <div className="fixed bottom-4 md:bottom-8 left-1/2 transform -translate-x-1/2 bg-neutral-900/95 backdrop-blur-md text-white px-3 md:px-4 py-3 rounded-full shadow-2xl flex flex-wrap items-center gap-2 z-50 animate-bounce-in border border-neutral-700 max-w-[95vw]">
-                        <div className="bg-neutral-800 rounded-full px-3 md:px-4 py-2 font-bold text-xs md:text-sm shadow-inner whitespace-nowrap">
-                            {selectedOrders.length} selectate
+                    <div className="fixed bottom-0 left-0 right-0 bg-neutral-900/98 backdrop-blur-md text-white p-3 md:p-4 z-50 border-t border-neutral-700 shadow-2xl">
+                        <div className="max-w-7xl mx-auto">
+                            {/* Header cu număr selectate */}
+                            <div className="flex items-center justify-between mb-2 md:mb-3">
+                                <div className="flex items-center gap-2">
+                                    <div className="bg-brand-yellow text-black rounded-full w-6 h-6 flex items-center justify-center text-xs font-black">
+                                        {selectedOrders.length}
+                                    </div>
+                                    <span className="text-xs md:text-sm font-medium">comenzi selectate</span>
+                                </div>
+                                <button 
+                                    onClick={() => setSelectedOrders([])}
+                                    className="text-xs text-neutral-400 hover:text-white"
+                                >
+                                    ✕ Anulează
+                                </button>
+                            </div>
+
+                            {/* Grid butoane - 2 coloane pe mobil, 4+ pe desktop */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 lg:flex lg:flex-wrap gap-2">
+                                <button 
+                                    onClick={() => handleAction('oblio')} 
+                                    className="bg-white/10 hover:bg-white/20 px-3 py-2.5 rounded-lg text-xs md:text-sm font-medium transition-colors flex items-center justify-center gap-2 whitespace-nowrap disabled:opacity-50"
+                                    disabled={loading}
+                                >
+                                    <span className="text-base">📄</span>
+                                    <span className="hidden md:inline">Oblio</span>
+                                    <span className="md:hidden">Facturi</span>
+                                </button>
+                                
+                                <button 
+                                    onClick={() => handleAction('ecolet')} 
+                                    className="bg-white/10 hover:bg-white/20 px-3 py-2.5 rounded-lg text-xs md:text-sm font-medium transition-colors flex items-center justify-center gap-2 whitespace-nowrap disabled:opacity-50"
+                                    disabled={loading}
+                                >
+                                    <span className="text-base">🚚</span>
+                                    <span>Ecolet</span>
+                                </button>
+
+                                <button 
+                                    onClick={handleEcoletSync} 
+                                    className="bg-white/10 hover:bg-white/20 px-3 py-2.5 rounded-lg text-xs md:text-sm font-medium transition-colors flex items-center justify-center gap-2 whitespace-nowrap disabled:opacity-50"
+                                    disabled={ecoletLoading}
+                                    title="Sincronizare AWB Ecolet"
+                                >
+                                    <span className="text-base">{ecoletLoading ? '⏳' : '🔄'}</span>
+                                    <span>Sync</span>
+                                </button>
+
+                                <button 
+                                    onClick={() => handleAction('csv')} 
+                                    className="bg-white/10 hover:bg-white/20 px-3 py-2.5 rounded-lg text-xs md:text-sm font-medium transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
+                                >
+                                    <span className="text-base">📊</span>
+                                    <span>CSV</span>
+                                </button>
+
+                                {/* Separator vizibil doar pe desktop */}
+                                <div className="hidden lg:block w-px h-8 bg-neutral-700 self-center"></div>
+
+                                {/* Buton Arhivează/Reactivează - Span 2 coloane pe mobil */}
+                                <button 
+                                    onClick={() => handleAction(showHidden ? 'unhide' : 'hide')} 
+                                    className={`col-span-2 md:col-span-1 px-4 py-2.5 rounded-lg text-xs md:text-sm font-bold transition-colors flex items-center justify-center gap-2 ${showHidden ? 'bg-green-600 hover:bg-green-500' : 'bg-red-600 hover:bg-red-500'}`}
+                                >
+                                    <span className="text-base">{showHidden ? '🔓' : '🔒'}</span>
+                                    <span>{showHidden ? 'Reactivează' : 'Arhivează'}</span>
+                                </button>
+                            </div>
                         </div>
-                        
-                        <button 
-                            onClick={() => handleAction('oblio')} 
-                            className="hover:bg-neutral-700 px-3 md:px-4 py-2 rounded-full text-xs md:text-sm font-medium transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap"
-                            disabled={loading}
-                        >
-                            📄 Oblio
-                        </button>
-                        
-                        <button 
-                            onClick={() => handleAction('ecolet')} 
-                            className="hover:bg-neutral-700 px-3 md:px-4 py-2 rounded-full text-xs md:text-sm font-medium transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap"
-                            disabled={loading}
-                        >
-                            🚚 Ecolet
-                        </button>
-
-                        <button 
-                            onClick={handleEcoletSync} 
-                            className="hover:bg-neutral-700 px-3 md:px-4 py-2 rounded-full text-xs md:text-sm font-medium transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap"
-                            disabled={ecoletLoading}
-                            title="Sincronizare AWB Ecolet"
-                        >
-                            {ecoletLoading ? '⏳' : '🔄'} Sync
-                        </button>
-
-                        <button 
-                            onClick={() => handleAction('csv')} 
-                            className="hover:bg-neutral-700 px-3 md:px-4 py-2 rounded-full text-xs md:text-sm font-medium transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap"
-                        >
-                            📊 CSV
-                        </button>
-
-                        <div className="w-px h-6 bg-neutral-700 mx-1 hidden md:block"></div>
-
-                        <button 
-                            onClick={() => handleAction(showHidden ? 'unhide' : 'hide')} 
-                            className={`px-3 md:px-4 py-2 rounded-full text-xs md:text-sm font-bold transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap ${showHidden ? 'bg-green-600 hover:bg-green-500' : 'bg-red-600 hover:bg-red-500'}`}
-                        >
-                            {showHidden ? '🔓 Reactivează' : '🔒 Arhivează'}
-                        </button>
                     </div>
                 )}
             </div>
         )}
 
-        {/* --- CONȚINUT TAB: PRODUSE --- */}
+        {/* TAB PRODUSE - Neschimbat */}
         {activeTab === 'products' && (
             <div className="animate-fade-in">
                 <div className="flex justify-end mb-6">
@@ -1013,7 +1036,7 @@ export const Admin: React.FC = () => {
             </div>
         )}
 
-        {/* --- CONȚINUT TAB: REDUCERI --- */}
+        {/* TAB REDUCERI - Neschimbat */}
         {activeTab === 'discounts' && (
             <div className="animate-fade-in">
                 <div className="flex justify-between items-center mb-6">
@@ -1346,13 +1369,6 @@ export const Admin: React.FC = () => {
             color: #737373; 
             margin-bottom: 0.35rem; 
             letter-spacing: 0.05em;
-        }
-        @keyframes bounce-in { 
-            0% { opacity: 0; transform: translate(-50%, 20px); } 
-            100% { opacity: 1; transform: translate(-50%, 0); } 
-        }
-        .animate-bounce-in { 
-            animation: bounce-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; 
         }
         @keyframes fade-in { 
             from { opacity: 0; } 
