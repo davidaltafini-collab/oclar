@@ -82,6 +82,11 @@ export async function createPaymentSession(paymentData) {
 
     const result = await response.json();
     
+    // --- DEBUGGING START ---
+    // Logăm întregul răspuns pentru a vedea eroarea reală
+    console.log("🔍 NETOPIA RAW RESPONSE:", JSON.stringify(result, null, 2));
+    // --- DEBUGGING END ---
+
     // Verificăm dacă am primit URL-ul de plată
     if (result.payment && result.payment.paymentURL) {
       console.log("[Netopia REST] Success! URL:", result.payment.paymentURL);
@@ -92,8 +97,9 @@ export async function createPaymentSession(paymentData) {
     if (result.error) {
       throw new Error(`Netopia Error: ${result.error.message} (Code: ${result.error.code})`);
     }
-
-    throw new Error("Răspuns invalid de la Netopia (lipsește paymentURL)");
+    
+    // Dacă ajungem aici, răspunsul e valid JSON dar nu conține ce vrem
+    throw new Error(`Răspuns invalid de la Netopia. Response body: ${JSON.stringify(result)}`);
 
   } catch (error) {
     console.error("[Netopia REST] Fail:", error);
