@@ -39,7 +39,7 @@ export async function createPaymentSession(paymentData) {
       posSignature: posSignature, // Semnătura ta (39IB...)
       dateTime: dateTime,
       description: `Comanda ${paymentData.orderId}`,
-      orderID: paymentData.orderId,
+      orderID: String(paymentData.orderId),
       amount: Number(paymentData.amount),
       currency: "RON",
       billing: {
