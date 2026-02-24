@@ -244,14 +244,20 @@ export async function createDraftShipment(order) {
                 locality_id: localityId,
                 locality: targetCity,
                 postal_code: order.postal_code || "000000",
-                street_name: streetName,
-                street_number: "1",
+                
+                // 1. ADRESA VIZUALĂ (Pentru curier)
+                // Va scrie: "FANbox Mega Image Huedin" (fără "1" la final)
+                street_name: streetName, 
+                street_number: isEasyBox ? "." : "1", // Punem punct la locker ca să nu apară "1"
+
                 contact_person: order.customer_name,
                 email: order.customer_email || "client@oclar.ro",
                 phone: (order.customer_phone || "0700000000").replace(/\s+/g, ''),
-                // Configurare Locker
-                has_map_point: isEasyBox,
-                map_point_id: mapPointId
+                
+                // 2. ID-UL TEHNIC (CRITIC PENTRU LOCKER)
+                // Asta îi spune la Ecolet că e locker și care e ID-ul exact
+                has_map_point: isEasyBox,       // Trebuie să fie TRUE
+                map_point_id: mapPointId        // Trebuie să fie NUMĂR (ex: 10338)
             },
             parcel: {
                 type: "package",
