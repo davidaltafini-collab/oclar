@@ -552,24 +552,29 @@ app.post('/api/create-order-ramburs', async (req, res) => {
 
 // 2. NETOPIA INIT (Creare comandă + Redirect plată)
 app.post('/api/create-netopia-session', async (req, res) => {
-    // 1. Preluăm datele, inclusiv lockerId și lockerName
+    // 1. Preluăm datele
     const {
         totalAmount, customerName, customerEmail, customerPhone, address,
         items, subtotal, shippingMethod, discountCode, discountAmount,
         postalCode, lockerId, lockerName
     } = req.body;
 
-    // 2. Construim adresa finală pentru baza de date
-    // Dacă e locker, punem numele lockerului. Dacă e curier, punem strada.
-    const dbAddressLine = (shippingMethod === 'easybox' && lockerName) ? lockerName : (address ? address.line : '');
+    // 2. Verificăm datele critice
+    if (!totalAmount || !customerName || !customerPhone) {
+        return res.status(400).json({ success: false, error: 'Date incomplete' });
+    }
+
+    // 3. Calculăm adresa finală pentru DB (Locker sau Stradă)
+    // IMPORTANT: Verificăm dacă 'address' există înainte să accesăm 'address.line'
+    const addressLine = address ? address.line : '';
+    const dbAddressLine = (shippingMethod === 'easybox' && lockerName) ? lockerName : addressLine;
 
     let connection;
     try {
         connection = await pool.getConnection();
         const itemsJson = JSON.stringify(items);
 
-        // 3. Inserăm în DB
-        // NU punem ID manual. Lăsăm baza de date să pună ID-ul automat (ex: 155, 156...)
+        // 4. Inserăm în DB
         const [result] = await connection.query(
             `INSERT INTO orders 
             (customer_name, customer_email, customer_phone, county, city, address_line, postal_code, locker_id, items, subtotal, shipping_method, shipping_cost, discount_code, discount_amount, total_amount, payment_method, status, created_at) 
@@ -578,42 +583,49 @@ app.post('/api/create-netopia-session', async (req, res) => {
                 customerName,
                 customerEmail,
                 customerPhone,
-                address ? address.county : '',
-                address ? address.city : '',
-                dbAddressLine, // <--- Aici se salvează Numele Lockerului (ex: Pachetomat Cargus...)
+                address ? address.county : '', // Verificare ca să nu crape dacă address e null
+                address ? address.city : '',   // Verificare ca să nu crape
+                dbAddressLine,
                 postalCode || null,
-                (shippingMethod === 'easybox' ? lockerId : null), // <--- Aici se salvează ID-ul Lockerului
+                (shippingMethod === 'easybox' ? lockerId : null),
                 itemsJson,
                 subtotal,
                 shippingMethod,
-                (shippingMethod === 'easybox' ? 15 : 25), // Cost transport
+                (shippingMethod === 'easybox' ? 15 : 25),
                 discountCode,
                 discountAmount,
                 totalAmount
             ]
         );
 
-        // 4. Luăm ID-ul generat de baza de date
         const dbOrderId = result.insertId;
 
-        // Actualizăm stocul codului de reducere (dacă există)
+        // Actualizăm stocul dacă e cazul
         if (discountCode) {
             await connection.query('UPDATE discount_codes SET used_count = used_count + 1 WHERE code = ?', [discountCode]);
         }
 
-        // 5. Trimitem către Netopia doar ce are nevoie (ID-ul scurt și suma)
+        // 5. Trimitem la Netopia
         const netopiaPayload = {
-            orderId: dbOrderId, // Trimitem 155, nu 1740... (evităm eroarea la Netopia)
+            orderId: dbOrderId,
             amount: totalAmount,
             email: customerEmail,
-            phone: customerPhone
+            phone: customerPhone,
+            // Adăugăm datele de facturare cerute de Netopia
+            firstName: customerName.split(' ')[0] || "Client",
+            lastName: customerName.split(' ').slice(1).join(' ') || "Oclar",
+            address: {
+                city: address ? address.city : "Bucuresti",
+                county: address ? address.county : "Bucuresti",
+                line: dbAddressLine
+            }
         };
 
         const sessionResult = await createPaymentSession(netopiaPayload);
         res.json(sessionResult);
 
     } catch (error) {
-        console.error('❌ Eroare Netopia Init:', error.message);
+        console.error('❌ Eroare Netopia Init:', error);
         res.status(500).json({ success: false, error: error.message });
     } finally {
         if (connection) connection.release();
