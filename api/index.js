@@ -591,29 +591,29 @@ app.post('/api/create-netopia-session', async (req, res) => {
         const itemsJson = JSON.stringify(items);
         const newOrderId = orderId || Date.now().toString();
 
-        // 3. SALVĂM ÎN DB
+        // 3. SALVĂM ÎN DB - ACUM E CORECTAT NUMĂRUL DE COLOANE!
         await connection.query(
             `INSERT INTO orders 
             (id, customer_name, customer_email, customer_phone, county, city, address_line, postal_code, locker_id, items, subtotal, shipping_method, shipping_cost, discount_code, discount_amount, total_amount, payment_method, status, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'card', 'pending', NOW())
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'card', 'pending', NOW())
             ON DUPLICATE KEY UPDATE status='pending'`,
             [
-                newOrderId,
-                customerName,
-                customerEmail,
-                customerPhone,
-                address.county,
-                address.city,
-                finalAddress, // <--- AICI ESTE REPARAȚIA PENTRU ECOLET
-                postalCode || null,
-                (shippingMethod === 'easybox' ? lockerId : null),
-                itemsJson,
-                subtotal,
-                shippingMethod,
-                shippingCostVal,
-                discountCode,
-                discountAmount,
-                finalAmount
+                newOrderId,         // 1
+                customerName,       // 2
+                customerEmail,      // 3
+                customerPhone,      // 4
+                address.county,     // 5
+                address.city,       // 6
+                finalAddress,       // 7 (Fix Locker)
+                postalCode || null, // 8
+                (shippingMethod === 'easybox' ? lockerId : null), // 9
+                itemsJson,          // 10
+                subtotal,           // 11
+                shippingMethod,     // 12
+                shippingCostVal,    // 13
+                discountCode,       // 14
+                discountAmount,     // 15
+                finalAmount         // 16 (Acesta lipsea din SQL-ul anterior!)
             ]
         );
 
@@ -622,24 +622,22 @@ app.post('/api/create-netopia-session', async (req, res) => {
             await connection.query('UPDATE discount_codes SET used_count = used_count + 1 WHERE code = ?', [discountCode]);
         }
 
-        // 4. PREGĂTIM DATELE PENTRU FUNCȚIA TA DIN netopia.js
-        // Fișierul tău netopia.js așteaptă un obiect specific ("email", "firstName", etc)
+        // 4. PREGĂTIM DATELE PENTRU NETOPIA
         const netopiaPayload = {
             orderId: newOrderId,
             amount: finalAmount,
-            email: customerEmail,       // Așa cere netopia.js (nu customerEmail)
-            phone: customerPhone,       // Așa cere netopia.js
+            email: customerEmail,
+            phone: customerPhone,
             firstName: customerName.split(' ')[0] || "Client",
             lastName: customerName.split(' ').slice(1).join(' ') || "Oclar",
             address: {
                 city: address.city,
                 county: address.county,
-                line: finalAddress      // Trimitem numele lockerului și la plată
+                line: finalAddress // Trimitem numele lockerului și la plată
             }
         };
 
-        // APELĂM FUNCȚIA CORECTĂ (createPaymentSession, nu startNetopiaPayment)
-        // Nu mai folosim "import" dinamic pentru că o ai deja importată sus în fișier
+        // APELĂM FUNCȚIA CORECTĂ
         const sessionResult = await createPaymentSession(netopiaPayload);
 
         res.json(sessionResult);
