@@ -472,10 +472,11 @@ app.post('/api/create-order-ramburs', async (req, res) => {
             discountAmount,
             totalAmount,
             postalCode,
-            lockerId
+            lockerId,
+            lockerName
         } = body;
-
-        if (!customerName || !customerPhone || !address || !items || !totalAmount) {
+         const finalAddress = (shippingMethod === 'easybox' && lockerName) ? lockerName : address.line;
+        if (!customerName || !customerPhone || !customerEmail ||!address || !items || !totalAmount) {
             return res.status(400).json({ error: 'Lipsesc date obligatorii' });
         }
 
@@ -492,7 +493,7 @@ app.post('/api/create-order-ramburs', async (req, res) => {
                 customerPhone,
                 address.county,
                 address.city,
-                address.line,
+                finalAddress,
                 postalCode || null,
                 (shippingMethod === 'easybox' ? lockerId : null),
                 itemsJson,
