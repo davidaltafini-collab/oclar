@@ -579,20 +579,21 @@ app.post('/api/create-netopia-session', async (req, res) => {
         connection = await pool.getConnection();
         const itemsJson = JSON.stringify(items);
 
-        // 4. Inserăm comanda în DB (Fără ID manual -> Auto Increment)
+        // 4. Inserăm comanda în DB (Cu coloana locker_details)
         const [result] = await connection.query(
             `INSERT INTO orders 
-            (customer_name, customer_email, customer_phone, county, city, address_line, postal_code, locker_id, items, subtotal, shipping_method, shipping_cost, discount_code, discount_amount, total_amount, payment_method, status, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'card', 'pending', NOW())`,
+            (customer_name, customer_email, customer_phone, county, city, address_line, postal_code, locker_id, locker_details, items, subtotal, shipping_method, shipping_cost, discount_code, discount_amount, total_amount, payment_method, status, created_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'card', 'pending', NOW())`,
             [
                 customerName, 
                 customerEmail, 
                 customerPhone, 
                 billingCounty, 
                 billingCity, 
-                dbAddressLine, // <--- Aici ajunge Numele Lockerului (pentru Ecolet)
+                billingLine, // Păstrăm adresa de facturare curată aici
                 postalCode || null, 
                 (shippingMethod === 'easybox' ? lockerId : null), 
+                (shippingMethod === 'easybox' ? lockerName : null), // Aici salvăm OPERATOR - NUME
                 itemsJson, 
                 subtotal, 
                 shippingMethod, 

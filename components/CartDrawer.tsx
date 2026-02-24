@@ -288,7 +288,9 @@ export const CartDrawer: React.FC = () => {
           window.BPWidget.init(container, {
             callback: (point: any) => {
               console.log('📦 Locker Selected:', point);
-              const lockerName = point.name || point.description || point.operator + ' Locker';
+              const operator = point.operator || 'SAMEDAY'; 
+              const rawName = point.name || point.description || 'Locker';
+              const lockerName = `${operator} - ${rawName}`;
               const lockerId = point.id || point.code; 
               const lockerCity = point.city || '';
               const lockerCounty = point.province || '';

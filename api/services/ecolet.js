@@ -185,28 +185,34 @@ export async function createDraftShipment(order) {
             other: parseInt(process.env.ECOLET_CONTRACT_ID || "4")
         };
 
-        // Algoritm de detectare bazat pe textul din comandă
-        let selectedService = SERVICE_MAP.sameday; // Default Sameday
-        let selectedContract = CONTRACT_MAP.sameday;
-        const detectorText = (addressDetails + " " + (order.locker_details || "")).toLowerCase();
+        // Algoritm STRICT de detectare bazat pe locker_details din DB
+        let selectedService = null;
+        let selectedContract = null;
+        
+        // Folosim strict coloana locker_details (ex: "SAMEDAY - Easybox...")
+        const lockerInfo = (order.locker_details || "").toLowerCase();
 
-        if (detectorText.includes('cargus') || detectorText.includes('ship')) {
-            console.log('Detectat: CARGUS');
+        console.log(`🔎 Ecolet Strict Check: "${lockerInfo}"`);
+
+        if (lockerInfo.includes('cargus')) {
             selectedService = SERVICE_MAP.cargus;
             selectedContract = CONTRACT_MAP.cargus;
         } 
-        else if (detectorText.includes('fan') || detectorText.includes('collect point')) {
-            console.log('Detectat: FAN COURIER');
+        else if (lockerInfo.includes('fan') || lockerInfo.includes('fan courier')) {
             selectedService = SERVICE_MAP.fan;
             selectedContract = CONTRACT_MAP.other;
         }
-        else if (detectorText.includes('dpd')) {
-            console.log('Detectat: DPD');
+        else if (lockerInfo.includes('dpd')) {
             selectedService = SERVICE_MAP.dpd;
             selectedContract = CONTRACT_MAP.other;
         }
+        else if (lockerInfo.includes('sameday')) {
+            selectedService = SERVICE_MAP.sameday;
+            selectedContract = CONTRACT_MAP.sameday;
+        } 
         else {
-            console.log('Detectat: SAMEDAY (Default)');
+            // FĂRĂ DEFAULT! Dăm eroare dacă nu identificăm operatorul.
+            throw new Error(`[Ecolet] Nu s-a putut identifica operatorul locker-ului din: "${lockerInfo}". Verifică baza de date.`);
         }
 
         // ============================================================
