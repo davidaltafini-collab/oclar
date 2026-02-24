@@ -578,7 +578,7 @@ app.post('/api/create-netopia-session', async (req, res) => {
 
     const finalAmount = totalAmount || amount;
 
-    // 2. NETOPIA INIT (Creare comandă + Redirect plată)
+// 2. NETOPIA INIT (Creare comandă + Redirect plată)
 app.post('/api/create-netopia-session', async (req, res) => {
     const body = req.body;
     
@@ -618,8 +618,7 @@ app.post('/api/create-netopia-session', async (req, res) => {
         connection = await pool.getConnection();
         const itemsJson = JSON.stringify(items);
 
-        // 3. SALVĂM ÎN DB (FĂRĂ ID MANUAL)
-        // Am șters 'id' din listă și lăsăm baza de date să pună următorul număr (Auto Increment)
+        // 3. SALVĂM ÎN DB (FĂRĂ ID MANUAL - Lăsăm baza de date să îl genereze)
         const [result] = await connection.query(
             `INSERT INTO orders 
             (customer_name, customer_email, customer_phone, county, city, address_line, postal_code, locker_id, items, subtotal, shipping_method, shipping_cost, discount_code, discount_amount, total_amount, payment_method, status, created_at) 
@@ -630,7 +629,7 @@ app.post('/api/create-netopia-session', async (req, res) => {
                 customerPhone,      
                 address.county,     
                 address.city,       
-                finalAddress,       // Adresa (sau Nume Locker)
+                finalAddress,       // Aici salvăm Numele Lockerului
                 postalCode || null, 
                 (shippingMethod === 'easybox' ? lockerId : null), 
                 itemsJson,          
@@ -643,18 +642,17 @@ app.post('/api/create-netopia-session', async (req, res) => {
             ]
         );
 
-        // Luăm ID-ul generat de baza de date
+        // Luăm ID-ul generat de baza de date (ex: 150)
         const dbOrderId = result.insertId;
-        console.log(`✅ Comandă Card salvată. ID Generat: ${dbOrderId}`);
 
         // Actualizare stoc cod reducere
         if (discountCode) {
             await connection.query('UPDATE discount_codes SET used_count = used_count + 1 WHERE code = ?', [discountCode]);
         }
 
-        // 4. PREGĂTIM DATELE PENTRU NETOPIA (Folosind ID-ul real din bază)
+        // 4. PREGĂTIM DATELE PENTRU NETOPIA (Folosind ID-ul mic din bază)
         const netopiaPayload = {
-            orderId: dbOrderId, // <--- Folosim ID-ul mic și corect (ex: 150)
+            orderId: dbOrderId, 
             amount: finalAmount,
             email: customerEmail,
             phone: customerPhone,
@@ -663,7 +661,7 @@ app.post('/api/create-netopia-session', async (req, res) => {
             address: {
                 city: address.city,
                 county: address.county,
-                line: finalAddress 
+                line: finalAddress // Trimitem numele lockerului și la Netopia
             }
         };
 
