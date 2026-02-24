@@ -5,6 +5,8 @@ import Stripe from 'stripe';
 import { pool } from './db.js';
 import { sendOrderEmails } from './services/email.js';
 import { sendOblioInvoice, generateAWB } from './services/oblio.js';
+import { createDraftShipment, getShipmentStatus, getAvailableServices } from './services/ecolet.js';
+import { createPaymentSession, validatePaymentNotification } from './services/netopia.js';
 
 dotenv.config();
 
@@ -22,21 +24,162 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: '2024-12-18.acacia',
 });
 
-// CONFIGURARE PREȚURI LIVRARE
 const SHIPPING_COSTS = {
   easybox: 15.00,
   courier: 25.00
 };
 
-// --- 1. CONFIGURARE CORS (TREBUIE PRIMUL) ---
+// ==========================================
+// 🤖 SISTEM AUTOMATIZARE (ENGINE CORE)
+// ==========================================
 
+/**
+ * Verifică dacă o setare de automatizare este activată
+ */
+async function checkAutomation(key) {
+    try {
+        const connection = await pool.getConnection();
+        const [rows] = await connection.query(
+            'SELECT setting_value FROM admin_settings WHERE setting_key = ?', 
+            [key]
+        );
+        connection.release();
+        // Acceptă atât boolean true cât și string 'true'
+        const val = rows.length > 0 ? rows[0].setting_value : 'false';
+        return val === 'true' || val === true;
+    } catch (e) {
+        console.error('⚠️ Automation check failed:', e);
+        return false;
+    }
+}
 
+// Citește TOATE setările dintr-o singură query (mai eficient + mai reliable)
+async function getAllAutomationSettings() {
+    try {
+        const connection = await pool.getConnection();
+        const [rows] = await connection.query('SELECT setting_key, setting_value FROM admin_settings');
+        connection.release();
+        const settings = {};
+        rows.forEach(r => { settings[r.setting_key] = r.setting_value === 'true' || r.setting_value === true; });
+        return settings;
+    } catch (e) {
+        console.error('⚠️ getAllAutomationSettings failed:', e);
+        return {};
+    }
+}
 
+/**
+ * FUNCȚIE PRINCIPALĂ: Rulează automatizările pentru o comandă
+ * Apelată după: Stripe Webhook, Netopia IPN, Ramburs Create
+ */
+async function runAutomations(orderId, source) {
+    console.log(`🤖 [Auto] Verificare automatizări #${orderId} (${source})...`);
+    
+    // ⭐ Citim TOATE setările dintr-o singură query (fix reliability)
+    const settings = await getAllAutomationSettings();
+    
+    const autoEnabled = settings['automation_enabled'] || false;
+    if (!autoEnabled) {
+        console.log('🤖 [Auto] Master switch: OPRIT.');
+        return;
+    }
 
-// OPTIONS pentru preflight
-//app.options('(.*)', cors());
+    const autoOblio = settings['auto_oblio'] !== false;  // Default true dacă nu există
+    const autoEcolet = settings['auto_ecolet'] !== false; // Default true dacă nu există
 
-// --- 2. WEBHOOK STRIPE (TREBUIE ÎNAINTEA JSON PARSER!) ---
+    console.log(`🤖 [Auto] Master=ON | Oblio=${autoOblio} | Ecolet=${autoEcolet}`);
+
+    // 3. Luăm datele comenzii din baza de date
+    const connection = await pool.getConnection();
+    const [orders] = await connection.query('SELECT * FROM orders WHERE id = ?', [orderId]);
+    
+    if (orders.length === 0) {
+        console.log(`⚠️ [Auto] Comanda #${orderId} nu există în DB.`);
+        connection.release();
+        return;
+    }
+
+    const order = orders[0];
+    connection.release();
+
+    // Parsăm JSON-urile din DB
+    const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+    const address = typeof order.shipping_address === 'string' ? 
+                   JSON.parse(order.shipping_address) : 
+                   { 
+                       line1: order.address_line, 
+                       city: order.city, 
+                       county: order.county,
+                       postal_code: order.postal_code
+                   };
+
+    // --- A. AUTOMATIZARE OBLIO (Facturare) ---
+    if (autoOblio && !order.oblio_invoice_id) {
+        console.log(`🤖 [Auto] Generare factură Oblio pentru #${orderId}...`);
+        
+        try {
+            const oblioResult = await sendOblioInvoice({
+                orderId: order.id,
+                customerName: order.customer_name,
+                customerEmail: order.customer_email,
+                customerPhone: order.customer_phone,
+                address,
+                items,
+                subtotal: order.subtotal,
+                shippingCost: order.shipping_cost,
+                discountAmount: order.discount_amount,
+                discountCode: order.discount_code,
+                totalAmount: order.total_amount,
+                paymentMethod: order.payment_method
+            });
+            
+            if (oblioResult.success) {
+                await pool.query(
+                    'UPDATE orders SET oblio_invoice_id = ?, oblio_invoice_number = ? WHERE id = ?', 
+                    [oblioResult.invoiceId, oblioResult.invoiceNumber, order.id]
+                );
+                console.log(`✅ [Auto] Oblio SUCCESS - Factura ${oblioResult.invoiceNumber} generată.`);
+            } else {
+                console.error(`❌ [Auto] Oblio FAILED:`, oblioResult.error);
+            }
+        } catch (e) {
+            console.error(`❌ [Auto] Oblio ERROR:`, e);
+        }
+    } else if (autoOblio && order.oblio_invoice_id) {
+        console.log(`ℹ️ [Auto] Oblio: Factura deja există pentru #${orderId}.`);
+    }
+
+    // --- B. AUTOMATIZARE ECOLET (Curier) ---
+    if (autoEcolet && !order.ecolet_shipment_id) {
+        console.log(`🤖 [Auto] Creare shipment Ecolet pentru #${orderId}...`);
+        
+        try {
+            const ecoletResult = await createDraftShipment(order);
+            
+            if (ecoletResult.success) {
+                await pool.query(
+                    'UPDATE orders SET ecolet_shipment_id = ?, ecolet_status = ? WHERE id = ?', 
+                    [ecoletResult.ecolet_shipment_id, ecoletResult.status, order.id]
+                );
+                console.log(`✅ [Auto] Ecolet SUCCESS - Shipment ${ecoletResult.ecolet_shipment_id} creat.`);
+            } else {
+                console.error(`❌ [Auto] Ecolet FAILED:`, ecoletResult.message || ecoletResult.error);
+            }
+        } catch (e) {
+            console.error(`❌ [Auto] Ecolet ERROR:`, e);
+        }
+    } else if (autoEcolet && order.ecolet_shipment_id) {
+        console.log(`ℹ️ [Auto] Ecolet: Shipment deja există pentru #${orderId}.`);
+    }
+
+    console.log(`🤖 [Auto] Automatizare completă pentru #${orderId}.`);
+}
+
+// ==========================================
+// MIDDLEWARE & WEBHOOKS
+// ==========================================
+
+// WEBHOOK STRIPE (Raw Body - ÎNAINTE DE JSON PARSER!)
 app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
     const sig = req.headers['stripe-signature'];
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -58,6 +201,7 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
       let connection;
+      
       try {
         connection = await pool.getConnection();
         
@@ -92,13 +236,22 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
           total_amount: (session.amount_total || 0) / 100,
         };
 
+        // Inserăm comanda cu status 'paid' (Stripe plătit instant)
         const [result] = await connection.query(
           `INSERT INTO orders 
            (stripe_session_id, customer_name, customer_email, customer_phone, shipping_address, items, subtotal, shipping_method, shipping_cost, discount_code, discount_amount, total_amount, payment_method, status, created_at) 
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'card', 'paid', NOW())`,
-          [orderData.stripe_session_id, orderData.customer_name, orderData.customer_email, orderData.customer_phone, orderData.shipping_address, orderData.items, orderData.subtotal, orderData.shipping_method, orderData.shipping_cost, orderData.discount_code, orderData.discount_amount, orderData.total_amount]
+          [
+            orderData.stripe_session_id, orderData.customer_name, orderData.customer_email, 
+            orderData.customer_phone, orderData.shipping_address, orderData.items, 
+            orderData.subtotal, orderData.shipping_method, orderData.shipping_cost, 
+            orderData.discount_code, orderData.discount_amount, orderData.total_amount
+          ]
         );
 
+        const newOrderId = result.insertId;
+
+        // Actualizăm stocul codului de reducere
         if (orderData.discount_code) {
              await connection.query(
                  'UPDATE discount_codes SET used_count = used_count + 1 WHERE code = ?',
@@ -106,9 +259,10 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
              );
         }
 
+        // Trimitem Email Confirmare
         if (orderData.customer_email) {
             const emailDetails = {
-                orderId: result.insertId.toString(),
+                orderId: newOrderId.toString(),
                 customerName: orderData.customer_name,
                 customerEmail: orderData.customer_email,
                 customerPhone: orderData.customer_phone,
@@ -127,10 +281,14 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
                 paymentMethod: 'card',
                 paymentStatus: 'paid'
             };
-            await sendOrderEmails(emailDetails).catch(err => console.error('❌ Email error:', err));
+            sendOrderEmails(emailDetails).catch(err => console.error('❌ Email error:', err));
         }
         
-        console.log('✅ Order created successfully:', result.insertId);
+        console.log('✅ Stripe Order created successfully:', newOrderId);
+
+        // 🤖 DECLANȘARE AUTOMATIZARE
+        runAutomations(newOrderId, 'stripe_webhook');
+
       } catch (error) {
         console.error('❌ Error processing webhook:', error);
         return res.status(500).json({ error: 'Internal server error' });
@@ -138,14 +296,18 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
         if (connection) connection.release();
       }
     }
+    
     res.json({ received: true });
 });
 
-// --- 3. PARSER JSON (DUPĂ WEBHOOK) ---
+// JSON PARSER (După Webhook - IMPORTANT!)
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// --- 4. HEALTH CHECK (PENTRU MONITORING) ---
+// ==========================================
+// RUTE STANDARD
+// ==========================================
+
 app.get('/api/health', async (req, res) => {
     try {
         const connection = await pool.getConnection();
@@ -158,7 +320,6 @@ app.get('/api/health', async (req, res) => {
     }
 });
 
-// --- 5. RUTE PRODUSE ---
 app.get('/api/products', async (req, res) => {
     let connection;
     try {
@@ -204,7 +365,6 @@ app.get('/api/products/:id', async (req, res) => {
     }
 });
 
-// --- 6. VALIDARE COD REDUCERE ---
 app.post('/api/validate-discount', async (req, res) => {
     const { code, subtotal } = req.body;
     
@@ -266,7 +426,6 @@ app.post('/api/validate-discount', async (req, res) => {
     }
 });
 
-// --- 7. CALCUL SHIPPING ---
 app.post('/api/calculate-shipping', async (req, res) => {
     try {
         const { method } = req.body;
@@ -281,30 +440,43 @@ app.post('/api/calculate-shipping', async (req, res) => {
     }
 });
 
-// --- 8. RUTA COMANDĂ RAMBURS ---
+// ==========================================
+// RUTE PLĂȚI & COMENZI
+// ==========================================
+
+// 1. RAMBURS (Create Order)
 app.post('/api/create-order-ramburs', async (req, res) => {
     let connection;
     try {
         const body = req.body;
-        
+        console.log("🔍 DEBUG LOCKER:", {
+        lockerId: body.lockerId,
+        shippingMethod: body.shippingMethod,
+        // Vezi dacă mai vine ceva util
+        fullBody: JSON.stringify(body).substring(0, 200) 
+         });
+
         let shippingCostVal = 0;
         if (body.shippingCost !== undefined) shippingCostVal = parseFloat(body.shippingCost);
         else if (body.shipping_cost !== undefined) shippingCostVal = parseFloat(body.shipping_cost);
 
-        const { 
-            customerName, 
-            customerEmail, 
-            customerPhone, 
-            address, 
-            items, 
+        const {
+            customerName,
+            customerEmail,
+            customerPhone,
+            address,
+            items,
             subtotal,
             shippingMethod,
             discountCode,
             discountAmount,
-            totalAmount 
+            totalAmount,
+            postalCode,
+            lockerId,
+            lockerName
         } = body;
-
-        if (!customerName || !customerPhone || !address || !items || !totalAmount) {
+         const finalAddress = (shippingMethod === 'easybox' && lockerName) ? lockerName : address.line;
+        if (!customerName || !customerPhone || !customerEmail ||!address || !items || !totalAmount) {
             return res.status(400).json({ error: 'Lipsesc date obligatorii' });
         }
 
@@ -313,10 +485,28 @@ app.post('/api/create-order-ramburs', async (req, res) => {
 
         const [result] = await connection.query(
             `INSERT INTO orders 
-            (customer_name, customer_email, customer_phone, county, city, address_line, items, subtotal, shipping_method, shipping_cost, discount_code, discount_amount, total_amount, payment_method, status, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ramburs', 'pending', NOW())`,
-            [customerName, customerEmail, customerPhone, address.county, address.city, address.line, itemsJson, subtotal, shippingMethod, shippingCostVal, discountCode, discountAmount, totalAmount]
+            (customer_name, customer_email, customer_phone, county, city, address_line, postal_code, locker_id, items, subtotal, shipping_method, shipping_cost, discount_code, discount_amount, total_amount, payment_method, status, created_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ramburs', 'pending', NOW())`,
+            [
+                customerName,
+                customerEmail,
+                customerPhone,
+                address.county,
+                address.city,
+                finalAddress,
+                postalCode || null,
+                (shippingMethod === 'easybox' ? lockerId : null),
+                itemsJson,
+                subtotal,
+                shippingMethod,
+                shippingCostVal,
+                discountCode,
+                discountAmount,
+                totalAmount
+            ]
         );
+
+        const newOrderId = result.insertId;
 
         if (discountCode) {
             await connection.query(
@@ -327,9 +517,9 @@ app.post('/api/create-order-ramburs', async (req, res) => {
 
         if (customerEmail) {
             const emailDetails = {
-                orderId: result.insertId.toString(),
-                customerName, 
-                customerEmail, 
+                orderId: newOrderId.toString(),
+                customerName,
+                customerEmail,
                 customerPhone,
                 address: { line1: address.line, city: address.city, county: address.county },
                 subtotal,
@@ -337,25 +527,163 @@ app.post('/api/create-order-ramburs', async (req, res) => {
                 shippingMethod,
                 discountCode,
                 discountAmount,
-                totalAmount, 
+                totalAmount,
                 items,
                 paymentMethod: 'ramburs',
                 paymentStatus: 'pending'
             };
-            await sendOrderEmails(emailDetails).catch(err => console.error('❌ Email error:', err));
+            sendOrderEmails(emailDetails).catch(err => console.error('❌ Email error:', err));
         }
-        
-        console.log('✅ Ramburs order created:', result.insertId);
-        res.json({ success: true, orderId: result.insertId });
-    } catch (e) { 
+
+        console.log('✅ Ramburs order created:', newOrderId);
+
+        // 🤖 DECLANȘARE AUTOMATIZARE
+        runAutomations(newOrderId, 'ramburs_create');
+
+        res.json({ success: true, orderId: newOrderId });
+    } catch (e) {
         console.error('❌ Error creating ramburs order:', e);
-        res.status(500).json({ error: 'Eroare la procesarea comenzii' }); 
-    } finally { 
-        if(connection) connection.release(); 
+        res.status(500).json({ error: e.message || 'Failed to create order' });
+    } finally {
+        if (connection) connection.release();
     }
 });
 
-// --- 9. RUTA STRIPE CHECKOUT ---
+// 2. NETOPIA INIT (Creare comandă + Redirect plată)
+app.post('/api/create-netopia-session', async (req, res) => {
+    const body = req.body;
+    
+    // 1. Calculăm costul transportului
+    let shippingCostVal = 0;
+    if (body.shippingCost !== undefined) shippingCostVal = parseFloat(body.shippingCost);
+    else if (body.shipping_cost !== undefined) shippingCostVal = parseFloat(body.shipping_cost);
+
+    const {
+        amount,
+        totalAmount,
+        customerName,
+        customerEmail,
+        customerPhone,
+        address,
+        items,
+        subtotal,
+        shippingMethod,
+        discountCode,
+        discountAmount,
+        postalCode,
+        lockerId,
+        lockerName,
+        orderId 
+    } = body;
+
+    const finalAmount = totalAmount || amount;
+
+  app.post('/api/create-netopia-session', async (req, res) => {
+    const { totalAmount, customerName, customerEmail, customerPhone, address, items, subtotal, shippingMethod, discountCode, discountAmount, postalCode, lockerId, lockerName } = req.body;
+
+    // 1. Salvăm numele lockerului în variabila de adresă (doar pentru baza noastră de date)
+    const dbAddressLine = (shippingMethod === 'easybox' && lockerName) ? lockerName : address.line;
+
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        const itemsJson = JSON.stringify(items);
+
+        // 2. Inserăm în DB (Fără ID manual ca să nu mai primești eroarea "Out of range")
+        const [result] = await connection.query(
+            `INSERT INTO orders 
+            (customer_name, customer_email, customer_phone, county, city, address_line, postal_code, locker_id, items, subtotal, shipping_method, shipping_cost, discount_code, discount_amount, total_amount, payment_method, status, created_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'card', 'pending', NOW())`,
+            [customerName, customerEmail, customerPhone, address.county, address.city, dbAddressLine, postalCode || null, (shippingMethod === 'easybox' ? lockerId : null), itemsJson, subtotal, shippingMethod, (shippingMethod === 'easybox' ? 15 : 25), discountCode, discountAmount, totalAmount]
+        );
+
+        // 3. Trimitem la Netopia DOAR ID-ul generat de DB și suma
+        const netopiaPayload = {
+            orderId: result.insertId, // ID-ul scurt (ex: 150)
+            amount: totalAmount,
+            email: customerEmail,
+            phone: customerPhone
+        };
+
+        const sessionResult = await createPaymentSession(netopiaPayload);
+        res.json(sessionResult);
+
+    } catch (error) {
+        console.error('Eroare:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        if (connection) connection.release();
+    }
+});
+
+// 3. NETOPIA CONFIRM (IPN - Webhook confirmare plată)
+app.post('/api/netopia/confirm', async (req, res) => {
+    try {
+        console.log("--------------- NETOPIA IPN (REST) ---------------");
+
+        const paymentInfo = validatePaymentNotification(req.body);
+
+        if (paymentInfo.success) {
+            console.log(`✅ PLATĂ CONFIRMATĂ: Comanda #${paymentInfo.orderId}`);
+
+            const connection = await pool.getConnection();
+
+            // Actualizăm statusul comenzii
+            await connection.query(
+                'UPDATE orders SET status = "paid", transaction_id = ? WHERE id = ?',
+                [paymentInfo.transactionId, paymentInfo.orderId]
+            );
+
+            // Luăm datele comenzii pentru email
+            const [orders] = await connection.query('SELECT * FROM orders WHERE id = ?', [paymentInfo.orderId]);
+
+            if (orders.length > 0) {
+                const order = orders[0];
+
+                const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+                const address = typeof order.shipping_address === 'string' ? JSON.parse(order.shipping_address) :
+                    { line1: order.address_line, city: order.city, county: order.county };
+
+                // Trimitem email confirmare
+                if (order.customer_email) {
+                    const emailDetails = {
+                        orderId: order.id.toString(),
+                        customerName: order.customer_name,
+                        customerEmail: order.customer_email,
+                        customerPhone: order.customer_phone,
+                        address: address,
+                        subtotal: order.subtotal,
+                        shippingCost: order.shipping_cost,
+                        shippingMethod: order.shipping_method,
+                        discountCode: order.discount_code,
+                        discountAmount: order.discount_amount,
+                        totalAmount: order.total_amount,
+                        items: items,
+                        paymentMethod: 'card',
+                        paymentStatus: 'paid'
+                    };
+                    sendOrderEmails(emailDetails).catch(err => console.error('❌ Email error:', err));
+                }
+
+                // 🤖 DECLANȘARE AUTOMATIZARE
+                runAutomations(order.id, 'netopia_confirm');
+            }
+
+            connection.release();
+        } else {
+            console.log(`⚠️ PLATĂ NE-CONFIRMATĂ: ${paymentInfo.message}`);
+        }
+
+        // Răspuns JSON pentru Netopia
+        res.json({ error: { code: 0, message: "success" } });
+
+    } catch (error) {
+        console.error("Eroare procesare IPN:", error);
+        res.status(500).json({ error: { code: 1, message: error.message } });
+    }
+});
+
+// 4. STRIPE CHECKOUT SESSION
 app.post('/api/create-checkout-session', async (req, res) => {
     try {
         const body = req.body;
@@ -433,24 +761,114 @@ app.post('/api/create-checkout-session', async (req, res) => {
     }
 });
 
-// --- 10. RUTE ADMIN ---
-app.all('/api/admin', async (req, res) => {
+// ==========================================
+// RUTE ADMIN - Dashboard NASA 🚀
+// ==========================================
+
+// Middleware autentificare admin
+function authAdmin(req, res, next) {
     const adminSecret = req.headers['x-admin-secret'];
     if (!adminSecret || adminSecret !== process.env.ADMIN_SECRET) {
         return res.status(401).json({ error: 'Acces Neautorizat' });
+    }
+    next();
+}
+
+// 1. GET SETTINGS (Starea sliderelor)
+app.get('/api/admin/settings', authAdmin, async (req, res) => {
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        const [rows] = await connection.query('SELECT * FROM admin_settings');
+        
+        const settings = {};
+        rows.forEach(r => {
+            // Convertim 'true'/'false' (string) în boolean
+            settings[r.setting_key] = r.setting_value === 'true';
+        });
+        
+        res.json(settings);
+    } catch (e) {
+        console.error('❌ Error fetching settings:', e);
+        res.status(500).json({ error: e.message });
+    } finally {
+        if(connection) connection.release();
+    }
+});
+
+// 2. UPDATE SETTINGS (Salvare setare)
+app.post('/api/admin/settings', authAdmin, async (req, res) => {
+    const { key, value } = req.body;
+    
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        
+        // UPSERT: INSERT ... ON DUPLICATE KEY UPDATE
+        await connection.query(
+            `INSERT INTO admin_settings (setting_key, setting_value) 
+             VALUES (?, ?) 
+             ON DUPLICATE KEY UPDATE setting_value = ?`,
+            [key, String(value), String(value)]
+        );
+        
+        console.log(`✅ Setting updated: ${key} = ${value}`);
+        res.json({ success: true });
+    } catch (e) {
+        console.error('❌ Error updating setting:', e);
+        res.status(500).json({ error: e.message });
+    } finally {
+        if(connection) connection.release();
+    }
+});
+
+// 3. TOGGLE VISIBILITY (Hide/Unhide - Arhivare)
+app.post('/api/admin/toggle-visibility', authAdmin, async (req, res) => {
+    const { orderIds, hide } = req.body;
+    
+    if (!orderIds || orderIds.length === 0) {
+        return res.status(400).json({ error: 'No orders selected' });
     }
 
     let connection;
     try {
         connection = await pool.getConnection();
+        const placeholders = orderIds.map(() => '?').join(',');
+        
+        await connection.query(
+            `UPDATE orders SET is_hidden = ? WHERE id IN (${placeholders})`,
+            [hide ? 1 : 0, ...orderIds]
+        );
+        
+        console.log(`✅ ${orderIds.length} orders ${hide ? 'hidden' : 'unhidden'}`);
+        res.json({ success: true });
+    } catch (e) {
+        console.error('❌ Error toggling visibility:', e);
+        res.status(500).json({ error: e.message });
+    } finally {
+        if(connection) connection.release();
+    }
+});
+
+// 4. FETCH ADMIN DATA (Cu filtru Hidden)
+app.all('/api/admin', authAdmin, async (req, res) => {
+    let connection;
+    try {
+        connection = await pool.getConnection();
         
         if (req.method === 'GET') {
-            const { type, startDate, endDate, status } = req.query;
+            const { type, showHidden, startDate, endDate, status } = req.query;
             
             if (type === 'orders') {
                 let query = 'SELECT * FROM orders WHERE 1=1';
                 const params = [];
 
+                // Filtru vizibilitate
+                if (showHidden !== 'true') {
+                    query += ' AND (is_hidden = 0 OR is_hidden IS NULL)';
+                }
+
+                // Filtre suplimentare
                 if (startDate) {
                     query += ' AND created_at >= ?';
                     params.push(startDate);
@@ -462,6 +880,18 @@ app.all('/api/admin', async (req, res) => {
                 if (status) {
                     query += ' AND status = ?';
                     params.push(status);
+                }
+
+                // ⭐ FILTRU NOU: Metodă plată (card / ramburs)
+                if (req.query.paymentMethod) {
+                    query += ' AND payment_method = ?';
+                    params.push(req.query.paymentMethod);
+                }
+
+                // ⭐ FILTRU NOU: Metodă livrare (courier / easybox)
+                if (req.query.shippingMethod) {
+                    query += ' AND shipping_method = ?';
+                    params.push(req.query.shippingMethod);
                 }
 
                 query += ' ORDER BY created_at DESC';
@@ -520,7 +950,7 @@ app.all('/api/admin', async (req, res) => {
         if (req.method === 'PUT') {
             const { orderId, ...updateData } = req.body;
             
-            const allowedFields = ['customer_name', 'customer_email', 'customer_phone', 'status', 'county', 'city', 'address_line'];
+            const allowedFields = ['customer_name', 'customer_email', 'customer_phone', 'status', 'county', 'city', 'address_line', 'postal_code', 'locker_id'];
             const updates = [];
             const values = [];
 
@@ -552,86 +982,82 @@ app.all('/api/admin', async (req, res) => {
     }
 });
 
-// --- 11. RUTE ADMIN: DISCOUNT CODES ---
-app.post('/api/admin/discount-codes', async (req, res) => {
-    const adminSecret = req.headers['x-admin-secret'];
-    if (!adminSecret || adminSecret !== process.env.ADMIN_SECRET) {
-        return res.status(401).json({ error: 'Acces Neautorizat' });
+// 5. EXPORT CONTABIL (CSV & XML - SPV Style)
+app.post('/api/admin/export-orders', authAdmin, async (req, res) => {
+    const { orderIds, format } = req.body;
+    
+    if (!orderIds || orderIds.length === 0) {
+        return res.status(400).json({ error: 'Nu există comenzi selectate' });
     }
 
     let connection;
     try {
         connection = await pool.getConnection();
-        const { code, discount_type, discount_value, min_order_amount, max_uses, valid_from, valid_until, is_active } = req.body;
-
-        await connection.query(
-            `INSERT INTO discount_codes (code, discount_type, discount_value, min_order_amount, max_uses, valid_from, valid_until, is_active, created_at) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-            [code, discount_type, discount_value, min_order_amount || 0, max_uses || null, valid_from, valid_until || null, is_active ? 1 : 0]
+        
+        const placeholders = orderIds.map(() => '?').join(',');
+        const [orders] = await connection.query(
+            `SELECT * FROM orders WHERE id IN (${placeholders})`,
+            orderIds
         );
 
-        res.json({ success: true, message: 'Cod creat cu succes' });
-    } catch (error) {
-        console.error('❌ Error creating discount code:', error);
-        res.status(500).json({ error: 'Eroare la creare cod' });
+        if (format === 'csv') {
+            // FORMAT CONTABIL SPV/SAGA/SMARTBILL
+            let csv = 'Data,Nr_Comanda,Client,CUI,Adresa,Total,Baza_Impozabila,TVA,Metoda_Plata,Status\n';
+            
+            orders.forEach(order => {
+                const date = new Date(order.created_at).toISOString().split('T')[0];
+                const total = parseFloat(order.total_amount || 0);
+                
+                // Calcul TVA 19% (Backwards)
+                const baza = (total / 1.19).toFixed(2);
+                const tva = (total - (total / 1.19)).toFixed(2);
+                
+                const adresa = `${order.address_line || ''} ${order.city || ''}`.replace(/,/g, ' ').replace(/\n/g, ' ');
+                const cui = ''; // Placeholder
+
+                csv += `${date},${order.id},"${order.customer_name}",${cui},"${adresa}",${total.toFixed(2)},${baza},${tva},${order.payment_method},${order.status}\n`;
+            });
+
+            res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+            res.setHeader('Content-Disposition', `attachment; filename="export_contabil_${Date.now()}.csv"`);
+            return res.send(csv);
+        }
+
+        if (format === 'xml') {
+            let xml = '<?xml version="1.0" encoding="UTF-8"?>\n<orders>\n';
+            
+            orders.forEach(order => {
+                xml += `  <order>\n`;
+                xml += `    <id>${order.id}</id>\n`;
+                xml += `    <customer_name><![CDATA[${order.customer_name}]]></customer_name>\n`;
+                xml += `    <customer_email>${order.customer_email}</customer_email>\n`;
+                xml += `    <customer_phone>${order.customer_phone}</customer_phone>\n`;
+                xml += `    <total_amount>${order.total_amount}</total_amount>\n`;
+                xml += `    <status>${order.status}</status>\n`;
+                xml += `    <payment_method>${order.payment_method}</payment_method>\n`;
+                xml += `    <created_at>${order.created_at}</created_at>\n`;
+                xml += `  </order>\n`;
+            });
+            
+            xml += '</orders>';
+
+            res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+            res.setHeader('Content-Disposition', `attachment; filename="orders_${Date.now()}.xml"`);
+            return res.send(xml);
+        }
+
+        res.status(400).json({ error: 'Format invalid' });
+
+    } catch (e) {
+        console.error('❌ Export error:', e);
+        res.status(500).json({ error: e.message });
     } finally {
         if (connection) connection.release();
     }
 });
 
-app.put('/api/admin/discount-codes', async (req, res) => {
-    const adminSecret = req.headers['x-admin-secret'];
-    if (!adminSecret || adminSecret !== process.env.ADMIN_SECRET) {
-        return res.status(401).json({ error: 'Acces Neautorizat' });
-    }
-
-    let connection;
-    try {
-        connection = await pool.getConnection();
-        const { id, code, discount_type, discount_value, min_order_amount, max_uses, valid_from, valid_until, is_active } = req.body;
-
-        await connection.query(
-            `UPDATE discount_codes 
-             SET code=?, discount_type=?, discount_value=?, min_order_amount=?, max_uses=?, valid_from=?, valid_until=?, is_active=?
-             WHERE id=?`,
-            [code, discount_type, discount_value, min_order_amount || 0, max_uses || null, valid_from, valid_until || null, is_active ? 1 : 0, id]
-        );
-
-        res.json({ success: true, message: 'Cod actualizat cu succes' });
-    } catch (error) {
-        console.error('❌ Error updating discount code:', error);
-        res.status(500).json({ error: 'Eroare la actualizare cod' });
-    } finally {
-        if (connection) connection.release();
-    }
-});
-
-app.delete('/api/admin/discount-codes', async (req, res) => {
-    const adminSecret = req.headers['x-admin-secret'];
-    if (!adminSecret || adminSecret !== process.env.ADMIN_SECRET) {
-        return res.status(401).json({ error: 'Acces Neautorizat' });
-    }
-
-    let connection;
-    try {
-        connection = await pool.getConnection();
-        await connection.query('DELETE FROM discount_codes WHERE id = ?', [req.query.id]);
-        res.json({ success: true, message: 'Cod șters cu succes' });
-    } catch (error) {
-        console.error('❌ Error deleting discount code:', error);
-        res.status(500).json({ error: 'Eroare la ștergere cod' });
-    } finally {
-        if (connection) connection.release();
-    }
-});
-
-// --- 12. RUTE OBLIO & AWB ---
-app.post('/api/admin/send-invoices', async (req, res) => {
-    const adminSecret = req.headers['x-admin-secret'];
-    if (!adminSecret || adminSecret !== process.env.ADMIN_SECRET) {
-        return res.status(401).json({ error: 'Acces Neautorizat' });
-    }
-
+// 6. TRIMITERE MANUALĂ OBLIO
+app.post('/api/admin/send-invoices', authAdmin, async (req, res) => {
     const { orderIds } = req.body;
     
     if (!orderIds || orderIds.length === 0) {
@@ -691,12 +1117,138 @@ app.post('/api/admin/send-invoices', async (req, res) => {
     }
 });
 
-app.post('/api/admin/generate-awb', async (req, res) => {
-    const adminSecret = req.headers['x-admin-secret'];
-    if (!adminSecret || adminSecret !== process.env.ADMIN_SECRET) {
-        return res.status(401).json({ error: 'Acces Neautorizat' });
+// 7. TRIMITERE MANUALĂ ECOLET
+app.post('/api/admin/ecolet/export', authAdmin, async (req, res) => {
+    const { orderIds } = req.body;
+
+    if (!orderIds || orderIds.length === 0) {
+        return res.status(400).json({ error: 'Nu există comenzi selectate' });
     }
 
+    let connection;
+    const results = [];
+
+    try {
+        connection = await pool.getConnection();
+
+        for (const orderId of orderIds) {
+            const [orders] = await connection.query('SELECT * FROM orders WHERE id = ?', [orderId]);
+
+            if (orders.length === 0) {
+                results.push({
+                    orderId,
+                    success: false,
+                    message: 'Comanda nu există'
+                });
+                continue;
+            }
+
+            const order = orders[0];
+
+            const ecoletResult = await createDraftShipment(order);
+
+            if (ecoletResult.success) {
+                await connection.query(
+                    'UPDATE orders SET ecolet_shipment_id = ?, ecolet_status = ? WHERE id = ?',
+                    [ecoletResult.ecolet_shipment_id, ecoletResult.status, orderId]
+                );
+            }
+
+            results.push({
+                orderId,
+                ...ecoletResult
+            });
+        }
+
+        res.json({ success: true, results });
+
+    } catch (e) {
+        console.error('❌ Error exporting to Ecolet:', e);
+        res.status(500).json({ error: e.message });
+    } finally {
+        if (connection) connection.release();
+    }
+});
+
+// 8. SINCRONIZARE AWB ECOLET
+app.post('/api/admin/ecolet/sync', authAdmin, async (req, res) => {
+    const { orderIds } = req.body;
+
+    if (!orderIds || orderIds.length === 0) {
+        return res.status(400).json({ error: 'Nu există comenzi selectate' });
+    }
+
+    let connection;
+    const results = [];
+
+    try {
+        connection = await pool.getConnection();
+
+        for (const orderId of orderIds) {
+            const [orders] = await connection.query(
+                'SELECT * FROM orders WHERE id = ? AND ecolet_shipment_id IS NOT NULL',
+                [orderId]
+            );
+
+            if (orders.length === 0) {
+                results.push({
+                    orderId,
+                    success: false,
+                    message: 'Comanda nu are shipment Ecolet'
+                });
+                continue;
+            }
+
+            const order = orders[0];
+            const shipmentId = order.ecolet_shipment_id;
+
+            const statusResult = await getShipmentStatus(shipmentId);
+
+            if (statusResult.success && statusResult.awb_number) {
+                await connection.query(
+                    'UPDATE orders SET awb_number = ?, label_url = ?, ecolet_status = ? WHERE id = ?',
+                    [statusResult.awb_number, statusResult.label_url, 'completed', orderId]
+                );
+
+                results.push({
+                    orderId,
+                    success: true,
+                    awb_number: statusResult.awb_number,
+                    label_url: statusResult.label_url,
+                    message: 'AWB sincronizat cu succes'
+                });
+            } else {
+                results.push({
+                    orderId,
+                    success: false,
+                    message: statusResult.message
+                });
+            }
+        }
+
+        res.json({ success: true, results });
+
+    } catch (e) {
+        console.error('❌ Error syncing Ecolet AWB:', e);
+        res.status(500).json({ error: e.message });
+    } finally {
+        if (connection) connection.release();
+    }
+});
+
+// ⭐ DEBUG: Listează serviciile Ecolet disponibile în contul tău
+// Apelează GET /api/admin/ecolet/services ca să afli slug-urile corecte
+app.get('/api/admin/ecolet/services', authAdmin, async (req, res) => {
+    try {
+        const result = await getAvailableServices();
+        res.json(result);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// 9. GENERARE AWB MANUAL (Legacy)
+app.post('/api/admin/generate-awb', authAdmin, async (req, res) => {
     const { orderIds, courierService } = req.body;
     
     if (!orderIds || orderIds.length === 0) {
@@ -751,82 +1303,67 @@ app.post('/api/admin/generate-awb', async (req, res) => {
     }
 });
 
-// --- 13. EXPORT COMENZI ---
-app.post('/api/admin/export-orders', async (req, res) => {
-    const adminSecret = req.headers['x-admin-secret'];
-    if (!adminSecret || adminSecret !== process.env.ADMIN_SECRET) {
-        return res.status(401).json({ error: 'Acces Neautorizat' });
-    }
+// ==========================================
+// MANAGEMENT REDUCERI
+// ==========================================
 
-    const { orderIds, format } = req.body;
-    
-    if (!orderIds || orderIds.length === 0) {
-        return res.status(400).json({ error: 'Nu există comenzi selectate' });
-    }
-
+app.post('/api/admin/discount-codes', authAdmin, async (req, res) => {
+    const { code, discount_type, discount_value, min_order_amount, max_uses, valid_from, valid_until, is_active } = req.body;
     let connection;
     try {
         connection = await pool.getConnection();
-        
-        const placeholders = orderIds.map(() => '?').join(',');
-        const [orders] = await connection.query(
-            `SELECT * FROM orders WHERE id IN (${placeholders})`,
-            orderIds
+        await connection.query(
+            `INSERT INTO discount_codes (code, discount_type, discount_value, min_order_amount, max_uses, valid_from, valid_until, is_active, created_at) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+            [code, discount_type, discount_value, min_order_amount || 0, max_uses || null, valid_from, valid_until || null, is_active ? 1 : 0]
         );
-
-        if (format === 'xml') {
-            let xml = '<?xml version="1.0" encoding="UTF-8"?>\n<orders>\n';
-            
-            orders.forEach(order => {
-                xml += `  <order>\n`;
-                xml += `    <id>${order.id}</id>\n`;
-                xml += `    <customer_name><![CDATA[${order.customer_name}]]></customer_name>\n`;
-                xml += `    <customer_email>${order.customer_email}</customer_email>\n`;
-                xml += `    <customer_phone>${order.customer_phone}</customer_phone>\n`;
-                xml += `    <total_amount>${order.total_amount}</total_amount>\n`;
-                xml += `    <status>${order.status}</status>\n`;
-                xml += `    <payment_method>${order.payment_method}</payment_method>\n`;
-                xml += `    <created_at>${order.created_at}</created_at>\n`;
-                xml += `  </order>\n`;
-            });
-            
-            xml += '</orders>';
-
-            res.setHeader('Content-Type', 'application/xml');
-            res.setHeader('Content-Disposition', `attachment; filename="orders_${Date.now()}.xml"`);
-            return res.send(xml);
-        }
-
-        if (format === 'excel') {
-            let csv = 'ID,Client,Email,Telefon,Total,Status,Metoda Plata,Data\n';
-            
-            orders.forEach(order => {
-                csv += `${order.id},`;
-                csv += `"${order.customer_name}",`;
-                csv += `${order.customer_email},`;
-                csv += `${order.customer_phone},`;
-                csv += `${order.total_amount},`;
-                csv += `${order.status},`;
-                csv += `${order.payment_method},`;
-                csv += `${order.created_at}\n`;
-            });
-
-            res.setHeader('Content-Type', 'text/csv');
-            res.setHeader('Content-Disposition', `attachment; filename="orders_${Date.now()}.csv"`);
-            return res.send(csv);
-        }
-
-        res.status(400).json({ error: 'Format invalid' });
-
-    } catch (e) {
-        console.error('❌ Export error:', e);
-        res.status(500).json({ error: e.message });
+        res.json({ success: true, message: 'Cod creat cu succes' });
+    } catch (error) {
+        console.error('❌ Error creating discount code:', error);
+        res.status(500).json({ error: 'Eroare la creare cod' });
     } finally {
         if (connection) connection.release();
     }
 });
 
-// --- 14. RUTA STATUS ---
+app.put('/api/admin/discount-codes', authAdmin, async (req, res) => {
+    const { id, code, discount_type, discount_value, min_order_amount, max_uses, valid_from, valid_until, is_active } = req.body;
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        await connection.query(
+            `UPDATE discount_codes 
+             SET code=?, discount_type=?, discount_value=?, min_order_amount=?, max_uses=?, valid_from=?, valid_until=?, is_active=?
+             WHERE id=?`,
+            [code, discount_type, discount_value, min_order_amount || 0, max_uses || null, valid_from, valid_until || null, is_active ? 1 : 0, id]
+        );
+        res.json({ success: true, message: 'Cod actualizat cu succes' });
+    } catch (error) {
+        console.error('❌ Error updating discount code:', error);
+        res.status(500).json({ error: 'Eroare la actualizare cod' });
+    } finally {
+        if (connection) connection.release();
+    }
+});
+
+app.delete('/api/admin/discount-codes', authAdmin, async (req, res) => {
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        await connection.query('DELETE FROM discount_codes WHERE id = ?', [req.query.id]);
+        res.json({ success: true, message: 'Cod șters cu succes' });
+    } catch (error) {
+        console.error('❌ Error deleting discount code:', error);
+        res.status(500).json({ error: 'Eroare la ștergere cod' });
+    } finally {
+        if (connection) connection.release();
+    }
+});
+
+// ==========================================
+// RUTA STATUS
+// ==========================================
+
 app.get('/api/status', async (req, res) => {
     const status = {
         system: 'Online',
@@ -854,7 +1391,10 @@ app.get('/api/status', async (req, res) => {
     }
 });
 
-// --- 15. CATCH-ALL ERROR HANDLER ---
+// ==========================================
+// ERROR HANDLER & SERVER START
+// ==========================================
+
 app.use((err, req, res, next) => {
     console.error('❌ Unhandled error:', err);
     res.status(500).json({ 
@@ -863,7 +1403,6 @@ app.use((err, req, res, next) => {
     });
 });
 
-// --- 16. PORNIRE SERVER ---
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 
@@ -878,6 +1417,7 @@ pool.getConnection()
         console.log(`🚀 SERVER OCLAR PORNIT`);
         console.log(`📡 Host: ${HOST}:${PORT}`);
         console.log(`📦 Shipping: EasyBox ${SHIPPING_COSTS.easybox} RON | Curier ${SHIPPING_COSTS.courier} RON`);
+        console.log(`🤖 Automatizare: ACTIVĂ (verifică setările în Admin)`);
         console.log(`⏰ Started at: ${new Date().toISOString()}`);
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     });
