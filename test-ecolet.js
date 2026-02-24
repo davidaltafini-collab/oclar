@@ -1,13 +1,19 @@
-// test-ecolet.js
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
+
+// Încărcăm variabilele din .env
 dotenv.config();
 
 const ECOLET_BASE_URL = process.env.ECOLET_BASE_URL || 'https://panel.ecolet.ro/api/v1';
 
-async function checkServices() {
-    console.log("1. Autentificare Ecolet...");
-    
+async function listAllServices() {
+    console.log("--- 🔍 SCANARE COMPLETĂ SERVICII ECOLET ---");
+
+    if (!process.env.ECOLET_CLIENT_ID) {
+        console.error("❌ EROARE: Nu pot citi .env!");
+        return;
+    }
+
     const params = new URLSearchParams();
     params.append('grant_type', 'password');
     params.append('client_id', process.env.ECOLET_CLIENT_ID);
@@ -16,6 +22,8 @@ async function checkServices() {
     params.append('password', process.env.ECOLET_PASSWORD);
 
     try {
+        // 1. AUTENTIFICARE
+        process.stdout.write("1. Autentificare... ");
         const authRes = await fetch(`${ECOLET_BASE_URL}/oauth/token`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -23,44 +31,41 @@ async function checkServices() {
         });
 
         if (!authRes.ok) {
-            console.error("❌ Eroare Auth:", await authRes.text());
+            console.log("❌ EȘUAT");
+            console.error(await authRes.text());
             return;
         }
 
         const authData = await authRes.json();
         const token = authData.access_token;
-        console.log("✅ Token obținut!");
+        console.log("✅ OK");
 
-        console.log("2. Căutare servicii EasyBox...");
+        // 2. DESCĂRCARE SERVICII
+        process.stdout.write("2. Descărcare listă servicii... ");
         const servicesRes = await fetch(`${ECOLET_BASE_URL}/services`, {
             headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
         });
 
         const servicesData = await servicesRes.json();
         const services = servicesData.services || servicesData;
+        console.log(`✅ OK (${services.length} servicii găsite)\n`);
 
-        console.log("\n====== LISTA SERVICII DISPONIBILE ======");
-        const easyboxServices = services.filter(s => 
-            s.slug.includes('easy') || 
-            s.slug.includes('sameday') || 
-            s.full_name.toLowerCase().includes('easybox')
-        );
+        // 3. AFIȘARE DETALIATĂ
+        console.log("====== LISTA DISPONIBILĂ PE CONTUL TĂU ======");
+        
+        services.forEach((s, i) => {
+            const courierName = s.courier ? s.courier.slug.toUpperCase() : "NECUNOSCUT";
+            console.log(`${i + 1}. [${courierName}] ${s.full_name}`);
+            console.log(`   👉 SLUG (ID Cod): "${s.slug}"`);
+            console.log(`   📝 ID Contract:   ${s.contract_id || 'Standard'}`);
+            console.log("--------------------------------------------------");
+        });
 
-        if (easyboxServices.length === 0) {
-            console.log("⚠️ Nu am găsit servicii cu numele 'easy' sau 'sameday'. Iată tot ce ai:");
-            services.forEach(s => console.log(`Slug: "${s.slug}" | Nume: "${s.full_name}"`));
-        } else {
-            easyboxServices.forEach(s => {
-                console.log(`\n📌 Serviciu: ${s.full_name}`);
-                console.log(`   SLUG DE PUS IN COD:  "${s.slug}"`); // <--- Asta cauți
-                console.log(`   Courier slug:        "${s.courier?.slug}"`);
-            });
-        }
-        console.log("\n========================================");
+        console.log("\n✅ Gata! Acestea sunt singurele servicii pe care le poți folosi.");
 
     } catch (e) {
-        console.error("Eroare script:", e);
+        console.error("\n❌ Eroare script:", e);
     }
 }
 
-checkServices();
+listAllServices();
