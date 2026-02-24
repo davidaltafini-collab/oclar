@@ -1,4 +1,4 @@
-import { API_URL } from '../constants'; // Asigură-te că importul e corect
+import { API_URL } from '../constants';
 
 interface PaymentData {
   items: any[];
@@ -13,10 +13,15 @@ interface PaymentData {
   };
   shippingMethod: string;
   shippingCost: number;
+  // 👇 AM ADĂUGAT ACESTE DOUĂ CÂMPURI
+  lockerId?: string;
+  lockerName?: string;
 }
 
 export const processNetopiaPayment = async (data: PaymentData) => {
   try {
+    console.log("🚀 Inițiere plată Netopia...", data); // Debug: să vedem ce pleacă
+
     // 1. Cerem serverului să cripteze datele
     const response = await fetch(`${API_URL}/create-netopia-session`, {
       method: 'POST',
@@ -28,7 +33,7 @@ export const processNetopiaPayment = async (data: PaymentData) => {
 
     if (!result.success) {
       console.error('Eroare Backend:', result);
-      alert('Eroare la inițierea plății. Verifică consola.');
+      alert('Eroare la inițierea plății: ' + (result.error || 'Necunoscută'));
       return;
     }
 

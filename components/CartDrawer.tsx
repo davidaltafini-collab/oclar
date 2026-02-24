@@ -475,7 +475,10 @@ export const CartDrawer: React.FC = () => {
         discountAmount,
         totalAmount: finalTotal,
         postalCode: formData.postalCode,
+        
+        // 👇 AICI AM ADĂUGAT CE LIPSEA:
         lockerId: selectedLocker?.lockerId || null,
+        lockerName: selectedLocker?.lockerName || null  // <--- ASTA ESTE CHEIA!
       };
 
       if (paymentMethod === 'card') {
