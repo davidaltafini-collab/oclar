@@ -570,9 +570,13 @@ app.post('/api/create-netopia-session', async (req, res) => {
     const billingCounty = safeAddress.county || "Bucuresti";
     const billingLine = safeAddress.line || "Adresa Easybox";
 
-    // 3. Stabilim ce scriem în Baza de Date la adresă
-    // Dacă e locker, scriem numele lockerului. Dacă e curier, scriem strada.
-    const dbAddressLine = (shippingMethod === 'easybox' && lockerName) ? lockerName : billingLine;
+   // 3. Stabilim ce scriem în Baza de Date la adresă
+    // Dacă e locker, extragem numele curat din "OPERATOR|NUME"
+    let dbAddressLine = billingLine;
+    if (shippingMethod === 'easybox' && lockerDetails) {
+        // Dacă avem formatul "SAMEDAY|Easybox 123", luăm doar partea a doua
+        dbAddressLine = lockerDetails.includes('|') ? lockerDetails.split('|')[1] : lockerDetails;
+    }
 
     let connection;
     try {

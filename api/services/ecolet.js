@@ -170,11 +170,11 @@ export async function createDraftShipment(order) {
         // ============================================================
         
         // Harta serviciilor tale (Slug-urile găsite cu scriptul de test)
-         const SERVICE_MAP = {
-            sameday: 'sameday_locker',                // 12. [SAMEDAY] Locker (Curier -> Automatul)
-            cargus: 'easy_collect_locker_s',          // 50. [URGENT_CARGUS] Easy Collect Locker S (Ochelarii încap în S)
-            fan: 'fan_courier_courier_to_locker',     // 8. [FAN_COURIER] Fanbox (Curier -> automatul)
-            dpd: 'dpd_automat_courier_to_locker'      // 27. [DPD] Automat (curier -> automatul)
+        const SERVICE_MAP = {
+            sameday: 'sameday_locker',                // ID 12 din lista ta
+            cargus: 'easy_collect_locker_s',          // ID 50 din lista ta (S - cel mai sigur)
+            fan: 'fan_courier_courier_to_locker',     // ID 8 din lista ta (Curier -> Automatul)
+            dpd: 'dpd_automat_courier_to_locker'      // 27 din lista ta (Curier -> Automatul)
         };
 
         // Contracte specifice (dacă ai ID-uri diferite în Ecolet per curier)
