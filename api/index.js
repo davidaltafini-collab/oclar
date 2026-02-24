@@ -578,7 +578,35 @@ app.post('/api/create-netopia-session', async (req, res) => {
 
     const finalAmount = totalAmount || amount;
 
-    // 2. LOGICĂ CHEIE: Dacă e locker, folosim numele lui
+    // 2. NETOPIA INIT (Creare comandă + Redirect plată)
+app.post('/api/create-netopia-session', async (req, res) => {
+    const body = req.body;
+    
+    // 1. Calculăm costul transportului
+    let shippingCostVal = 0;
+    if (body.shippingCost !== undefined) shippingCostVal = parseFloat(body.shippingCost);
+    else if (body.shipping_cost !== undefined) shippingCostVal = parseFloat(body.shipping_cost);
+
+    const {
+        amount,
+        totalAmount,
+        customerName,
+        customerEmail,
+        customerPhone,
+        address,
+        items,
+        subtotal,
+        shippingMethod,
+        discountCode,
+        discountAmount,
+        postalCode,
+        lockerId,
+        lockerName
+    } = body;
+
+    const finalAmount = totalAmount || amount;
+
+    // 2. LOGICĂ CHEIE: Dacă e locker, folosim numele lui ca adresă
     const finalAddress = (shippingMethod === 'easybox' && lockerName) ? lockerName : address.line;
 
     if (!finalAmount || !customerName || !customerPhone) {
@@ -589,42 +617,44 @@ app.post('/api/create-netopia-session', async (req, res) => {
     try {
         connection = await pool.getConnection();
         const itemsJson = JSON.stringify(items);
-        const newOrderId = orderId || Date.now().toString();
 
-        // 3. SALVĂM ÎN DB - ACUM E CORECTAT NUMĂRUL DE COLOANE!
-        await connection.query(
+        // 3. SALVĂM ÎN DB (FĂRĂ ID MANUAL)
+        // Am șters 'id' din listă și lăsăm baza de date să pună următorul număr (Auto Increment)
+        const [result] = await connection.query(
             `INSERT INTO orders 
-            (id, customer_name, customer_email, customer_phone, county, city, address_line, postal_code, locker_id, items, subtotal, shipping_method, shipping_cost, discount_code, discount_amount, total_amount, payment_method, status, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'card', 'pending', NOW())
-            ON DUPLICATE KEY UPDATE status='pending'`,
+            (customer_name, customer_email, customer_phone, county, city, address_line, postal_code, locker_id, items, subtotal, shipping_method, shipping_cost, discount_code, discount_amount, total_amount, payment_method, status, created_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'card', 'pending', NOW())`,
             [
-                newOrderId,         // 1
-                customerName,       // 2
-                customerEmail,      // 3
-                customerPhone,      // 4
-                address.county,     // 5
-                address.city,       // 6
-                finalAddress,       // 7 (Fix Locker)
-                postalCode || null, // 8
-                (shippingMethod === 'easybox' ? lockerId : null), // 9
-                itemsJson,          // 10
-                subtotal,           // 11
-                shippingMethod,     // 12
-                shippingCostVal,    // 13
-                discountCode,       // 14
-                discountAmount,     // 15
-                finalAmount         // 16 (Acesta lipsea din SQL-ul anterior!)
+                customerName,       
+                customerEmail,      
+                customerPhone,      
+                address.county,     
+                address.city,       
+                finalAddress,       // Adresa (sau Nume Locker)
+                postalCode || null, 
+                (shippingMethod === 'easybox' ? lockerId : null), 
+                itemsJson,          
+                subtotal,           
+                shippingMethod,     
+                shippingCostVal,    
+                discountCode,       
+                discountAmount,     
+                finalAmount         
             ]
         );
+
+        // Luăm ID-ul generat de baza de date
+        const dbOrderId = result.insertId;
+        console.log(`✅ Comandă Card salvată. ID Generat: ${dbOrderId}`);
 
         // Actualizare stoc cod reducere
         if (discountCode) {
             await connection.query('UPDATE discount_codes SET used_count = used_count + 1 WHERE code = ?', [discountCode]);
         }
 
-        // 4. PREGĂTIM DATELE PENTRU NETOPIA
+        // 4. PREGĂTIM DATELE PENTRU NETOPIA (Folosind ID-ul real din bază)
         const netopiaPayload = {
-            orderId: newOrderId,
+            orderId: dbOrderId, // <--- Folosim ID-ul mic și corect (ex: 150)
             amount: finalAmount,
             email: customerEmail,
             phone: customerPhone,
@@ -633,7 +663,7 @@ app.post('/api/create-netopia-session', async (req, res) => {
             address: {
                 city: address.city,
                 county: address.county,
-                line: finalAddress // Trimitem numele lockerului și la plată
+                line: finalAddress 
             }
         };
 
