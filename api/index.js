@@ -549,57 +549,61 @@ app.post('/api/create-order-ramburs', async (req, res) => {
     }
 });
 
+
 // 2. NETOPIA INIT (Creare comandă + Redirect plată)
 app.post('/api/create-netopia-session', async (req, res) => {
-    const body = req.body;
-    
-    // 1. Calculăm costul transportului
-    let shippingCostVal = 0;
-    if (body.shippingCost !== undefined) shippingCostVal = parseFloat(body.shippingCost);
-    else if (body.shipping_cost !== undefined) shippingCostVal = parseFloat(body.shipping_cost);
-
+    // 1. Preluăm datele, inclusiv lockerId și lockerName
     const {
-        amount,
-        totalAmount,
-        customerName,
-        customerEmail,
-        customerPhone,
-        address,
-        items,
-        subtotal,
-        shippingMethod,
-        discountCode,
-        discountAmount,
-        postalCode,
-        lockerId,
-        lockerName,
-        orderId 
-    } = body;
+        totalAmount, customerName, customerEmail, customerPhone, address,
+        items, subtotal, shippingMethod, discountCode, discountAmount,
+        postalCode, lockerId, lockerName
+    } = req.body;
 
-    const finalAmount = totalAmount || amount;
-
-  app.post('/api/create-netopia-session', async (req, res) => {
-    const { totalAmount, customerName, customerEmail, customerPhone, address, items, subtotal, shippingMethod, discountCode, discountAmount, postalCode, lockerId, lockerName } = req.body;
-
-    // 1. Salvăm numele lockerului în variabila de adresă (doar pentru baza noastră de date)
-    const dbAddressLine = (shippingMethod === 'easybox' && lockerName) ? lockerName : address.line;
+    // 2. Construim adresa finală pentru baza de date
+    // Dacă e locker, punem numele lockerului. Dacă e curier, punem strada.
+    const dbAddressLine = (shippingMethod === 'easybox' && lockerName) ? lockerName : (address ? address.line : '');
 
     let connection;
     try {
         connection = await pool.getConnection();
         const itemsJson = JSON.stringify(items);
 
-        // 2. Inserăm în DB (Fără ID manual ca să nu mai primești eroarea "Out of range")
+        // 3. Inserăm în DB
+        // NU punem ID manual. Lăsăm baza de date să pună ID-ul automat (ex: 155, 156...)
         const [result] = await connection.query(
             `INSERT INTO orders 
             (customer_name, customer_email, customer_phone, county, city, address_line, postal_code, locker_id, items, subtotal, shipping_method, shipping_cost, discount_code, discount_amount, total_amount, payment_method, status, created_at) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'card', 'pending', NOW())`,
-            [customerName, customerEmail, customerPhone, address.county, address.city, dbAddressLine, postalCode || null, (shippingMethod === 'easybox' ? lockerId : null), itemsJson, subtotal, shippingMethod, (shippingMethod === 'easybox' ? 15 : 25), discountCode, discountAmount, totalAmount]
+            [
+                customerName,
+                customerEmail,
+                customerPhone,
+                address ? address.county : '',
+                address ? address.city : '',
+                dbAddressLine, // <--- Aici se salvează Numele Lockerului (ex: Pachetomat Cargus...)
+                postalCode || null,
+                (shippingMethod === 'easybox' ? lockerId : null), // <--- Aici se salvează ID-ul Lockerului
+                itemsJson,
+                subtotal,
+                shippingMethod,
+                (shippingMethod === 'easybox' ? 15 : 25), // Cost transport
+                discountCode,
+                discountAmount,
+                totalAmount
+            ]
         );
 
-        // 3. Trimitem la Netopia DOAR ID-ul generat de DB și suma
+        // 4. Luăm ID-ul generat de baza de date
+        const dbOrderId = result.insertId;
+
+        // Actualizăm stocul codului de reducere (dacă există)
+        if (discountCode) {
+            await connection.query('UPDATE discount_codes SET used_count = used_count + 1 WHERE code = ?', [discountCode]);
+        }
+
+        // 5. Trimitem către Netopia doar ce are nevoie (ID-ul scurt și suma)
         const netopiaPayload = {
-            orderId: result.insertId, // ID-ul scurt (ex: 150)
+            orderId: dbOrderId, // Trimitem 155, nu 1740... (evităm eroarea la Netopia)
             amount: totalAmount,
             email: customerEmail,
             phone: customerPhone
@@ -609,7 +613,7 @@ app.post('/api/create-netopia-session', async (req, res) => {
         res.json(sessionResult);
 
     } catch (error) {
-        console.error('Eroare:', error.message);
+        console.error('❌ Eroare Netopia Init:', error.message);
         res.status(500).json({ success: false, error: error.message });
     } finally {
         if (connection) connection.release();
