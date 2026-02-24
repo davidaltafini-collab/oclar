@@ -131,47 +131,88 @@ async function getLocalityId(token, county, city) {
 // ============================================================
 // 3. CREARE DRAFT AWB
 // ============================================================
+//
+
 export async function createDraftShipment(order) {
     try {
         const token = await authenticate();
 
+        // 1. Pregătire date
         const shippingAddress = typeof order.shipping_address === 'string'
             ? JSON.parse(order.shipping_address)
             : (order.shipping_address || {});
 
         const targetCounty = shippingAddress.county || order.county || "Bucuresti";
         const targetCity = shippingAddress.city || order.city || "Bucuresti";
-        const streetName = shippingAddress.street_name || order.address_line || "Strada Principala";
+        
+        // La lockere, folosim address_line ca să detectăm curierul (am salvat acolo numele lockerului)
+        const addressDetails = order.address_line || shippingAddress.line || "";
+        const streetName = order.shipping_method === 'easybox' ? "Locker" : addressDetails;
 
-        let streetNumber = shippingAddress.street_number || "1";
-        if (streetNumber.length > 10) streetNumber = streetNumber.substring(0, 10);
-        if (!streetNumber) streetNumber = "1";
-
-        // ⭐ DETECTARE TIP LIVRARE
         const isEasyBox = order.shipping_method === 'easybox' && order.locker_id;
-        
-        // ⭐ FIX CRITIC: map_point_id TREBUIE să fie INTEGER
         const mapPointId = isEasyBox ? parseInt(order.locker_id, 10) : null;
-        
+
+        // Validare ID Locker
         if (isEasyBox && isNaN(mapPointId)) {
             throw new Error(`locker_id invalid: "${order.locker_id}" nu este un număr valid!`);
         }
 
-        console.log(`📦 Ecolet Draft #${order.id} | Tip: ${isEasyBox ? `EasyBox (locker_id=${mapPointId})` : 'Curier DPD'}`);
+        console.log(`📦 Ecolet Draft #${order.id} | Destinație: ${addressDetails} (ID: ${mapPointId})`);
 
-        // Localitate - necesară pentru curier
+        // 2. Determinare Localitate (necesar Ecolet)
         let localityId = await getLocalityId(token, targetCounty, targetCity);
-        if (!localityId) {
-            console.warn(`⚠️ Fallback localitate → București (323)`);
-            localityId = 323;
-        }
+        if (!localityId) localityId = 323; // Fallback București
 
-        // Pickup day = mâine
         const pickupDate = new Date(Date.now() + 86400000).toISOString().split('T')[0];
 
         // ============================================================
-        // BUILD PAYLOAD
+        // 🤖 LOGICĂ DETECTARE CURIER (DINAMIC)
         // ============================================================
+        
+        // Harta serviciilor tale (Slug-urile găsite cu scriptul de test)
+        const SERVICE_MAP = {
+            sameday: 'sameday_locker',           // Sameday Easybox
+            cargus: 'easy_collect_locker_s',     // Cargus Ship & Go (S - standard pentru ochelari)
+            fan: 'fan_courier_collect_point',    // Fan Courier (verificați slug exact dacă e cazul)
+            dpd: 'dpd_locker'                    // DPD
+        };
+
+        // Contracte specifice (dacă ai ID-uri diferite în Ecolet per curier)
+        // Dacă ai un singur contract global (ex: ID 4), folosește-l pe ăla peste tot.
+        const CONTRACT_MAP = {
+            sameday: parseInt(process.env.ECOLET_SAMEDAY_CONTRACT_ID || "4"),
+            cargus: parseInt(process.env.ECOLET_CARGUS_CONTRACT_ID || process.env.ECOLET_CONTRACT_ID || "4"),
+            other: parseInt(process.env.ECOLET_CONTRACT_ID || "4")
+        };
+
+        // Algoritm de detectare bazat pe textul din comandă
+        let selectedService = SERVICE_MAP.sameday; // Default Sameday
+        let selectedContract = CONTRACT_MAP.sameday;
+        const detectorText = (addressDetails + " " + (order.locker_details || "")).toLowerCase();
+
+        if (detectorText.includes('cargus') || detectorText.includes('ship')) {
+            console.log('Detectat: CARGUS');
+            selectedService = SERVICE_MAP.cargus;
+            selectedContract = CONTRACT_MAP.cargus;
+        } 
+        else if (detectorText.includes('fan') || detectorText.includes('collect point')) {
+            console.log('Detectat: FAN COURIER');
+            selectedService = SERVICE_MAP.fan;
+            selectedContract = CONTRACT_MAP.other;
+        }
+        else if (detectorText.includes('dpd')) {
+            console.log('Detectat: DPD');
+            selectedService = SERVICE_MAP.dpd;
+            selectedContract = CONTRACT_MAP.other;
+        }
+        else {
+            console.log('Detectat: SAMEDAY (Default)');
+        }
+
+        // ============================================================
+        // CONSTRUIRE PAYLOAD
+        // ============================================================
+
         const payload = {
             sender: {
                 name: process.env.ECOLET_SENDER_NAME || "OCLAR Store",
@@ -194,16 +235,15 @@ export async function createDraftShipment(order) {
                 county: targetCounty,
                 locality_id: localityId,
                 locality: targetCity,
-                postal_code: order.postal_code || shippingAddress.postalCode || "000000",
-                // Pentru EasyBox adresa nu contează, dar câmpurile sunt required
-                street_name: isEasyBox ? "Locker" : streetName,
-                street_number: isEasyBox ? "1" : streetNumber,
+                postal_code: order.postal_code || "000000",
+                street_name: streetName,
+                street_number: "1",
                 contact_person: order.customer_name,
                 email: order.customer_email || "client@oclar.ro",
                 phone: (order.customer_phone || "0700000000").replace(/\s+/g, ''),
-                // ⭐ FIX: has_map_point + map_point_id ca INTEGER
+                // Configurare Locker
                 has_map_point: isEasyBox,
-                map_point_id: mapPointId  // INTEGER sau null
+                map_point_id: mapPointId
             },
             parcel: {
                 type: "package",
@@ -216,34 +256,29 @@ export async function createDraftShipment(order) {
             },
             additional_services: {
                 cod: {
-                    // ⭐ EasyBox Sameday NU suportă ramburs!
+                    // Cargus/Fan suportă ramburs la locker uneori, Sameday nu.
+                    // Activăm ramburs doar dacă NU e Sameday Locker sau dacă știi sigur că ai contract de ramburs la locker.
+                    // Momentan lăsăm dezactivat la locker pentru siguranță.
                     status: order.payment_method === 'ramburs' && !isEasyBox,
                     amount: (order.payment_method === 'ramburs' && !isEasyBox)
                         ? parseFloat(order.total_amount || 0)
                         : 0
                 }
             },
-            // ⭐ COURIER: service și contract_id diferite pentru DPD vs Sameday
             courier: isEasyBox
                 ? {
-                    service: "sameday_easybox",
+                    service: selectedService, // <--- AICI E MAGIA
                     pickup: { type: "courier", date: pickupDate, time: "12:00" },
-                    contract_id: ECOLET_SAMEDAY_CONTRACT_ID
+                    contract_id: selectedContract
                 }
                 : {
                     service: "dpd_standard",
                     pickup: { type: "courier", date: pickupDate, time: "12:00" },
-                    contract_id: ECOLET_DPD_CONTRACT_ID
+                    contract_id: parseInt(process.env.ECOLET_DPD_CONTRACT_ID || "4")
                 }
         };
 
-        console.log(`🚀 Payload Ecolet:`, JSON.stringify({
-            service: payload.courier.service,
-            contract_id: payload.courier.contract_id,
-            has_map_point: payload.receiver.has_map_point,
-            map_point_id: payload.receiver.map_point_id,
-            cod: payload.additional_services.cod
-        }, null, 2));
+        console.log(`🚀 Payload Ecolet: Service=${payload.courier.service} | MapID=${payload.receiver.map_point_id}`);
 
         const response = await fetch(`${ECOLET_BASE_URL}/add-parcel/save-order-to-send`, {
             method: 'POST',
@@ -259,19 +294,18 @@ export async function createDraftShipment(order) {
 
         if (!response.ok) {
             console.error('❌ Ecolet API Error:', JSON.stringify(data, null, 2));
-            // Mesaj de eroare clar
             const errMsg = data.message || Object.values(data.errors || {}).flat().join(', ') || 'Eroare necunoscută';
             throw new Error(`Ecolet: ${errMsg}`);
         }
 
         const shipmentId = data.order_to_send_id || data.id;
-        console.log(`✅ Draft creat! ID: ${shipmentId} | Service: ${payload.courier.service}`);
+        console.log(`✅ Draft creat! ID: ${shipmentId}`);
 
         return {
             success: true,
             ecolet_shipment_id: shipmentId.toString(),
             status: 'draft',
-            message: `Draft creat (${isEasyBox ? 'EasyBox/Sameday' : 'Curier/DPD'})`
+            message: `Draft creat (${payload.courier.service})`
         };
 
     } catch (error) {
