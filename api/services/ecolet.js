@@ -134,7 +134,7 @@ async function getLocalityId(token, county, city) {
 //
 
 export async function createDraftShipment(order) {
-    try {
+   try {
         const token = await authenticate();
 
         // 1. Pregătire date
@@ -145,9 +145,10 @@ export async function createDraftShipment(order) {
         const targetCounty = shippingAddress.county || order.county || "Bucuresti";
         const targetCity = shippingAddress.city || order.city || "Bucuresti";
         
-        // La lockere, folosim address_line ca să detectăm curierul (am salvat acolo numele lockerului)
+        // FIX ADRESĂ: Folosim adresa completă (Nume Locker) în loc de cuvântul generic "Locker"
+        // Astfel pe AWB va scrie "FANbox Mega Image..." în loc de "Locker"
         const addressDetails = order.address_line || shippingAddress.line || "";
-        const streetName = order.shipping_method === 'easybox' ? "Locker" : addressDetails;
+        const streetName = addressDetails; 
 
         const isEasyBox = order.shipping_method === 'easybox' && order.locker_id;
         const mapPointId = isEasyBox ? parseInt(order.locker_id, 10) : null;
@@ -166,53 +167,54 @@ export async function createDraftShipment(order) {
         const pickupDate = new Date(Date.now() + 86400000).toISOString().split('T')[0];
 
         // ============================================================
-        // 🤖 LOGICĂ DETECTARE CURIER (DINAMIC)
+        // 🤖 LOGICĂ DETECTARE CURIER (STRICTĂ + FALLBACK)
         // ============================================================
         
-        // Harta serviciilor tale (Slug-urile găsite cu scriptul de test)
+        // Harta serviciilor (CODURILE REALE DIN TEST-UL TĂU)
         const SERVICE_MAP = {
-            sameday: 'sameday_locker',                // ID 12 din lista ta
-            cargus: 'easy_collect_locker_s',          // ID 50 din lista ta (S - cel mai sigur)
-            fan: 'fan_courier_courier_to_locker',     // ID 8 din lista ta (Curier -> Automatul)
-            dpd: 'dpd_automat_courier_to_locker'      // 27 din lista ta (Curier -> Automatul)
+            sameday: 'sameday_locker',                // ID 12
+            cargus: 'easy_collect_locker_s',          // ID 50
+            fan: 'fan_courier_courier_to_locker',     // ID 8
+            dpd: 'dpd_automat_courier_to_locker'      // ID 27
         };
 
-        // Contracte specifice (dacă ai ID-uri diferite în Ecolet per curier)
-        // Dacă ai un singur contract global (ex: ID 4), folosește-l pe ăla peste tot.
         const CONTRACT_MAP = {
             sameday: parseInt(process.env.ECOLET_SAMEDAY_CONTRACT_ID || "4"),
             cargus: parseInt(process.env.ECOLET_CARGUS_CONTRACT_ID || process.env.ECOLET_CONTRACT_ID || "4"),
             other: parseInt(process.env.ECOLET_CONTRACT_ID || "4")
         };
 
-        // Algoritm STRICT de detectare bazat pe locker_details din DB
         let selectedService = null;
-        let selectedContract = null;
+        let selectedContract = CONTRACT_MAP.other;
+
+        // FIX DETECTARE: Căutăm operatorul în locker_details SAU address_line (ca siguranță)
+        // Asta rezolvă problema când locker_details pare gol, dar adresa conține "FANbox..."
+        const rawLockerInfo = (order.locker_details || order.address_line || "").toUpperCase();
         
-        // Folosim strict coloana locker_details (ex: "SAMEDAY - Easybox...")
-        const lockerInfo = (order.locker_details || "").toLowerCase();
+        console.log(`🔎 Ecolet Strict Analysis: "${rawLockerInfo}"`);
 
-        console.log(`🔎 Ecolet Strict Check: "${lockerInfo}"`);
-
-        if (lockerInfo.includes('cargus')) {
-            selectedService = SERVICE_MAP.cargus;
-            selectedContract = CONTRACT_MAP.cargus;
-        } 
-        else if (lockerInfo.includes('fan') || lockerInfo.includes('fan courier')) {
-            selectedService = SERVICE_MAP.fan;
-            selectedContract = CONTRACT_MAP.other;
-        }
-        else if (lockerInfo.includes('dpd')) {
-            selectedService = SERVICE_MAP.dpd;
-            selectedContract = CONTRACT_MAP.other;
-        }
-        else if (lockerInfo.includes('sameday')) {
+        if (rawLockerInfo.includes('SAMEDAY')) {
+            console.log('✅ Operator Identificat: SAMEDAY');
             selectedService = SERVICE_MAP.sameday;
             selectedContract = CONTRACT_MAP.sameday;
         } 
+        else if (rawLockerInfo.includes('FAN') || rawLockerInfo.includes('FAN_COURIER') || rawLockerInfo.includes('FANBOX')) {
+            console.log('✅ Operator Identificat: FAN COURIER');
+            selectedService = SERVICE_MAP.fan;
+            selectedContract = CONTRACT_MAP.other;
+        } 
+        else if (rawLockerInfo.includes('CARGUS')) {
+            console.log('✅ Operator Identificat: CARGUS');
+            selectedService = SERVICE_MAP.cargus;
+            selectedContract = CONTRACT_MAP.cargus;
+        } 
+        else if (rawLockerInfo.includes('DPD')) {
+            console.log('✅ Operator Identificat: DPD');
+            selectedService = SERVICE_MAP.dpd;
+            selectedContract = CONTRACT_MAP.other;
+        } 
         else {
-            // FĂRĂ DEFAULT! Dăm eroare dacă nu identificăm operatorul.
-            throw new Error(`[Ecolet] Nu s-a putut identifica operatorul locker-ului din: "${lockerInfo}". Verifică baza de date.`);
+            throw new Error(`[Ecolet] Operator locker necunoscut: "${rawLockerInfo}". Nu pot genera AWB.`);
         }
 
         // ============================================================
