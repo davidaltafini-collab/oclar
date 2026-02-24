@@ -551,66 +551,101 @@ app.post('/api/create-order-ramburs', async (req, res) => {
 
 // 2. NETOPIA INIT (Creare comandă + Redirect plată)
 app.post('/api/create-netopia-session', async (req, res) => {
+    const body = req.body;
+    
+    // 1. Calculăm costul transportului
+    let shippingCostVal = 0;
+    if (body.shippingCost !== undefined) shippingCostVal = parseFloat(body.shippingCost);
+    else if (body.shipping_cost !== undefined) shippingCostVal = parseFloat(body.shipping_cost);
+
+    const {
+        amount,
+        totalAmount,
+        customerName,
+        customerEmail,
+        customerPhone,
+        address,
+        items,
+        subtotal,
+        shippingMethod,
+        discountCode,
+        discountAmount,
+        postalCode,
+        lockerId,
+        lockerName,
+        orderId 
+    } = body;
+
+    const finalAmount = totalAmount || amount;
+
+    // 2. LOGICĂ CHEIE: Dacă e locker, folosim numele lui
+    const finalAddress = (shippingMethod === 'easybox' && lockerName) ? lockerName : address.line;
+
+    if (!finalAmount || !customerName || !customerPhone) {
+        return res.status(400).json({ success: false, error: 'Date incomplete' });
+    }
+
     let connection;
     try {
-        const paymentData = req.body;
-        console.log("Inițiere comandă Card (Netopia) pentru:", paymentData.customerEmail);
-
-        if (!paymentData.amount) {
-            return res.status(400).json({ success: false, error: "Lipsă sumă de plată" });
-        }
-
         connection = await pool.getConnection();
-        const itemsJson = JSON.stringify(paymentData.items);
-        const shippingCostVal = parseFloat(paymentData.shippingCost || 0);
+        const itemsJson = JSON.stringify(items);
+        const newOrderId = orderId || Date.now().toString();
 
-        // Salvăm comanda în DB cu status 'pending'
-        const [result] = await connection.query(
+        // 3. SALVĂM ÎN DB
+        await connection.query(
             `INSERT INTO orders 
-            (customer_name, customer_email, customer_phone, county, city, address_line, postal_code, locker_id, items, subtotal, shipping_method, shipping_cost, discount_code, discount_amount, total_amount, payment_method, status, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'card', 'pending', NOW())`,
+            (id, customer_name, customer_email, customer_phone, county, city, address_line, postal_code, locker_id, items, subtotal, shipping_method, shipping_cost, discount_code, discount_amount, total_amount, payment_method, status, created_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'card', 'pending', NOW())
+            ON DUPLICATE KEY UPDATE status='pending'`,
             [
-                paymentData.customerName,
-                paymentData.customerEmail,
-                paymentData.customerPhone,
-                paymentData.address.county,
-                paymentData.address.city,
-                paymentData.address.line,
-                paymentData.postalCode || null,
-                (paymentData.shippingMethod === 'easybox' ? paymentData.lockerId : null),
+                newOrderId,
+                customerName,
+                customerEmail,
+                customerPhone,
+                address.county,
+                address.city,
+                finalAddress, // <--- AICI ESTE REPARAȚIA PENTRU ECOLET
+                postalCode || null,
+                (shippingMethod === 'easybox' ? lockerId : null),
                 itemsJson,
-                paymentData.subtotal,
-                paymentData.shippingMethod,
+                subtotal,
+                shippingMethod,
                 shippingCostVal,
-                paymentData.discountCode,
-                paymentData.discountAmount,
-                paymentData.totalAmount
+                discountCode,
+                discountAmount,
+                finalAmount
             ]
         );
 
-        const newOrderId = result.insertId;
-        console.log(`✅ Comandă Card salvată în DB cu ID: ${newOrderId}`);
-
-        // Actualizăm payload-ul cu ID-ul real
-        const netopiaPayload = {
-            ...paymentData,
-            orderId: newOrderId.toString()
-        };
-
-        // Cerem link de plată de la Netopia
-        const netopiaResult = await createPaymentSession(netopiaPayload);
-
-        if (paymentData.discountCode) {
-            await connection.query(
-                'UPDATE discount_codes SET used_count = used_count + 1 WHERE code = ?',
-                [paymentData.discountCode]
-            );
+        // Actualizare stoc cod reducere
+        if (discountCode) {
+            await connection.query('UPDATE discount_codes SET used_count = used_count + 1 WHERE code = ?', [discountCode]);
         }
 
-        res.json(netopiaResult);
+        // 4. PREGĂTIM DATELE PENTRU FUNCȚIA TA DIN netopia.js
+        // Fișierul tău netopia.js așteaptă un obiect specific ("email", "firstName", etc)
+        const netopiaPayload = {
+            orderId: newOrderId,
+            amount: finalAmount,
+            email: customerEmail,       // Așa cere netopia.js (nu customerEmail)
+            phone: customerPhone,       // Așa cere netopia.js
+            firstName: customerName.split(' ')[0] || "Client",
+            lastName: customerName.split(' ').slice(1).join(' ') || "Oclar",
+            address: {
+                city: address.city,
+                county: address.county,
+                line: finalAddress      // Trimitem numele lockerului și la plată
+            }
+        };
+
+        // APELĂM FUNCȚIA CORECTĂ (createPaymentSession, nu startNetopiaPayment)
+        // Nu mai folosim "import" dinamic pentru că o ai deja importată sus în fișier
+        const sessionResult = await createPaymentSession(netopiaPayload);
+
+        res.json(sessionResult);
 
     } catch (error) {
-        console.error("Eroare Netopia Init:", error);
+        console.error('❌ Netopia Session Error:', error);
         res.status(500).json({ success: false, error: error.message });
     } finally {
         if (connection) connection.release();
