@@ -449,6 +449,12 @@ app.post('/api/create-order-ramburs', async (req, res) => {
     let connection;
     try {
         const body = req.body;
+        console.log("🔍 DEBUG LOCKER:", {
+        lockerId: body.lockerId,
+        shippingMethod: body.shippingMethod,
+        // Vezi dacă mai vine ceva util
+        fullBody: JSON.stringify(body).substring(0, 200) 
+         });
 
         let shippingCostVal = 0;
         if (body.shippingCost !== undefined) shippingCostVal = parseFloat(body.shippingCost);
