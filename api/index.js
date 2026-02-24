@@ -553,10 +553,10 @@ app.post('/api/create-order-ramburs', async (req, res) => {
 // 2. NETOPIA INIT (Creare comandă + Redirect plată)
 app.post('/api/create-netopia-session', async (req, res) => {
     // 1. Preluăm datele
-    const { 
+     const { 
         totalAmount, customerName, customerEmail, customerPhone, address, 
         items, subtotal, shippingMethod, discountCode, discountAmount, 
-        postalCode, lockerId, lockerName 
+        postalCode, lockerId, lockerDetails // <--- Primim lockerDetails (format "OPERATOR|NUME")
     } = req.body;
 
     // 2. Validări și Default-uri (Repară eroarea "Cannot read properties of undefined reading city")
@@ -579,7 +579,13 @@ app.post('/api/create-netopia-session', async (req, res) => {
         connection = await pool.getConnection();
         const itemsJson = JSON.stringify(items);
 
-        // 4. Inserăm comanda în DB (Cu coloana locker_details)
+// 4. Inserăm comanda în DB (Cu coloana locker_details)
+        // Separăm numele lockerului de operator pentru address_line
+        let cleanLockerName = dbAddressLine;
+        if (lockerDetails && lockerDetails.includes('|')) {
+             cleanLockerName = lockerDetails.split('|')[1]; // Luăm doar numele pentru adresă
+        }
+
         const [result] = await connection.query(
             `INSERT INTO orders 
             (customer_name, customer_email, customer_phone, county, city, address_line, postal_code, locker_id, locker_details, items, subtotal, shipping_method, shipping_cost, discount_code, discount_amount, total_amount, payment_method, status, created_at) 
@@ -590,11 +596,11 @@ app.post('/api/create-netopia-session', async (req, res) => {
                 customerPhone, 
                 billingCounty, 
                 billingCity, 
-                billingLine, // Păstrăm adresa de facturare curată aici
+                cleanLockerName, // Doar numele lockerului (pentru curier/factură)
                 postalCode || null, 
                 (shippingMethod === 'easybox' ? lockerId : null), 
-                (shippingMethod === 'easybox' ? lockerName : null), // Aici salvăm OPERATOR - NUME
-                itemsJson, 
+                lockerDetails,   // Salvăm "OPERATOR|NUME" complet aici pentru Ecolet
+                itemsJson,
                 subtotal, 
                 shippingMethod, 
                 (shippingMethod === 'easybox' ? 15 : 25), 

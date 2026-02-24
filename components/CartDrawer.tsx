@@ -286,23 +286,29 @@ export const CartDrawer: React.FC = () => {
           }
 
           window.BPWidget.init(container, {
-            callback: (point: any) => {
-              console.log('📦 Locker Selected:', point);
-              const operator = point.operator || 'SAMEDAY'; 
+             callback: (point: any) => {
+              console.log('📦 Locker Selected:', point);
+              
+              // 1. Extragem Operatorul (SAMEDAY, FAN_COURIER, CARGUS, DPD)
+              const operator = point.operator || 'UNKNOWN';
               const rawName = point.name || point.description || 'Locker';
-              const lockerName = `${operator} - ${rawName}`;
-              const lockerId = point.id || point.code; 
-              const lockerCity = point.city || '';
-              const lockerCounty = point.province || '';
-              const lockerAddress = point.address || '';
+              
+              // 2. Construim un string compus: "OPERATOR|NUME"
+              // Folosim "|" ca separator sigur pentru a-l desface în Backend
+              const lockerName = `${operator}|${rawName}`;
 
-              setSelectedLocker({
-                lockerId: lockerId,
-                lockerName: lockerName,
-                city: lockerCity,
-                county: lockerCounty,
-                address: lockerAddress
-              });
+              const lockerId = point.id || point.code; 
+              const lockerCity = point.city || '';
+              const lockerCounty = point.province || '';
+              const lockerAddress = point.address || '';
+
+              setSelectedLocker({
+                lockerId: lockerId,
+                lockerName: lockerName, // Aici avem acum "FAN_COURIER|Fanbox..."
+                city: lockerCity,
+                county: lockerCounty,
+                address: lockerAddress
+              });
               
               // Ștergem eroarea dacă userul a selectat
               setValidationErrors(prev => {
@@ -480,7 +486,7 @@ export const CartDrawer: React.FC = () => {
         
         // 👇 AICI AM ADĂUGAT CE LIPSEA:
         lockerId: selectedLocker?.lockerId || null,
-        lockerName: selectedLocker?.lockerName || null  // <--- ASTA ESTE CHEIA!
+        lockerDetails: selectedLocker?.lockerName || null  // <--- ASTA ESTE CHEIA!
       };
 
       if (paymentMethod === 'card') {
