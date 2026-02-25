@@ -111,10 +111,6 @@ export async function sendOblioInvoice(orderDetails) {
       products: oblioProducts,
       language: 'RO',
       precision: 2,
-      collect: {
-        type: collectType,
-        value: parseFloat(totalAmount)
-      },
       mentions: `Comanda #${orderId}`,
       useStock: false
     };
