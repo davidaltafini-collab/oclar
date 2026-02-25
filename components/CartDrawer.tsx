@@ -295,7 +295,8 @@ export const CartDrawer: React.FC = () => {
               
               // 2. Construim un string compus: "OPERATOR|NUME"
               // Folosim "|" ca separator sigur pentru a-l desface în Backend
-              const lockerName = `${operator}|${rawName}`;
+              const lockerAddressVal = point.address || 'Adresa indisponibila';
+              const lockerName = `${operator}|${rawName}|${lockerAddressVal}`;
 
               const lockerId = point.id || point.code; 
               const lockerCity = point.city || '';
