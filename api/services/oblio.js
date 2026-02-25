@@ -112,7 +112,7 @@ export async function sendOblioInvoice(orderDetails) {
       language: 'RO',
       precision: 2,
       collect: {
-        type: 'OP', // Ordin de plată
+        type: 'Ordin de plata', // Ordin de plată
         value: parseFloat(totalAmount)
       },
       mentions: `Comanda #${orderId}`,
