@@ -111,15 +111,10 @@ export async function sendOblioInvoice(orderDetails) {
       products: oblioProducts,
       language: 'RO',
       precision: 2,
-collect: {
-  type:
-    orderDetails.paymentMethod === 'ramburs'
-      ? 'Ramburs'
-      : orderDetails.paymentMethod === 'card'
-        ? 'Card'
-        : 'Ordin de plata',
-  value: parseFloat(totalAmount)
-},
+      collect: {
+        type: collectType,
+        value: parseFloat(totalAmount)
+      },
       mentions: `Comanda #${orderId}`,
       useStock: false
     };
