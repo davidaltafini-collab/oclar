@@ -483,10 +483,19 @@ app.post('/api/create-order-ramburs', async (req, res) => {
         connection = await pool.getConnection();
         const itemsJson = JSON.stringify(items);
 
+        const billingLine = address.street_name
+            ? `${address.street_name}${address.street_number ? ' Nr. ' + address.street_number : ''}${address.details ? ', ' + address.details : ''}`.trim()
+            : (address.line || '');
+        const billingAddressJson = JSON.stringify({
+            line1: billingLine,
+            city: address.city || '',
+            county: address.county || ''
+        });
+
         const [result] = await connection.query(
             `INSERT INTO orders 
-            (customer_name, customer_email, customer_phone, county, city, address_line, postal_code, locker_id, items, subtotal, shipping_method, shipping_cost, discount_code, discount_amount, total_amount, payment_method, status, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ramburs', 'pending', NOW())`,
+            (customer_name, customer_email, customer_phone, county, city, address_line, postal_code, locker_id, shipping_address, items, subtotal, shipping_method, shipping_cost, discount_code, discount_amount, total_amount, payment_method, status, created_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ramburs', 'pending', NOW())`,
             [
                 customerName,
                 customerEmail,
@@ -496,6 +505,7 @@ app.post('/api/create-order-ramburs', async (req, res) => {
                 finalAddress,
                 postalCode || null,
                 (shippingMethod === 'easybox' ? lockerId : null),
+                billingAddressJson,
                 itemsJson,
                 subtotal,
                 shippingMethod,
@@ -590,26 +600,36 @@ app.post('/api/create-netopia-session', async (req, res) => {
              cleanLockerName = lockerDetails.split('|')[1]; // Luăm doar numele pentru adresă
         }
 
+        const netopiaStreet = safeAddress.street_name
+            ? `${safeAddress.street_name}${safeAddress.street_number ? ' Nr. ' + safeAddress.street_number : ''}${safeAddress.details ? ', ' + safeAddress.details : ''}`.trim()
+            : billingLine;
+        const billingAddressJson = JSON.stringify({
+            line1: netopiaStreet,
+            city: billingCity,
+            county: billingCounty
+        });
+
         const [result] = await connection.query(
             `INSERT INTO orders 
-            (customer_name, customer_email, customer_phone, county, city, address_line, postal_code, locker_id, locker_details, items, subtotal, shipping_method, shipping_cost, discount_code, discount_amount, total_amount, payment_method, status, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'card', 'pending', NOW())`,
+            (customer_name, customer_email, customer_phone, county, city, address_line, postal_code, locker_id, locker_details, shipping_address, items, subtotal, shipping_method, shipping_cost, discount_code, discount_amount, total_amount, payment_method, status, created_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'card', 'pending', NOW())`,
             [
-                customerName, 
-                customerEmail, 
-                customerPhone, 
-                billingCounty, 
-                billingCity, 
-                cleanLockerName, // Doar numele lockerului (pentru curier/factură)
-                postalCode || null, 
-                (shippingMethod === 'easybox' ? lockerId : null), 
-                lockerDetails,   // Salvăm "OPERATOR|NUME" complet aici pentru Ecolet
+                customerName,
+                customerEmail,
+                customerPhone,
+                billingCounty,
+                billingCity,
+                cleanLockerName,
+                postalCode || null,
+                (shippingMethod === 'easybox' ? lockerId : null),
+                lockerDetails,
+                billingAddressJson,
                 itemsJson,
-                subtotal, 
-                shippingMethod, 
-                (shippingMethod === 'easybox' ? 15 : 25), 
-                discountCode, 
-                discountAmount, 
+                subtotal,
+                shippingMethod,
+                (shippingMethod === 'easybox' ? 15 : 25),
+                discountCode,
+                discountAmount,
                 totalAmount
             ]
         );

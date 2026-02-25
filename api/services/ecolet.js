@@ -167,9 +167,9 @@ export async function createDraftShipment(order) {
         } else {
             // Pentru curier la adresă: date normale din DB
             streetName   = shippingAddress.street_name || order.address_line || "Strada Principala";
-            streetNumber = shippingAddress.street_number || "1";
+            // Nu punem "1" implicit - dacă nu avem număr separat, adresa e deja completă în street_name
+            streetNumber = shippingAddress.street_number || order.street_number || ".";
             if (streetNumber.length > 10) streetNumber = streetNumber.substring(0, 10);
-            if (!streetNumber) streetNumber = "1";
 
             const details = shippingAddress.details || "";
             observations = `Comanda #${order.id}${details ? '. Detalii: ' + details : ''}`;
