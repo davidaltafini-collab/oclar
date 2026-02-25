@@ -107,6 +107,7 @@ export async function sendOblioInvoice(orderDetails) {
       issueDate: new Date().toISOString().split('T')[0],
       dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 14 zile
       currency: 'RON',
+      seriesName: process.env.OBLIO_SERIES_NAME,
       products: oblioProducts,
       language: 'RO',
       precision: 2,
