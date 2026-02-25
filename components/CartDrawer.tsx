@@ -295,7 +295,18 @@ export const CartDrawer: React.FC = () => {
               
               // 2. Construim un string compus: "OPERATOR|NUME"
               // Folosim "|" ca separator sigur pentru a-l desface în Backend
-              const lockerAddressVal = point.address || 'Adresa indisponibila';
+              let lockerAddressVal = point.address || point.street || point.location_address || '';
+
+              // Fallback: Dacă adresa e goală, verificăm descrierea sau construim din Oraș
+              if (!lockerAddressVal || lockerAddressVal.trim() === '') {
+                if (point.description && point.description.length > 5 && point.description !== rawName) {
+                  lockerAddressVal = point.description;
+                } else {
+                  lockerAddressVal = `${point.city || ''}, ${point.province || ''}`;
+                }
+              }
+
+              // Acum trimitem pachetul complet care va fi decodat de Backend
               const lockerName = `${operator}|${rawName}|${lockerAddressVal}`;
 
               const lockerId = point.id || point.code; 
