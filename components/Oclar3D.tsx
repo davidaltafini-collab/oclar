@@ -1,8 +1,7 @@
 import React, { Suspense, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { useGLTF } from '@react-three/drei/core/useGLTF';
-import { Environment } from '@react-three/drei/core/Environment';
+import { Environment, useGLTF } from '@react-three/drei';
 
 type ModelProps = {
   url: string;
