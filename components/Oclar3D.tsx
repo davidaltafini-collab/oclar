@@ -109,7 +109,7 @@ export const Oclar3D: React.FC<{
   floatSpeed?: number;
   dragSensitivity?: number;
 }> = ({
-  url = '/models/oclar.glb',
+  url = 'https://modele3d.com/models/oclar.glb',
   className = '',
   autoRotate = true,
   autoRotateSpeed = 0.006,
@@ -188,4 +188,4 @@ export const Oclar3D: React.FC<{
   );
 };
 
-useGLTF.preload('/models/oclar.glb');
+useGLTF.preload('https://modele3d.com/models/oclar.glb');
