@@ -1,7 +1,8 @@
 import React, { Suspense, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Environment, Html, useGLTF } from '@react-three/drei';
+import { useGLTF } from '@react-three/drei/core/useGLTF';
+import { Environment } from '@react-three/drei/core/Environment';
 
 type ModelProps = {
   url: string;
@@ -90,13 +91,7 @@ function Model({
 }
 
 function Loader() {
-  return (
-    <Html center>
-      <div className="flex items-center gap-3">
-        <div className="w-6 h-6 border-4 border-neutral-200 border-t-brand-yellow rounded-full animate-spin" />
-      </div>
-    </Html>
-  );
+  return null;
 }
 
 export const Oclar3D: React.FC<{
