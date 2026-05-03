@@ -5,7 +5,7 @@ import { Button } from '../components/Button';
 import { SEO } from '../components/SEO';
 import { useCart } from '../context/CartContext';
 import { API_URL, MOCK_PRODUCTS } from '../constants';
-import { Oclar3D } from '../components/Oclar3D';
+const Oclar3D = React.lazy(() => import('../components/Oclar3D').then(m => ({ default: m.Oclar3D })));
 
 // Helper simplu pentru conversie preț
 const toNumber = (value: any) => {
@@ -109,13 +109,15 @@ export const Home: React.FC = () => {
           {/* COLOANA 3D DESKTOP */}
           <div className="absolute right-0 top-0 w-[55%] h-full z-10 flex items-center justify-center">
              <div className="absolute w-[600px] h-[600px] bg-brand-yellow/20 rounded-full blur-[100px] pointer-events-none animate-pulse-glow"></div>
-             <Oclar3D
-               autoRotate
-               intensity={0.4}
-               autoRotateSpeed={0.003}
-               dragSensitivity={0.008}
-               className="w-full h-full"
-             />
+             <Suspense fallback={<div className="w-6 h-6 border-4 border-neutral-200 border-t-brand-yellow rounded-full animate-spin" />}>
+                <Oclar3D
+                autoRotate
+                intensity={0.4}
+                autoRotateSpeed={0.003}
+                dragSensitivity={0.008}
+                className="w-full h-full"
+               />
+              </Suspense>
           </div>
         </div>
 
@@ -141,13 +143,15 @@ export const Home: React.FC = () => {
               
               {/* 3D Model - DIMENSIUNE FIXĂ VIZIBILĂ */}
               <div className="relative w-full h-full max-w-[350px] mx-auto">
-                <Oclar3D
-                  autoRotate
-                  intensity={0.5}
-                  autoRotateSpeed={0.004}
-                  dragSensitivity={0.02}
-                  className="w-full h-full"
-                />
+                <Suspense fallback={<div className="w-6 h-6 border-4 border-neutral-200 border-t-brand-yellow rounded-full animate-spin" />}>
+                 <Oclar3D
+                 autoRotate
+                 intensity={0.5}
+                 autoRotateSpeed={0.004}
+                 dragSensitivity={0.02}
+                 className="w-full h-full"
+                  />
+                </Suspense>
               </div>
            </div>
 

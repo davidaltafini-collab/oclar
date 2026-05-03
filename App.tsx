@@ -5,15 +5,15 @@ import { HelmetProvider } from 'react-helmet-async';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { Home } from './pages/Home';
-import { ProductDetails } from './pages/ProductDetails';
-import { About } from './pages/About';
-import { Admin } from './pages/Admin';
-import { Diagnostics } from './pages/Diagnostics';
-import { Terms } from './pages/Terms';
-import { Privacy } from './pages/Privacy';
-import { Success } from './pages/Success';
-import { Contact } from './pages/Contact';
-import { Cookies } from './pages/Cookies';
+const ProductDetails = React.lazy(() => import('./pages/ProductDetails').then(m => ({ default: m.ProductDetails })));
+const About = React.lazy(() => import('./pages/About').then(m => ({ default: m.About })));
+const Admin = React.lazy(() => import('./pages/Admin').then(m => ({ default: m.Admin })));
+const Diagnostics = React.lazy(() => import('./pages/Diagnostics').then(m => ({ default: m.Diagnostics })));
+const Terms = React.lazy(() => import('./pages/Terms').then(m => ({ default: m.Terms })));
+const Privacy = React.lazy(() => import('./pages/Privacy').then(m => ({ default: m.Privacy })));
+const Success = React.lazy(() => import('./pages/Success').then(m => ({ default: m.Success })));
+const Contact = React.lazy(() => import('./pages/Contact').then(m => ({ default: m.Contact })));
+const Cookies = React.lazy(() => import('./pages/Cookies').then(m => ({ default: m.Cookies })));
 
 import { CartProvider } from './context/CartContext';
 import { CartDrawer } from './components/CartDrawer';
@@ -102,6 +102,7 @@ function App() {
             <CartDrawer />
             <AnalyticsManager />
             
+            <Suspense fallback={null}>
             <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/product/:id" element={<ProductDetails />} />
@@ -115,6 +116,7 @@ function App() {
               <Route path="/contact" element={<Contact />} />
               <Route path="/cookies" element={<Cookies />} />
             </Routes>
+            </Suspense>
             
             <Footer />
             <CookieConsent />
