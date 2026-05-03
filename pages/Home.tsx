@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, Suspense } from 'react';
 import { Link } from 'react-router-dom';
 import { Product } from '../types';
 import { Button } from '../components/Button';
