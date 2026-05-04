@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import compression from 'compression';
 import Stripe from 'stripe';
 import { pool } from './db.js';
 import { sendOrderEmails } from './services/email.js';
@@ -11,6 +12,7 @@ import { createPaymentSession, validatePaymentNotification } from './services/ne
 dotenv.config();
 
 const app = express();
+app.use(compression());
 
 // Verificare variabile de mediu critice
 const requiredEnvVars = ['DB_HOST', 'DB_USER', 'DB_PASS', 'DB_NAME', 'STRIPE_SECRET_KEY'];

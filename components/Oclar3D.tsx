@@ -28,7 +28,7 @@ function Model({
   externalRotationY
 }: ModelProps) {
   const group = useRef<THREE.Group>(null);
-  const { scene } = useGLTF(url);
+  useGLTF.setDecoderPath('/draco/');
   const cloned = useMemo(() => scene.clone(true), [scene]);
   
   // Stare internă pentru tilt (înclinare pe X)
