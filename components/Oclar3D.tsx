@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect, useMemo, useRef } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Environment, useGLTF } from '@react-three/drei';
@@ -90,6 +90,21 @@ function Model({
   );
 }
 
+function ModelWithFade({ children }: { children: React.ReactNode }) {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setVisible(true), 100);
+    return () => clearTimeout(t);
+  }, []);
+
+  return (
+    <group>
+      {children}
+    </group>
+  );
+}
+
 function Loader() {
   return null;
 }
@@ -116,7 +131,8 @@ export const Oclar3D: React.FC<{
   // Aceste refs trăiesc în afara canvas-ului pentru a păstra starea între randări
   const isDraggingRef = useRef(false);
   const lastPosRef = useRef({ x: 0 });
-  const externalRotationY = useRef(0); // Ținem minte rotația totală aici
+  const externalRotationY = useRef(0);
+  const [modelVisible, setModelVisible] = useState(false); // Ținem minte rotația totală aici
 
   const handlePointerDown = (e: React.PointerEvent) => {
     isDraggingRef.current = true;
@@ -145,8 +161,11 @@ export const Oclar3D: React.FC<{
     <div
       className={`relative ${className}`}
       style={{
-        touchAction: 'pan-y', // ESENȚIAL: Permite scroll vertical, blochează orizontal pt drag
+        touchAction: 'pan-y',
         cursor: 'grab',
+        opacity: modelVisible ? 1 : 0,
+        transform: modelVisible ? 'translateY(0px)' : 'translateY(24px)',
+        transition: 'opacity 0.8s ease-out, transform 0.8s cubic-bezier(0.16, 1, 0.3, 1)',
       }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -164,7 +183,7 @@ export const Oclar3D: React.FC<{
         <directionalLight position={[5, 8, 5]} intensity={1.5} castShadow />
         <directionalLight position={[-6, 3, -2]} intensity={0.8} />
 
-        <Suspense fallback={<Loader />}>
+        <Suspense fallback={<Loader />} onResolve={() => setModelVisible(true)}>
           <Environment preset="city" />
           <Model
             url={url}
