@@ -63,7 +63,7 @@ html { scroll-behavior: smooth; }
   opacity: 1;
 }
 
-/* --- SPLASH SCREEN OCLAR ANIMATION --- */
+/* --- SPLASH SCREEN OCLAR V2 (Centrat & Rapid) --- */
 #global-loader {
   position: fixed;
   top: 0;
@@ -77,49 +77,62 @@ html { scroll-behavior: smooth; }
   z-index: 99999;
   overflow: hidden;
   opacity: 1;
-  transition: opacity 0.5s ease-out; /* Pentru fade-out-ul final */
+  transition: opacity 0.4s ease-in-out; /* Fade-out mai rapid */
 }
 
 #loader-logo-container {
   display: flex;
   align-items: center;
+  justify-content: center;
   position: relative;
+  width: 60px; /* Fixăm lățimea la dimensiunea pătratului pentru centrare perfectă */
+  height: 60px;
 }
 
 #yellow-square {
-  background-color: var(--color-brand-yellow); /* Culoarea ta din Tailwind */
-  position: relative;
+  background-color: var(--color-brand-yellow);
   width: 60px;
   height: 60px;
+  position: relative;
+  z-index: 2;
   transform-origin: center center;
   animation: 
-    square-shrink 0.3s ease-out forwards,
-    square-slide-left 0.3s ease-out 0.2s forwards;
+    square-shrink 0.3s cubic-bezier(0.25, 1, 0.5, 1) forwards,
+    square-slide-left 0.3s cubic-bezier(0.25, 1, 0.5, 1) 0.25s forwards;
 }
 
 #oclar-text {
-  color: var(--color-brand-dark); /* Culoarea ta din Tailwind */
-  font-family: var(--font-family-sans); /* Fontul Inter */
+  color: var(--color-brand-dark);
+  font-family: var(--font-family-sans);
   font-weight: 900;
   font-size: 54px;
   line-height: 1;
-  margin-left: 20px;
-  position: relative;
+  position: absolute; /* Nu mai ocupă spațiu, pătratul rămâne centrat */
+  left: 60px; 
+  white-space: nowrap;
   opacity: 0;
+  z-index: 1;
   animation: text-reveal-and-slide 0.3s ease-out 0.3s forwards;
 }
 
+/* --- KEYFRAMES OPTIMIZATE --- */
 @keyframes square-shrink {
-  0% { transform: scale(6); }
+  0% { transform: scale(8); } /* Chiar mai mare la început pentru impact */
   100% { transform: scale(1); }
 }
 
 @keyframes square-slide-left {
   0% { transform: translateX(0); }
-  100% { transform: translateX(-15px); }
+  100% { transform: translateX(-80px); } /* Se mișcă mai mult la stânga */
 }
 
 @keyframes text-reveal-and-slide {
-  0% { opacity: 0; transform: translateX(-40px); }
-  100% { opacity: 1; transform: translateX(0); }
+  0% { 
+    opacity: 0; 
+    transform: translateX(-40px); 
+  }
+  100% { 
+    opacity: 1; 
+    transform: translateX(-15px); /* Poziția finală a textului față de pătrat */
+  }
 }

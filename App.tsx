@@ -91,19 +91,18 @@ const AnalyticsManager = () => {
 
 function App() {
   useEffect(() => {
-    // Așteptăm 1.2 secunde (să aibă timp să se termine animația de pe ecran) 
-    // apoi facem fade-out la ecranul de loading
+    // Reducem timpul total la 800ms pentru un flow mult mai rapid
     const timer = setTimeout(() => {
       const loader = document.getElementById('global-loader');
       if (loader) {
-        loader.style.opacity = '0'; // Începe fade-out-ul lin
+        loader.style.opacity = '0'; // Pornim fade-out-ul
         
-        // După încă 500ms (cât durează tranziția de fade), îl ștergem ca să nu blocheze click-urile pe site
+        // Eliminăm complet loader-ul din DOM după ce se termină tranziția de 0.4s
         setTimeout(() => {
           loader.style.display = 'none';
-        }, 500);
+        }, 400);
       }
-    }, 1200);
+    }, 800); 
 
     return () => clearTimeout(timer);
   }, []);
