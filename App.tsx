@@ -90,6 +90,24 @@ const AnalyticsManager = () => {
 };
 
 function App() {
+  useEffect(() => {
+    // Așteptăm 1.2 secunde (să aibă timp să se termine animația de pe ecran) 
+    // apoi facem fade-out la ecranul de loading
+    const timer = setTimeout(() => {
+      const loader = document.getElementById('global-loader');
+      if (loader) {
+        loader.style.opacity = '0'; // Începe fade-out-ul lin
+        
+        // După încă 500ms (cât durează tranziția de fade), îl ștergem ca să nu blocheze click-urile pe site
+        setTimeout(() => {
+          loader.style.display = 'none';
+        }, 500);
+      }
+    }, 1200);
+
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <HelmetProvider>
       <Router>

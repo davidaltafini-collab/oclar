@@ -62,3 +62,64 @@ html { scroll-behavior: smooth; }
 .backlight-btn:hover::before {
   opacity: 1;
 }
+
+/* --- SPLASH SCREEN OCLAR ANIMATION --- */
+#global-loader {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: #ffffff;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 99999;
+  overflow: hidden;
+  opacity: 1;
+  transition: opacity 0.5s ease-out; /* Pentru fade-out-ul final */
+}
+
+#loader-logo-container {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+#yellow-square {
+  background-color: var(--color-brand-yellow); /* Culoarea ta din Tailwind */
+  position: relative;
+  width: 60px;
+  height: 60px;
+  transform-origin: center center;
+  animation: 
+    square-shrink 0.3s ease-out forwards,
+    square-slide-left 0.3s ease-out 0.2s forwards;
+}
+
+#oclar-text {
+  color: var(--color-brand-dark); /* Culoarea ta din Tailwind */
+  font-family: var(--font-family-sans); /* Fontul Inter */
+  font-weight: 900;
+  font-size: 54px;
+  line-height: 1;
+  margin-left: 20px;
+  position: relative;
+  opacity: 0;
+  animation: text-reveal-and-slide 0.3s ease-out 0.3s forwards;
+}
+
+@keyframes square-shrink {
+  0% { transform: scale(6); }
+  100% { transform: scale(1); }
+}
+
+@keyframes square-slide-left {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-15px); }
+}
+
+@keyframes text-reveal-and-slide {
+  0% { opacity: 0; transform: translateX(-40px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
