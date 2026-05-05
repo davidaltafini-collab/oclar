@@ -66,27 +66,25 @@ html { scroll-behavior: smooth; }
 /* --- SPLASH SCREEN OCLAR V2 (Centrat & Rapid) --- */
 #global-loader {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
+  top: 0; left: 0; right: 0; bottom: 0;
+  width: 100vw; height: 100vh;
   background-color: #ffffff;
   display: flex;
   justify-content: center;
   align-items: center;
   z-index: 99999;
-  overflow: hidden;
-  opacity: 1;
-  transition: opacity 0.4s ease-in-out; /* Fade-out mai rapid */
+  transition: opacity 0.2s ease-out, visibility 0.2s ease-out;
+}
+
+#global-loader.fade-out {
+  opacity: 0;
+  visibility: hidden;
 }
 
 #loader-logo-container {
   display: flex;
   align-items: center;
   justify-content: center;
-  position: relative;
-  width: 60px; /* Fixăm lățimea la dimensiunea pătratului pentru centrare perfectă */
-  height: 60px;
 }
 
 #yellow-square {
@@ -95,10 +93,14 @@ html { scroll-behavior: smooth; }
   height: 60px;
   position: relative;
   z-index: 2;
-  transform-origin: center center;
-  animation: 
-    square-shrink 0.3s cubic-bezier(0.25, 1, 0.5, 1) forwards,
-    square-slide-left 0.3s cubic-bezier(0.25, 1, 0.5, 1) 0.25s forwards;
+  transform: scale(8);
+  animation: square-shrink 0.2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+#text-wrapper {
+  overflow: hidden;
+  max-width: 0px;
+  animation: wrapper-expand 0.25s cubic-bezier(0.25, 1, 0.5, 1) 0.15s forwards;
 }
 
 #oclar-text {
@@ -107,32 +109,24 @@ html { scroll-behavior: smooth; }
   font-weight: 900;
   font-size: 54px;
   line-height: 1;
-  position: absolute; /* Nu mai ocupă spațiu, pătratul rămâne centrat */
-  left: 60px; 
+  padding-left: 15px;
+  margin: 0;
   white-space: nowrap;
-  opacity: 0;
-  z-index: 1;
-  animation: text-reveal-and-slide 0.3s ease-out 0.3s forwards;
+  transform: translateX(-100%);
+  animation: text-slide 0.25s cubic-bezier(0.25, 1, 0.5, 1) 0.15s forwards;
 }
 
-/* --- KEYFRAMES OPTIMIZATE --- */
 @keyframes square-shrink {
-  0% { transform: scale(8); } /* Chiar mai mare la început pentru impact */
+  0% { transform: scale(8); }
   100% { transform: scale(1); }
 }
 
-@keyframes square-slide-left {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(-80px); } /* Se mișcă mai mult la stânga */
+@keyframes wrapper-expand {
+  0% { max-width: 0px; }
+  100% { max-width: 300px; }
 }
 
-@keyframes text-reveal-and-slide {
-  0% { 
-    opacity: 0; 
-    transform: translateX(-40px); 
-  }
-  100% { 
-    opacity: 1; 
-    transform: translateX(-15px); /* Poziția finală a textului față de pătrat */
-  }
+@keyframes text-slide {
+  0% { transform: translateX(-100%); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
 }
