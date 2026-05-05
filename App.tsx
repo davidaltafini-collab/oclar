@@ -104,9 +104,9 @@ function App() {
           
           setTimeout(() => {
             loader.style.display = 'none';
-          }, 200);
+          }, 260); // Fade-out crescut la 260ms
         }
-      }, 500); 
+      }, 430); // Pauză redusă la 30ms (400ms animație + 30ms pauză = 430ms) 
 
       return () => clearTimeout(timer);
     } else {
