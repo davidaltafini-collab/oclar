@@ -14,9 +14,11 @@ type ModelProps = {
   // Refs primite de la părinte pentru control
   isDraggingRef: React.MutableRefObject<boolean>;
   externalRotationY: React.MutableRefObject<number>;
+  onLoaded?: () => void;
 };
 
 function Model({
+  onLoaded,
   url,
   autoRotate = true,
   autoRotateSpeed = 0.006,
@@ -34,6 +36,10 @@ function Model({
   
   // Stare internă pentru tilt (înclinare pe X)
   const tiltRef = useRef(0);
+
+  useEffect(() => {
+    onLoaded?.();
+  }, []);
 
   // Setup Materiale
   useEffect(() => {
@@ -132,7 +138,8 @@ export const Oclar3D: React.FC<{
   const isDraggingRef = useRef(false);
   const lastPosRef = useRef({ x: 0 });
   const externalRotationY = useRef(0);
-  const [modelVisible, setModelVisible] = useState(false); // Ținem minte rotația totală aici
+  const [modelVisible, setModelVisible] = useState(false);
+  const handleModelLoaded = useRef<(() => void) | null>(null); // Ținem minte rotația totală aici
 
   const handlePointerDown = (e: React.PointerEvent) => {
     isDraggingRef.current = true;
@@ -183,7 +190,7 @@ export const Oclar3D: React.FC<{
         <directionalLight position={[5, 8, 5]} intensity={1.5} castShadow />
         <directionalLight position={[-6, 3, -2]} intensity={0.8} />
 
-        <Suspense fallback={<Loader />} onResolve={() => setModelVisible(true)}>
+        <Suspense fallback={<Loader />}>
           <Environment preset="city" />
           <Model
             url={url}
@@ -195,6 +202,7 @@ export const Oclar3D: React.FC<{
             dragSensitivity={dragSensitivity}
             isDraggingRef={isDraggingRef}
             externalRotationY={externalRotationY}
+            onLoaded={() => setModelVisible(true)}
           />
         </Suspense>
       </Canvas>
