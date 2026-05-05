@@ -91,18 +91,29 @@ const AnalyticsManager = () => {
 
 function App() {
   useEffect(() => {
-    const timer = setTimeout(() => {
-      const loader = document.getElementById('global-loader');
-      if (loader) {
-        loader.classList.add('fade-out');
-        
-        setTimeout(() => {
-          loader.style.display = 'none';
-        }, 200);
-      }
-    }, 500); 
+    const hasSeenSplash = sessionStorage.getItem('oclar_splash_seen');
 
-    return () => clearTimeout(timer);
+    if (!hasSeenSplash) {
+      // Dacă e prima vizită, o rulăm și o memorăm
+      sessionStorage.setItem('oclar_splash_seen', 'true');
+      
+      const timer = setTimeout(() => {
+        const loader = document.getElementById('global-loader');
+        if (loader) {
+          loader.classList.add('fade-out');
+          
+          setTimeout(() => {
+            loader.style.display = 'none';
+          }, 200);
+        }
+      }, 500); 
+
+      return () => clearTimeout(timer);
+    } else {
+      // Dacă a dat refresh, scoatem loaderul complet din peisaj
+      const loader = document.getElementById('global-loader');
+      if (loader) loader.style.display = 'none';
+    }
   }, []);
 
   return (
