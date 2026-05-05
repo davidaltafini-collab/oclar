@@ -109,7 +109,7 @@ export const Home: React.FC = () => {
           {/* COLOANA 3D DESKTOP */}
           <div className="absolute right-0 top-0 w-[55%] h-full z-10 flex items-center justify-center">
              <div className="absolute w-[600px] h-[600px] bg-brand-yellow/20 rounded-full blur-[100px] pointer-events-none animate-pulse-glow"></div>
-             <Suspense fallback={<div className="w-6 h-6 border-4 border-neutral-200 border-t-brand-yellow rounded-full animate-spin" />}>
+             <Suspense fallback={null}>
                 <Oclar3D
                 autoRotate
                 intensity={0.4}
@@ -143,7 +143,7 @@ export const Home: React.FC = () => {
               
               {/* 3D Model - DIMENSIUNE FIXĂ VIZIBILĂ */}
               <div className="relative w-full h-full max-w-[350px] mx-auto">
-                <Suspense fallback={<div className="w-6 h-6 border-4 border-neutral-200 border-t-brand-yellow rounded-full animate-spin" />}>
+                <Suspense fallback={null}>
                  <Oclar3D
                  autoRotate
                  intensity={0.5}
