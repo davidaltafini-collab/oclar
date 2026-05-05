@@ -190,7 +190,7 @@ export const Oclar3D: React.FC<{
         <directionalLight position={[5, 8, 5]} intensity={1.5} castShadow />
         <directionalLight position={[-6, 3, -2]} intensity={0.8} />
 
-        <Suspense fallback={<Loader />}>
+        <Suspense fallback={null}>
           <Environment preset="city" />
           <Model
             url={url}
