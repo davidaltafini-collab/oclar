@@ -25,6 +25,32 @@
     "stripe": "https://esm.sh/stripe@^20.1.0"
   }
 }
+<style>
+      #global-loader {
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        width: 100vw; height: 100vh; background-color: #ffffff;
+        display: flex; justify-content: center; align-items: center;
+        z-index: 99999; transition: opacity 0.2s ease-out, visibility 0.2s ease-out;
+      }
+      #global-loader.fade-out { opacity: 0; visibility: hidden; }
+      #loader-logo-container { display: flex; align-items: center; justify-content: center; }
+      #yellow-square {
+        background-color: #f9d10d; width: 60px; height: 60px; position: relative; z-index: 2;
+        transform: scale(8); animation: square-shrink 0.2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+      }
+      #text-wrapper {
+        overflow: hidden; max-width: 0px;
+        animation: wrapper-expand 0.25s cubic-bezier(0.25, 1, 0.5, 1) 0.15s forwards;
+      }
+      #oclar-text {
+        color: #111111; font-family: sans-serif; font-weight: 900; font-size: 54px;
+        line-height: 1; padding-left: 15px; margin: 0; white-space: nowrap;
+        transform: translateX(-100%); animation: text-slide 0.25s cubic-bezier(0.25, 1, 0.5, 1) 0.15s forwards;
+      }
+      @keyframes square-shrink { 0% { transform: scale(8); } 100% { transform: scale(1); } }
+      @keyframes wrapper-expand { 0% { max-width: 0px; } 100% { max-width: 300px; } }
+      @keyframes text-slide { 0% { transform: translateX(-100%); opacity: 0; } 100% { transform: translateX(0); opacity: 1; } }
+    </style>
 </script>
 <link rel="stylesheet" href="/index.css">
 </head>
