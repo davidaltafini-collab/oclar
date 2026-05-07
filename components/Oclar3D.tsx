@@ -1,213 +1,52 @@
-import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import * as THREE from 'three';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Environment, useGLTF } from '@react-three/drei';
+import React, { useState } from 'react';
 
-type ModelProps = {
-  url: string;
-  autoRotate?: boolean;
-  autoRotateSpeed?: number;
-  intensity?: number;
-  floatIntensity?: number;
-  floatSpeed?: number;
-  dragSensitivity?: number;
-  // Refs primite de la părinte pentru control
-  isDraggingRef: React.MutableRefObject<boolean>;
-  externalRotationY: React.MutableRefObject<number>;
-  onLoaded?: () => void;
-};
-
-function Model({
-  onLoaded,
-  url,
-  autoRotate = true,
-  autoRotateSpeed = 0.006,
-  intensity = 0.18,
-  floatIntensity = 0.08,
-  floatSpeed = 0.8,
-  dragSensitivity = 0.005,
-  isDraggingRef,
-  externalRotationY
-}: ModelProps) {
-  const group = useRef<THREE.Group>(null);
-  useGLTF.setDecoderPath('/draco/');
-  const { scene } = useGLTF(url);
-  const cloned = useMemo(() => scene.clone(true), [scene]);
-  
-  // Stare internă pentru tilt (înclinare pe X)
-  const tiltRef = useRef(0);
-
-  useEffect(() => {
-    onLoaded?.();
-  }, []);
-
-  // Setup Materiale
-  useEffect(() => {
-    cloned.traverse((obj: any) => {
-      if (obj?.isMesh) {
-        obj.castShadow = true;
-        obj.receiveShadow = true;
-        if (obj.material?.map) obj.material.map.colorSpace = THREE.SRGBColorSpace;
-      }
-    });
-  }, [cloned]);
-
-  useFrame(({ mouse, clock }) => {
-    if (!group.current) return;
-
-    // 1. Floating Effect (Plutire sus-jos)
-    const t = clock.getElapsedTime();
-    const floatY = Math.sin(t * floatSpeed) * floatIntensity;
-    group.current.position.y = THREE.MathUtils.lerp(group.current.position.y, floatY, 0.08);
-
-    // 2. Mouse Tilt (doar când nu faci drag)
-    if (!isDraggingRef.current) {
-      // Pe mobil mouse.y e 0 de obicei, pe desktop face tilt fin
-      const targetX = mouse.y * intensity;
-      group.current.rotation.x = THREE.MathUtils.lerp(
-        group.current.rotation.x, 
-        targetX, 
-        0.06
-      );
-    } else {
-       // Reset tilt la 0 când tragi, pentru stabilitate
-       group.current.rotation.x = THREE.MathUtils.lerp(group.current.rotation.x, 0, 0.2);
-    }
-
-    // 3. Rotație (Auto + Manual)
-    // Dacă nu tragem, adăugăm viteza automată la valoarea noastră de referință
-    if (autoRotate && !isDraggingRef.current) {
-      externalRotationY.current += autoRotateSpeed;
-    }
-    
-    // Aplicăm rotația calculată (fie de auto, fie de drag din părinte)
-    // Folosim lerp pentru o oprire fină
-    group.current.rotation.y = THREE.MathUtils.lerp(
-        group.current.rotation.y, 
-        externalRotationY.current, 
-        0.15 // Factor de smoothing
-    );
-  });
-
-  return (
-    <group ref={group}>
-      <primitive object={cloned} />
-    </group>
-  );
-}
-
-function ModelWithFade({ children }: { children: React.ReactNode }) {
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    const t = setTimeout(() => setVisible(true), 100);
-    return () => clearTimeout(t);
-  }, []);
-
-  return (
-    <group>
-      {children}
-    </group>
-  );
-}
-
-function Loader() {
-  return null;
-}
-
-export const Oclar3D: React.FC<{
+interface Oclar3DProps {
   url?: string;
   className?: string;
   autoRotate?: boolean;
   autoRotateSpeed?: number;
   intensity?: number;
-  floatIntensity?: number;
-  floatSpeed?: number;
-  dragSensitivity?: number;
-}> = ({
-  url = 'https://modele3d.com/serve.php?model=oclar.glb',
+}
+
+export const Oclar3D: React.FC<Oclar3DProps> = ({
   className = '',
   autoRotate = true,
-  autoRotateSpeed = 0.006,
-  intensity = 0.18,
-  floatIntensity = 0.08,
-  floatSpeed = 0.8,
-  dragSensitivity = 0.005,
+  autoRotateSpeed = 0.004,
+  intensity = 0.4,
 }) => {
-  // Aceste refs trăiesc în afara canvas-ului pentru a păstra starea între randări
-  const isDraggingRef = useRef(false);
-  const lastPosRef = useRef({ x: 0 });
-  const externalRotationY = useRef(0);
-  const [modelVisible, setModelVisible] = useState(false);
-  const handleModelLoaded = useRef<(() => void) | null>(null); // Ținem minte rotația totală aici
+  const [loaded, setLoaded] = useState(false);
 
-  const handlePointerDown = (e: React.PointerEvent) => {
-    isDraggingRef.current = true;
-    lastPosRef.current = { x: e.clientX };
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    // NU resetăm rotația. Continuăm de unde a rămas auto-rotate-ul.
-  };
-
-  const handlePointerMove = (e: React.PointerEvent) => {
-    if (!isDraggingRef.current) return;
-    
-    const deltaX = e.clientX - lastPosRef.current.x;
-    
-    // Adăugăm diferența de mișcare la rotația totală
-    externalRotationY.current += deltaX * (dragSensitivity || 0.005);
-    
-    lastPosRef.current = { x: e.clientX };
-  };
-
-  const handlePointerUp = (e: React.PointerEvent) => {
-    isDraggingRef.current = false;
-    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-  };
+  const params = new URLSearchParams({
+    model:       'oclar.glb',
+    bg:          'transparent',
+    autorotate:  autoRotate ? '1' : '0',
+    speed:       String(autoRotateSpeed),
+    intensity:   String(intensity),
+  });
 
   return (
     <div
       className={`relative ${className}`}
       style={{
-        touchAction: 'pan-y',
-        cursor: 'grab',
-        opacity: modelVisible ? 1 : 0,
-        transform: modelVisible ? 'translateY(0px)' : 'translateY(24px)',
+        opacity: loaded ? 1 : 0,
+        transform: loaded ? 'translateY(0px)' : 'translateY(24px)',
         transition: 'opacity 0.8s ease-out, transform 0.8s cubic-bezier(0.16, 1, 0.3, 1)',
       }}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerLeave={handlePointerUp}
     >
-      <Canvas
-        shadows
-        dpr={[1, 2]}
-        gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
-        // Am pus camera mai aproape (Z=3.5) ca să se vadă mare
-        camera={{ fov: 45, near: 0.1, far: 2000, position: [0, 0, 3.5] }}
-      >
-        <ambientLight intensity={0.8} />
-        <directionalLight position={[5, 8, 5]} intensity={1.5} castShadow />
-        <directionalLight position={[-6, 3, -2]} intensity={0.8} />
-
-        <Suspense fallback={null}>
-          <Environment preset="city" />
-          <Model
-            url={url}
-            autoRotate={autoRotate}
-            autoRotateSpeed={autoRotateSpeed}
-            intensity={intensity}
-            floatIntensity={floatIntensity}
-            floatSpeed={floatSpeed}
-            dragSensitivity={dragSensitivity}
-            isDraggingRef={isDraggingRef}
-            externalRotationY={externalRotationY}
-            onLoaded={() => setModelVisible(true)}
-          />
-        </Suspense>
-      </Canvas>
+      <iframe
+        src={`https://modele3d.com/viewer.php?${params}`}
+        style={{
+          width: '100%',
+          height: '100%',
+          border: 'none',
+          background: 'transparent',
+          display: 'block',
+        }}
+        allow="accelerometer; gyroscope"
+        scrolling="no"
+        onLoad={() => setLoaded(true)}
+        title="Oclar 3D Model"
+      />
     </div>
   );
 };
-
-useGLTF.preload('https://modele3d.com/serve.php?model=oclar.glb');
