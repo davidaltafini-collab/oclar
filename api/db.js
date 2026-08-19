@@ -2,7 +2,7 @@ import mysql from 'mysql2/promise';
 import dotenv from 'dotenv'; // <--- LINIE NOUĂ (1)
 dotenv.config();             // <--- LINIE NOUĂ (2) - Asta citește fișierul .env
 
-// Logging pntru debugging
+// Logging pentru debugging
 console.log('DB Config loaded:', {
   host: process.env.DB_HOST ? '✅' : '❌ MISSING',
   user: process.env.DB_USER ? '✅' : '❌ MISSING',
